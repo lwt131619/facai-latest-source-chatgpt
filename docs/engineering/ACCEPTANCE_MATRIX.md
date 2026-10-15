@@ -6,7 +6,7 @@
 | 编号 | 用户/系统验收 | 必要证据 | 当前状态 |
 |---|---|---|---|
 | A01 | 解压启动，浏览器打开8080，已有数据不丢 | Linux首次/重启与Docker启动实测；Windows/Mac另测 | PARTIAL |
-| A02 | 首次向导真实系统检测、Owner设置、控制/恢复密钥 | 初始化前后鉴权、bootstrap失效、重启不再初始化 | NOT_IMPLEMENTED |
+| A02 | 首次向导真实系统检测、Owner设置、控制/恢复密钥 | 初始化前后鉴权、bootstrap失效、重启不再初始化 | PARTIAL |
 | A03 | OpenAI/DeepSeek/Ollama/Custom模型连接 | 自有配置真实连接；缺Key/额度/网络明确区分 | PARTIAL |
 | A04 | 原话→action/target/purpose/scope/constraint理解 | 原话逐字保存，缺上下文不假定 | PARTIAL |
 | A05 | Preview/修改理解/补信息/取消 | 修订不可变，Owner隔离，确认显示当前版本 | NOT_VERIFIED |

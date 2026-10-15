@@ -8,7 +8,7 @@
 | AUD-001 | 真实源码审计与测试基线 | VERIFIED_LOCAL | P0 | DIR-001 |
 | SYNC-001 | GitHub检查点与断点备份 | VERIFIED_LOCAL | P0 | DIR-001 |
 | AUTH-001 | Owner Control与授权分离 | PARTIAL | P1 | AUD-001 |
-| SETUP-001 | 首次配置向导与Owner初始化 | NOT_IMPLEMENTED | P1 | AUTH-001 |
+| SETUP-001 | 首次配置向导与Owner初始化 | PARTIAL | P1 | AUTH-001 |
 | INTENT-001 | Natural Language Compiler完整合约 | PARTIAL | P1 | AUD-001 |
 | MISSION-001 | 理解预览与确认到Mission | PARTIAL | P1 | INTENT-001, AUTH-001 |
 | DB-001 | 生产持久化与增量迁移 | PARTIAL | P1 | AUD-001 |
@@ -92,7 +92,7 @@
 
 浏览器完成系统检测、模型连接、Owner账号与控制/恢复密钥
 
-**现有定位**：`scripts/start.py`、`facai/auth.py`、`facai/secretbox.py`、`facai/api.py`
+**现有定位**：`facai/onboarding.py`、`facai/setup_routes.py`、`facai/static/setup.html`、`scripts/start.py`、`tests/test_onboarding.py`、`tests/test_setup_browser.py`
 
 **验收**：
 
@@ -100,7 +100,7 @@
 - Owner密码哈希复用既有身份体系，APIKey加密不回显
 - 重启保留Owner，不通过全局auth bypass开放初始化
 
-**下一步**：SetupManager/router加loopback单次bootstrap；旧env和local-owner.json保持兼容
+**下一步**：已本地实现/验证单进程新安装loopback一次性Owner初始化、PBKDF2持久化、单次登录恢复、模型配置/显式探测/系统检测；仍需Windows/macOS、真实Provider/Runtime与VPS交付验收。恢复密钥仅用于登录，不伪称Runtime控制权限。
 
 ## INTENT-001 — Natural Language Compiler完整合约
 

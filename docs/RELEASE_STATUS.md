@@ -31,10 +31,12 @@
 
 ## 发布阻塞仍存在
 
-1. 首次Setup向导、Owner初始化、模型/Runtime安装连接仍待闭环。
+1. 首次Setup及本地Owner初始化/恢复已实现并有桌面/手机实测；跨平台native、真实Provider/Runtime安装连接仍待验收。
 2. 自然语言理解仍是明确规则和人工修订，没有完整LLM语义与校准置信度。
 3. 任务规格已落地；用户自定义输出契约及真实执行全流程仍待验收。
 4. 20+Agent实际协作、0.01%真实计量、独立来源信任图/采证、知识与native安装包待完成。
 5. Proof路径已增加但未完成真实Provider/工具/HTTPS跨设备端到端验收，不能宣称Production完成。
 
 详见docs/TRUST_WORKFLOW.md、AGENT_HANDOFF.md和工程任务登记表。
+
+Setup本轮：20项定向、87项扩展安全/Trust回归、4项Setup+Trust真实浏览器和2项旧控制台布局通过。最终完整回归待重跑；详见docs/SETUP_WIZARD.md。

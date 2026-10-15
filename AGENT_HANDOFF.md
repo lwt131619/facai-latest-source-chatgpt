@@ -47,7 +47,9 @@ python -m pytest -q
 当前云环境Python依赖位于 `/workspace/facai-venv`。
 可选浏览器验收：安装playwright后设置 FACAI_TEST_CHROMIUM=/usr/bin/chromium，运行 tests/test_trust_browser.py。
 
-下一步按任务登记表推进首次Setup/模型连接、Runtime真实多Agent容量、自动可信采证及知识联动。
+本轮另已新增/验证Setup：新本机Owner初始化、哈希持久化、单次恢复、真实系统检测、加密模型配置/显式探测及状态保存，详见docs/SETUP_WIZARD.md。
+Setup定向20通过；扩展隔离/鉴权/Trust定向87通过；Setup+Trust真实桌面/手机浏览器4通过；旧控制台布局另2通过。完整回归需在全部新变更后重跑。
+下一步按任务登记表推进Runtime真实多Agent容量、自动可信采证及知识联动。
 不得把默认并发2/上限8/OpenCode串行写成已支持20模型并发，不用随机小数伪装进度。
 Rust/Shannon/Kali/BlackArch仍是增量方向，不替换现有Core。
 

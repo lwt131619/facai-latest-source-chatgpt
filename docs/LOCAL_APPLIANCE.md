@@ -5,14 +5,17 @@ Windows 双击 `start.bat`；macOS/Linux 执行 `./start.sh`。需要 Python 3.1
 健康检查通过后打开 http://127.0.0.1:8080。Ctrl+C 停止服务，data/ 保留历史。
 可用 `--port 8081` 或 `--no-browser`。这不是内置 Python 的离线安装包。
 
-未配置环境凭据时首次生成 admin 的随机密码，保存在 data/local-owner.json；
-请自行打开该私密文件读取密码。Unix 文件模式为 600；Windows 请确保目录仅当前用户可读。
-可用进程环境 FACAI_ADMIN_PASSWORD 或 FACAI_USERS_JSON 覆盖本地配置。
-启动器不自动读取 .env，以免隐式加载其他服务凭据。
+新安装且未指定环境凭据时，启动器生成私密的本机初始化信息，并自动打开 /setup 一次性链接。
+在浏览器设置Owner用户名和密码，保存单次恢复密钥，然后登录配置模型。
+初始化后local-owner.json只保存密码/恢复密钥哈希；重启仍使用您设置的账号。
+旧版随机密码文件继续兼容；显式FACAI_ADMIN_PASSWORD或FACAI_USERS_JSON优先，既有部署不强制改账号。
+Unix文件模式600；Windows请保护data目录ACL。首次初始化使用正常自动打开浏览器启动；
+--no-browser不打印一次性秘密，适合已配置账号的环境。
+启动器不自动读取.env，避免隐式加载其他服务凭据。
 
-登录后用已有模型注册/测试与运行时设置配置自己的模型及 OpenCode/Goose。
-本启动器不安装这些外部 CLI、不编造模型连接、执行进度或验证结果。
-首次浏览器设置向导仍待整合；现有登录/模型配置界面继续使用。
+设置向导提供真实Python/SQLite/Storage检测和可选Rust/Docker/执行CLI存在性检测，
+复用加密模型登记、显式连接测试；没有模型/CLI时保持未就绪，不编造执行结果。
+详情见SETUP_WIZARD.md。启动器不自动安装OpenCode/Goose，也不绕过权限或预算。
 
 Docker：复制 .env.example 为 .env，设置强 FACAI_ADMIN_PASSWORD，然后
 `docker compose up --build -d`。浏览器手动打开上述地址，用户名 admin。

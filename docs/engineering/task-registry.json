@@ -104,16 +104,18 @@
     {
       "id": "SETUP-001",
       "title": "首次配置向导与Owner初始化",
-      "status": "NOT_IMPLEMENTED",
+      "status": "PARTIAL",
       "priority": 1,
       "depends_on": [
         "AUTH-001"
       ],
       "source_files": [
+        "facai/onboarding.py",
+        "facai/setup_routes.py",
+        "facai/static/setup.html",
         "scripts/start.py",
-        "facai/auth.py",
-        "facai/secretbox.py",
-        "facai/api.py"
+        "tests/test_onboarding.py",
+        "tests/test_setup_browser.py"
       ],
       "goal": "浏览器完成系统检测、模型连接、Owner账号与控制/恢复密钥",
       "acceptance": [
@@ -121,7 +123,7 @@
         "Owner密码哈希复用既有身份体系，APIKey加密不回显",
         "重启保留Owner，不通过全局auth bypass开放初始化"
       ],
-      "next_action": "SetupManager/router加loopback单次bootstrap；旧env和local-owner.json保持兼容"
+      "next_action": "已本地实现/验证单进程新安装loopback一次性Owner初始化、PBKDF2持久化、单次登录恢复、模型配置/显式探测/系统检测；仍需Windows/macOS、真实Provider/Runtime与VPS交付验收。恢复密钥仅用于登录，不伪称Runtime控制权限。"
     },
     {
       "id": "INTENT-001",
@@ -645,6 +647,15 @@
     },
     "targeted_trust_intent_legacy_passed": 27,
     "real_chromium_desktop_mobile_passed": 2,
+    "live_provider_execution": false,
+    "vps_deployed": false,
+    "production_acceptance": false
+  },
+  "latest_setup_validation": {
+    "targeted_setup_launcher_intent_passed": 20,
+    "expanded_security_trust_passed": 87,
+    "real_setup_trust_browser_passed": 4,
+    "existing_console_browser_passed": 2,
     "live_provider_execution": false,
     "vps_deployed": false,
     "production_acceptance": false
