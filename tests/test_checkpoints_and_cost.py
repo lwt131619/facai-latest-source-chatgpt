@@ -97,10 +97,18 @@ def test_checkpoint_initializes_nested_workspace_without_committing_parent(tmp_p
     """A workspace under the source checkout must get its own Git boundary."""
     from facai.checkpoint import checkpoint
 
-    repo_root = Path(__file__).resolve().parents[1]
+    # Build an actual parent repository rather than depending on this test
+    # suite having been checked out with .git (development ZIPs omit history).
+    repo_root = tmp_path / 'parent-repository'
+    repo_root.mkdir()
+    subprocess.run(['git', 'init', str(repo_root)], check=True, capture_output=True)
+    (repo_root / 'parent.txt').write_text('parent content', encoding='utf-8')
+    subprocess.run(['git', 'add', 'parent.txt'], cwd=repo_root, check=True)
+    subprocess.run(['git', '-c', 'user.name=Test', '-c', 'user.email=test@example.com',
+                    'commit', '-m', 'initial parent'], cwd=repo_root, check=True, capture_output=True)
     before = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=repo_root,
                             capture_output=True, text=True, check=True).stdout.strip()
-    workspace = tmp_path / 'nested-workspace'
+    workspace = repo_root / 'nested-workspace'
     workspace.mkdir()
     (workspace / 'result.txt').write_text('mission result', encoding='utf-8')
 

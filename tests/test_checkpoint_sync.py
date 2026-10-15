@@ -11,7 +11,7 @@ checkpoint=importlib.util.module_from_spec(spec)
 spec.loader.exec_module(checkpoint)
 
 
-@pytest.mark.parametrize('result,complete,expected',[(0,True,0),(0,False,2),(128,False,2)])
+@pytest.mark.parametrize('result,complete,expected',[(0,True,0),(0,False,2),(128,False,2),(128,True,0)])
 def test_new_repository_verifies_both_refs_without_persisting_credentials(tmp_path,monkeypatch,capsys,result,complete,expected):
     def real(*args):return subprocess.run(['git',*args],cwd=tmp_path,capture_output=True,check=True)
     real('init','-b','facai/production-build')

@@ -87,11 +87,13 @@ def checkpoint(message=None, paths=(), validation='not_run', push=True):
             result = git('push', destination, *refspecs, check=False)
             status['credential_source'] = 'GH_TOKEN_PROCESS_ONLY_FALLBACK'
         status['push_exit_code'] = result.returncode
-        if result.returncode == 0:
-            remote = git('ls-remote', origin, *state_refs, check=False)
-            actual = {parts[1]: parts[0] for line in remote.stdout.decode().splitlines()
-                      if len(parts := line.split()) == 2}
-            status['remote_verified'] = remote.returncode == 0 and all(actual.get(ref) == head for ref in state_refs)
+        # An App may have already synchronized this exact commit while shell
+        # write credentials expired. Verify actual refs even if push failed;
+        # a failed push alone never establishes that a backup is missing.
+        remote = git('ls-remote', origin, *state_refs, check=False)
+        actual = {parts[1]: parts[0] for line in remote.stdout.decode().splitlines()
+                  if len(parts := line.split()) == 2}
+        status['remote_verified'] = remote.returncode == 0 and all(actual.get(ref) == head for ref in state_refs)
         # Never persist or echo raw Git stderr, which may contain credential URLs.
         status['sync_status'] = 'SYNCED' if status['remote_verified'] else 'PUSH_FAILED'
     else:
