@@ -193,12 +193,19 @@ pid ${tmp}/logs/nginx.pid;
 error_log ${tmp}/logs/error.log;
 events {}
 http {
+    access_log off;
+    client_body_temp_path ${tmp}/client_temp;
+    proxy_temp_path ${tmp}/proxy_temp;
+    fastcgi_temp_path ${tmp}/fastcgi_temp;
+    uwsgi_temp_path ${tmp}/uwsgi_temp;
+    scgi_temp_path ${tmp}/scgi_temp;
     include ${HTTP_CONF};
 }
 EOF
-  if nginx -t -c "$tmp/nginx-http.conf" -p "$tmp" >/dev/null 2>&1; then
+  if nginx -t -c "$tmp/nginx-http.conf" -p "$tmp" >"$tmp/http-check.log" 2>&1; then
     pass "nginx -t accepts the HTTP bootstrap"
   else
+    cat "$tmp/http-check.log"
     fail "nginx -t rejects the HTTP bootstrap"
   fi
 
@@ -206,18 +213,25 @@ EOF
     openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
       -keyout "$tmp/certs/privkey.pem" -out "$tmp/certs/fullchain.pem" \
       -subj "/CN=${DOMAIN}" >/dev/null 2>&1
-    sed "s#/etc/letsencrypt/live/${DOMAIN}/#${tmp}/certs/#g" "$TLS_CONF" > "$tmp/tls.conf"
+    sed -E "s#/etc/letsencrypt/live/[^/]+/#${tmp}/certs/#g" "$TLS_CONF" > "$tmp/tls.conf"
     cat > "$tmp/nginx-tls.conf" <<EOF
 pid ${tmp}/logs/nginx.pid;
 error_log ${tmp}/logs/error.log;
 events {}
 http {
+    access_log off;
+    client_body_temp_path ${tmp}/client_temp;
+    proxy_temp_path ${tmp}/proxy_temp;
+    fastcgi_temp_path ${tmp}/fastcgi_temp;
+    uwsgi_temp_path ${tmp}/uwsgi_temp;
+    scgi_temp_path ${tmp}/scgi_temp;
     include ${tmp}/tls.conf;
 }
 EOF
-    if nginx -t -c "$tmp/nginx-tls.conf" -p "$tmp" >/dev/null 2>&1; then
+    if nginx -t -c "$tmp/nginx-tls.conf" -p "$tmp" >"$tmp/tls-check.log" 2>&1; then
       pass "nginx -t accepts the TLS config (self-signed cert)"
     else
+      cat "$tmp/tls-check.log"
       fail "nginx -t rejects the TLS config"
     fi
   else
