@@ -38,3 +38,14 @@ cache defaults. The validation wrapper now uses isolated temporary caches/logs;
 real nginx1.30.6 under UID10001 passed HTTP/TLS for both default/custom domains.
 No production template or VPS changed. See docs/validation/nginx-validation.json.
 Check GitHub Actions for final remote results; do not infer CI success from local skips.
+
+## Runtime fleet acceptance measured (takeover agent, 2026-10-16)
+
+tests/test_runtime_capacity.py: 24 independent jobs across 4 schedulers sharing
+one store — all complete, zero double-claims (per-workspace execution count == 1),
+per-worker peak never exceeds its concurrency, every execution attributed to one
+OPENCODE_STARTED. Lease renewal: a 1.5s job under a 0.4s claim lease is re-armed
+by touch_job_lease and never stolen by a hunting peer. Crash recovery: an expired
+lease with attempts left requeues exactly once (no budget -> honest FAILED), and
+the peer runs it once after the not-before buffer clears. Status stays PARTIAL:
+real OpenCode CLI / real model 20+ acceptance is still outstanding.
