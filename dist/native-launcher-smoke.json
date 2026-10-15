@@ -1,0 +1,8 @@
+{
+  "native_launcher": "PASS",
+  "owner_hash_persisted": true,
+  "restart_same_session": true,
+  "intent_history_restored": true,
+  "bootstrap_consumed": true,
+  "live_provider_calls": false
+}

@@ -1,0 +1,12 @@
+{
+  "status": "PASS",
+  "nginx_version": "nginx version: nginx/1.30.6",
+  "uid": 10001,
+  "http_and_tls_parsed": true,
+  "domains": [
+    "whstapp.lol",
+    "example.test"
+  ],
+  "production_server_modified": false,
+  "network_requests_from_configs": false
+}

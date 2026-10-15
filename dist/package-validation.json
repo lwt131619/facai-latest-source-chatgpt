@@ -1,0 +1,16 @@
+{
+  "package_source_commit": "196fd56c468c3c3466b0be6aafb91da322d17b1e",
+  "package_files": 398,
+  "package_sha256": "5039e88e78fb5d660bd48f24c107a871adcb6f33fd6f4eebc5d9da091db3a129",
+  "source_tree_dirty": false,
+  "source_manifest_verified": true,
+  "full_tests_attempted": true,
+  "tests": 1332,
+  "skipped": 13,
+  "failures": 0,
+  "errors": 0,
+  "passed": 1319,
+  "seconds": 228.014,
+  "exit_code": 0,
+  "real_chromium_enabled": true
+}

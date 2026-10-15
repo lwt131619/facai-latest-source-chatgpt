@@ -1,0 +1,12 @@
+{
+  "docker_service": "PASS",
+  "uid": 10001,
+  "health_authentication": true,
+  "same_session_after_restart": true,
+  "mission_specification_restored": true,
+  "evidence_restored": true,
+  "proof_export_hash_matches": true,
+  "live_provider_calls": false,
+  "host_port_access": "NOT_VERIFIED_IN_CLOUD_NAMESPACE",
+  "budget": "Explicit QA fixture 1000 USD; production default remains unchanged"
+}

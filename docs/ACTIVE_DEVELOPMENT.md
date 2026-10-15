@@ -1,9 +1,12 @@
 # Active development checkpoint
 
-Runtime next increment WIP: persistent shared/isolated workspace reservations,
-atomic global admission ceiling, worktree preflight and fail-closed deferral are
-being added. Scheduler wiring and focused tests are pending. Previous package
-acceptance refers to the prior runtime, not this untested intermediate commit.
+Runtime isolation increment is committed WIP. Latest focused run: **35 passed,
+1 failed**. Failure: test_parallel_branches_execute_in_distinct_worktrees_and_merge
+expects the full mission ID in git show --stat output, but long filenames are
+abbreviated. Fix and rerun before claiming acceptance; no full-suite validation
+of this new runtime increment has occurred. Earlier package acceptance below
+belongs to the prior runtime. Existing dist ZIP and bundles are historical
+checkpoints; use the final Git HEAD for latest source.
 
 Current stage is validated development, not Production v1.0. The working tree's
 code is committed and backed up in the user-selected GitHub repository. Verify

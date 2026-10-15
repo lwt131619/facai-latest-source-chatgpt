@@ -1,0 +1,12 @@
+{
+  "source_head_before_handoff": "3a2cfa6174f92d389890fa96ad3c7582099e6eef",
+  "status": "WIP_NOT_PRODUCTION",
+  "latest_focused_tests": {
+    "passed": 35,
+    "failed": 1,
+    "failure": "test_parallel_branches_execute_in_distinct_worktrees_and_merge: abbreviated git show --stat filename assertion"
+  },
+  "full_suite_for_latest_runtime": "NOT_RUN",
+  "dist_archives": "Historical checkpoints retained unchanged with their original validation; latest source is final Git HEAD",
+  "vps_ssh_directory_present": false
+}
