@@ -31,6 +31,10 @@ def main():
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(original, target)
             target.chmod(0o755 if original.stat().st_mode & 0o111 else 0o644)
+        # The host shell may use umask 077; copied public source directories
+        # must be traversable by the container's unrelated unprivileged UID.
+        for directory in (path for path in source.rglob('*') if path.is_dir()):
+            directory.chmod(0o755)
         cid = docker('run', '-d', '--user', '10001:10001', '--entrypoint', '/bin/sh',
                      'nginx:stable', '-c', 'sleep 120').stdout.strip()
         try:
