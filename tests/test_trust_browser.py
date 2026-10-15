@@ -103,7 +103,8 @@ def test_intent_to_evidence_review_and_download(protected_server, playwright_api
         assert 'Browser knowledge' in page.locator('#title').inner_text()
         assert 'INFERENCE' in page.locator('#claims').inner_text()
         assert '来源仍与当前任务快照一致' in page.locator('#current').inner_text()
-        page.fill('#query','Browser knowledge');page.click('#search button[type=submit]') if page.locator('#search button[type=submit]').count() else page.locator('#search button').first.click()
+        page.fill('#query','Browser knowledge')
+        page.locator('#search button').first.click()
         page.wait_for_selector('#items button')
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth + 1')
         assert errors == []

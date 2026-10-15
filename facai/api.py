@@ -3054,7 +3054,7 @@ def create_app(data_dir=None, opencode_adapter=None, goose_adapter=None):
             raise HTTPException(404, "Artifact file is unavailable")
         content = path.read_text(encoding="utf-8", errors="replace")
         limit = max(1, min(limit, 200000))
-        return {**artifact, "size": len(content), "truncated": len(content) > limit,
+        return {**public_artifact(artifact), "size": len(content), "truncated": len(content) > limit,
                 "content": content[:limit]}
 
     @app.post("/api/v1/missions/{mission_id}/model/complete")

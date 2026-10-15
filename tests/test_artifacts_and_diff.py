@@ -38,6 +38,7 @@ def test_artifact_content_is_readable_and_mission_scoped(tmp_path):
     artifact_id = artifacts[0]['id']
 
     body = client.get(f"/api/v1/missions/{a['id']}/artifacts/{artifact_id}").json()
+    assert 'path' not in body
     assert body['name'] == artifacts[0]['name']
     assert 'done' in body['content'] and body['truncated'] is False
 
