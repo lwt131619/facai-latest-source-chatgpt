@@ -5,10 +5,11 @@
   "product": "FACAI / ICS Production Platform v1.0",
   "source_baseline_commit": "933b431",
   "last_full_regression": {
-    "commit": "ad6ee2c",
-    "passed": 1318,
-    "skipped": 12,
-    "seconds": 165.53,
+    "commit": "196fd56c468c3c3466b0be6aafb91da322d17b1e",
+    "scope": "freshly_extracted_development_package",
+    "passed": 1319,
+    "skipped": 13,
+    "seconds": 228.014,
     "real_browser_enabled": true,
     "production_acceptance": false
   },
@@ -57,7 +58,7 @@
         "保留已有有效行为，相关回归及失败路径测试通过",
         "验证命令/结果/提交与外部局限写入交接记录"
       ],
-      "next_action": "最新全量1318通过/12跳过，真实浏览器已启用；Proof导出最终修正另19项通过和Docker字节哈希核验。完整证据见docs/validation/production-increment.json，不把测试总数当作生产验收。"
+      "next_action": "最新源码ZIP从零解压全量测试1319通过/13跳过，真实Chromium启用；之前Git工作树全量1318通过/12跳过。精确范围和源码哈希见docs/validation/package-acceptance.json。"
     },
     {
       "id": "SYNC-001",
@@ -238,7 +239,7 @@
         "保留前面已验证的启动/Docker/持久化能力",
         "新说明/备份脚本进入包；Windows/macOS分开实测"
       ],
-      "next_action": "前面111文件开发包与源码逐文件一致；接入向导后继续native/安装包验收"
+      "next_action": "已实现一键Owner初始化/恢复、原生和容器内部重启验证、ZIP逐文件哈希与全包解压测试；继续完成Windows/macOS和宿主跨设备/VPS验收，不将开发包标Production。"
     },
     {
       "id": "MODEL-001",
@@ -625,14 +626,15 @@
     }
   ],
   "latest_validation": {
-    "report": "docs/validation/production-increment.json",
-    "full_suite_passed": 1318,
-    "full_suite_skipped": 12,
-    "post_suite_export_fix_targeted_passed": 19,
+    "report": "docs/validation/package-acceptance.json",
+    "package_suite_passed": 1319,
+    "package_suite_skipped": 13,
+    "source_manifest_verified": true,
     "native_restart_verified": true,
-    "docker_internal_service_restart_verified": true,
+    "docker_internal_restart_verified": true,
     "docker_host_port_access": "NOT_VERIFIED_IN_CLOUD_NAMESPACE",
     "live_provider_execution": false,
+    "vps_deployed": false,
     "production_acceptance": false
   },
   "latest_trust_validation": {

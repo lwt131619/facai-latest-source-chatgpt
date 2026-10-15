@@ -59,7 +59,7 @@
     "facai/scheduler.py": "059305661dd9f2e3dd3942993eb6c285fb377b71fd7b41ab4afc05e01cf42141",
     "facai/eventbus.py": "34f94827183c5adad1bc80320e4a157f88369126874061ec50ba304d740c0fbc",
     "facai/conversion.py": "15536d4294075e607e2f67447c49b86d1c39af9ef9b1c501c759b4f6d035d4f1",
-    "facai/api.py": "40af6dce7373c168f1b4854044931035b16beaa169b7b0c36b4490d8987136e2",
+    "facai/api.py": "359ef231c67a3f8775e4f3f994052c30b057100f84e983c23fad447b1b734299",
     "facai/router.py": "c18e4a2351df8db60303d1472c75526ee5a4764cd32b8e7dd7717766fdb1c171",
     "facai/registries.py": "077c15b2918b5cf75873cf84296eb86d91f1fca551eb371ed71a68a0245301ba",
     "facai/broker.py": "796d45a6f063be892c8b50fc5f4dae898130ea220b330b0d38bac3ba29de6594",
@@ -101,5 +101,27 @@
   "vps_deployed": false,
   "windows_macos_native_verified": false,
   "twenty_agent_execution_verified": false,
-  "production_acceptance": false
+  "production_acceptance": false,
+  "latest_package_acceptance": {
+    "report": "docs/validation/package-acceptance.json",
+    "source_commit": "196fd56c468c3c3466b0be6aafb91da322d17b1e",
+    "passed": 1319,
+    "skipped": 13,
+    "failures": 0,
+    "errors": 0,
+    "seconds": 228.014,
+    "real_chromium_enabled": true
+  },
+  "final_security_patch": {
+    "commit": "2e86c8c",
+    "scope": "Request validation errors omit raw credentials",
+    "targeted_passed": 69,
+    "included_in_passed_package_suite": true
+  },
+  "final_checkpoint_patch": {
+    "commit": "ee2137f",
+    "scope": "Portable nested-repo test and read-back verification even when write credential fails",
+    "targeted_passed": 42,
+    "included_in_passed_package_suite": true
+  }
 }

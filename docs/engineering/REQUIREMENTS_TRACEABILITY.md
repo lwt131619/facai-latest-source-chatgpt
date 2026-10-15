@@ -58,7 +58,7 @@
 - 保留已有有效行为，相关回归及失败路径测试通过
 - 验证命令/结果/提交与外部局限写入交接记录
 
-**下一步**：最新全量1318通过/12跳过，真实浏览器已启用；Proof导出最终修正另19项通过和Docker字节哈希核验。完整证据见docs/validation/production-increment.json，不把测试总数当作生产验收。
+**下一步**：最新源码ZIP从零解压全量测试1319通过/13跳过，真实Chromium启用；之前Git工作树全量1318通过/12跳过。精确范围和源码哈希见docs/validation/package-acceptance.json。
 
 ## SYNC-001 — GitHub检查点与断点备份
 
@@ -170,7 +170,7 @@ Users/Owner/Agents/Skills/Missions/Executions/Events/Evidence/Claims/Artifacts/K
 - 保留前面已验证的启动/Docker/持久化能力
 - 新说明/备份脚本进入包；Windows/macOS分开实测
 
-**下一步**：前面111文件开发包与源码逐文件一致；接入向导后继续native/安装包验收
+**下一步**：已实现一键Owner初始化/恢复、原生和容器内部重启验证、ZIP逐文件哈希与全包解压测试；继续完成Windows/macOS和宿主跨设备/VPS验收，不将开发包标Production。
 
 ## MODEL-001 — 多Provider/多Key模型资源池
 
