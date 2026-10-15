@@ -96,6 +96,11 @@ def playwright_api():
 @pytest.fixture
 def console_server(tmp_path, monkeypatch, playwright_api):
     monkeypatch.delenv("FACAI_ADMIN_PASSWORD", raising=False)
+    # UI scenarios advance step records explicitly. A real scheduler racing
+    # them can fail a queued CLI job between the UI fetch and backend assertion.
+    # Actual scheduler/adapter execution is covered by its dedicated tests.
+    monkeypatch.setenv("FACAI_SCHEDULER_ENABLED", "0")
+    monkeypatch.setenv("FACAI_CHANNEL_NOTIFY_ENABLED", "0")
     base = f"http://127.0.0.1:{_free_port()}"
     server, thread = _serve(create_app(tmp_path), base)
     yield base
@@ -106,6 +111,8 @@ def console_server(tmp_path, monkeypatch, playwright_api):
 @pytest.fixture
 def protected_server(tmp_path, monkeypatch, playwright_api):
     monkeypatch.setenv("FACAI_ADMIN_PASSWORD", "mobile-pass")
+    monkeypatch.setenv("FACAI_SCHEDULER_ENABLED", "0")
+    monkeypatch.setenv("FACAI_CHANNEL_NOTIFY_ENABLED", "0")
     monkeypatch.delenv("FACAI_COOKIE_SECURE", raising=False)
     base = f"http://127.0.0.1:{_free_port()}"
     server, thread = _serve(create_app(tmp_path), base)
