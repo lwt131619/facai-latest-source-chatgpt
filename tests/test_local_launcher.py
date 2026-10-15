@@ -15,7 +15,10 @@ def test_local_credentials_survive_restart_without_printing_secret(tmp_path, mon
     monkeypatch.delenv('FACAI_USERS_JSON', raising=False)
     first = launcher.credentials(tmp_path)
     assert len(first['FACAI_ADMIN_PASSWORD']) >= 24
-    assert launcher.credentials(tmp_path) == first
+    second = launcher.credentials(tmp_path)
+    assert second['FACAI_ADMIN_PASSWORD'] == first['FACAI_ADMIN_PASSWORD']
+    assert second['FACAI_BOOTSTRAP_TOKEN'] != first['FACAI_BOOTSTRAP_TOKEN']
+    assert second['FACAI_ADMIN_USER'] == first['FACAI_ADMIN_USER'] == 'admin'
     assert first['FACAI_ADMIN_PASSWORD'] not in capsys.readouterr().out
     if os.name != 'nt':
         assert (tmp_path/'local-owner.json').stat().st_mode & 0o077 == 0

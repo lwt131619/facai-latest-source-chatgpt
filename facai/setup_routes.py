@@ -3,7 +3,6 @@ from pathlib import Path
 import json
 import platform
 import shutil
-import sys
 import tempfile
 
 from fastapi import APIRouter, HTTPException, Request
@@ -52,8 +51,8 @@ def router_for(store, auth, owner, require_admin, registries, probe_model, model
 
     def diagnostics():
         checks = {'python': {'status': 'AVAILABLE', 'version': platform.python_version()},
-                  'rust': {'status': 'AVAILABLE' if shutil.which('rustc') else 'NOT_INSTALLED', 'required': False},
-                  'docker': {'status': 'AVAILABLE' if shutil.which('docker') else 'NOT_INSTALLED', 'required': False},
+                  'rust': {'status': 'COMPILER_INSTALLED_NOT_BUILD_TESTED' if shutil.which('rustc') else 'NOT_INSTALLED', 'required': False},
+                  'docker': {'status': 'CLI_INSTALLED_NOT_DAEMON_TESTED' if shutil.which('docker') else 'NOT_INSTALLED', 'required': False},
                   'database': {'status': 'UNAVAILABLE'}, 'storage': {'status': 'UNAVAILABLE'},
                   'authentication': {'status': 'ENABLED' if auth.enabled else 'NOT_CONFIGURED'},
                   'runtime': {name: 'CLI_INSTALLED_NOT_EXECUTION_TESTED' if shutil.which(name) else 'NOT_INSTALLED'

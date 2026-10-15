@@ -50,7 +50,7 @@ class LocalOwnerSetup:
     def _read(self):
         configured = os.getenv('FACAI_LOCAL_OWNER_FILE', '')
         path = self.store.root/'local-owner.json'
-        if not configured or Path(configured).resolve() != path.resolve() or path.is_symlink():
+        if os.getenv('FACAI_USERS_JSON') or not configured or Path(configured).resolve() != path.resolve() or path.is_symlink():
             raise SetupError(409, 'This installation uses externally managed Owner credentials')
         if os.name != 'nt' and path.stat().st_mode & 0o077:
             raise SetupError(409, 'Local Owner configuration must be private')
@@ -78,10 +78,11 @@ class LocalOwnerSetup:
             if value.get('setup_complete') is not False:
                 raise SetupError(409, 'Owner initialization already completed')
             expected = os.getenv('FACAI_BOOTSTRAP_TOKEN', '')
-            if not expected or not token or not hmac.compare_digest(token, expected):
-                raise SetupError(403, 'Invalid or expired bootstrap token; relaunch FACAI')
             if self.auth.is_locked('local-bootstrap'):
                 raise SetupError(429, 'Too many recovery attempts; try later')
+            if not expected or not token or not hmac.compare_digest(token, expected):
+                self.store.record_login_failure('local-bootstrap', self.auth.failure_window)
+                raise SetupError(403, 'Invalid or expired bootstrap token; relaunch FACAI')
             with self.store.connect() as db:
                 db.execute('BEGIN IMMEDIATE')
                 if db.execute('SELECT count(*) FROM missions').fetchone()[0] or db.execute('SELECT count(*) FROM platform_users').fetchone()[0]:
