@@ -23,6 +23,7 @@ def main():
     files = subprocess.check_output(['git', 'ls-files', '-z'], cwd=ROOT).decode().split('\0')
     with tempfile.TemporaryDirectory(prefix='facai-nginx-') as folder:
         source = Path(folder)/'source'; source.mkdir(mode=0o755)
+        source.chmod(0o755)
         for name in filter(None, files):
             original = ROOT/name
             if original.is_symlink():
