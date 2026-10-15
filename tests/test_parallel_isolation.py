@@ -7,6 +7,8 @@ because it simulates a git-less host by monkeypatching the worktree factory.
 
 import shutil
 import subprocess
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -244,8 +246,8 @@ def test_parallel_branches_execute_in_distinct_worktrees_and_merge(tmp_path):
     assert runner.dirs.index(c_dir) > max(runner.dirs.index(a_dir), runner.dirs.index(b_dir))
 
     # Both branches merged into the shared workspace; worktrees cleaned up.
-    assert (workspace / f"{mission['id']}-step-a.txt").exists()
-    assert (workspace / f"{mission['id']}-step-b.txt").exists()
+    assert (workspace / (Path(a_dir).name+'.txt')).exists()
+    assert (workspace / (Path(b_dir).name+'.txt')).exists()
     assert not Path(a_dir).exists() and not Path(b_dir).exists()
 
     events = store.events(mission["id"])
@@ -255,7 +257,8 @@ def test_parallel_branches_execute_in_distinct_worktrees_and_merge(tmp_path):
     assert "WORKTREE_MERGE_FAILED" not in types
     created = {event["payload"]["branch"] for event in events
                if event["type"] == "WORKTREE_CREATED"}
-    assert created == {f"facai/{mission['id']}-step-a", f"facai/{mission['id']}-step-b"}
+    assert created == {'facai/'+Path(a_dir).name, 'facai/'+Path(b_dir).name}
+    assert all(any(job['id'] in branch for job in jobs) for branch in created)
     merged = next(event for event in events if event["type"] == "WORKTREE_MERGED")
     assert f"{mission['id']}-step-" in merged["payload"]["result"]
 
@@ -303,10 +306,26 @@ def test_worktree_run_logs_survive_merge_in_shared_workspace(tmp_path):
 # --- (e) git-less fallback ------------------------------------------------------
 
 
-def test_worktree_unavailable_falls_back_to_shared_workspace(tmp_path, monkeypatch):
+class OverlapProbe(DisjointFileRunner):
+    def __init__(self):
+        super().__init__()
+        self.lock=threading.Lock();self.active=0;self.peak=0
+
+    def __call__(self, command, cwd, timeout):
+        with self.lock:
+            self.active+=1;self.peak=max(self.peak,self.active)
+        try:
+            time.sleep(.03)
+            return super().__call__(command,cwd,timeout)
+        finally:
+            with self.lock:self.active-=1
+
+
+def test_worktree_unavailable_serializes_shared_workspace(tmp_path, monkeypatch):
+    monkeypatch.setenv('FACAI_OPENCODE_SERIAL','0')
     monkeypatch.setattr(checkpoint_module, "prepare_worktree",
                         lambda base_workspace, suffix: None)
-    runner = DisjointFileRunner()
+    runner = OverlapProbe()
     store, scheduler = _build_scheduler(tmp_path, runner, concurrency=2)
     mission = make_dag_mission(store, "回退")
     steps = {step["label"]: step["id"] for step in mission["steps"]}
@@ -321,18 +340,46 @@ def test_worktree_unavailable_falls_back_to_shared_workspace(tmp_path, monkeypat
     # Every execution (including the parallel A/B batch) used the shared
     # mission workspace — exactly today's single-workspace behavior.
     assert set(runner.dirs) == {str(mission["workspace"])}
-    # The degradation is announced, never silent: each parallel-branch
-    # candidate (A and B, not solo C) records one WORKTREE_FALLBACK event and
-    # no event claims worktree isolation that did not happen.
+    assert runner.peak == 1  # Even when the backend itself permits parallel calls.
+    assert all(job['workspace_mode']=='SHARED' for job in store.jobs(mission['id']))
     events = store.events(mission["id"])
     worktree_events = [event for event in events
                        if event["type"].startswith("WORKTREE")]
-    assert [event["type"] for event in worktree_events] == \
-        ["WORKTREE_FALLBACK", "WORKTREE_FALLBACK"]
-    for event in worktree_events:
-        assert event["payload"]["step_id"] in (steps["A"], steps["B"])
-        assert event["payload"]["path"] == str(mission["workspace"])
-        assert "shared mission workspace" in event["payload"]["reason"]
+    assert worktree_events == []
+    assert any(event['type']=='WORKSPACE_SERIALIZED' for event in events)
+
+
+@pytest.mark.skipif(not HAS_GIT, reason='git is required')
+def test_creation_failure_never_runs_parallel_in_shared_tree(tmp_path,monkeypatch):
+    monkeypatch.setenv('FACAI_OPENCODE_SERIAL','0')
+    runner=OverlapProbe();store,scheduler=_build_scheduler(tmp_path,runner,concurrency=2)
+    mission=make_dag_mission(store,'isolation failure');_seed_repo(Path(mission['workspace']))
+    for step in mission['steps']:
+        store.enqueue_job(mission['id'],'fixture',step_id=step['id'])
+    monkeypatch.setattr(checkpoint_module,'prepare_worktree',lambda *args,**kwargs:None)
+    assert len(scheduler.run_once())==2
+    assert runner.dirs==[] and store.costs(mission['id'])==[]
+    assert all(job['status']=='QUEUED' and job['attempts']==0 for job in store.jobs(mission['id']))
+    assert sum(e['type']=='WORKTREE_UNAVAILABLE' for e in store.events(mission['id']))==2
+    assert not any(e['type']=='OPENCODE_STARTED' for e in store.events(mission['id']))
+    # A subsequent serial reservation remains runnable without git isolation.
+    monkeypatch.setattr(checkpoint_module,'isolation_ready',lambda _:False)
+    with store.connect() as db:db.execute('UPDATE jobs SET not_before=NULL')
+    assert scheduler.run_pending()==3 and runner.peak==1
+    assert all(job['status']=='COMPLETED' for job in store.jobs(mission['id']))
+
+
+@pytest.mark.skipif(not HAS_GIT, reason='git is required')
+def test_step_prefix_collisions_cannot_reuse_another_live_worktree(tmp_path,monkeypatch):
+    monkeypatch.setenv('FACAI_OPENCODE_SERIAL','0')
+    runner=OverlapProbe();store,scheduler=_build_scheduler(tmp_path,runner,concurrency=2)
+    mission=store.create('prefix fixture','fixture',[{'id':'analysis-one','label':'One'}, {'id':'analysis-two','label':'Two'}])
+    store.bind(mission['id'],'opencode','deepseek-flash');_seed_repo(Path(mission['workspace']))
+    for step in mission['steps']:store.enqueue_job(mission['id'],'fixture',step_id=step['id'])
+    assert scheduler.run_pending()==2
+    assert len(set(runner.dirs))==2
+    assert all(job['status']=='COMPLETED' for job in store.jobs(mission['id']))
+    assert all((Path(mission['workspace'])/(Path(directory).name+'.txt')).exists() for directory in runner.dirs)
 
 
 # --- workspace override validation ---------------------------------------------
