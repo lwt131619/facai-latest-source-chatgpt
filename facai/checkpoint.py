@@ -80,7 +80,10 @@ def checkpoint(workspace, message):
             return {"committed": False, "reason": "no changes"}
         return {"committed": False, "reason": commit.stderr.strip() or "commit failed"}
     commit_hash = _run(["rev-parse", "HEAD"], workspace).stdout.strip()
-    stat = _run(["show", "--stat", "--format=", "HEAD"], workspace).stdout.strip()
+    # Wide stat so long step filenames are never "..."-abbreviated in evidence
+    # text: an auditor must see the whole path, not a truncated shape of it.
+    stat = _run(["show", "--stat", "--stat-width=420", "--stat-name-width=350",
+                 "--format=", "HEAD"], workspace).stdout.strip()
     return {"committed": True, "hash": commit_hash, "stat": stat}
 
 

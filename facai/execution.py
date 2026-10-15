@@ -252,7 +252,12 @@ def merge_worktree(store, base_workspace, worktree, mission_id, step_id=None):
                 # harmless no-op. The worktree and branch stay for inspection.
                 _git_run(["merge", "--abort"], base)
                 return {"merged": False, "error": "CONFLICT"}
-            stat = _git_run(["show", "--stat", "--format=", "HEAD"], base).stdout.strip()
+            # Wide stat: the merge evidence must carry the whole step filename —
+            # git's default 80-column stat "..."-abbreviates the long
+            # <mission_id>-step-<...> names and breaks audit traceability.
+            stat = _git_run(["show", "--stat", "--stat-width=420",
+                             "--stat-name-width=350", "--format=", "HEAD"],
+                            base).stdout.strip()
             remove_worktree(worktree.get("path"), base=base)
         return {"merged": True, "stat": stat}
     except Exception as exc:
