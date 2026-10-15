@@ -190,6 +190,7 @@ def test_export_hashes_and_snapshot_integrity_no_paths_or_event_payloads(tmp_pat
     with zipfile.ZipFile(io.BytesIO(raw)) as archive:
         assert {'report.md','evidence.json','verification.json','trace.json','metadata.json','manifest.json'} <= set(archive.namelist())
         manifest = json.loads(archive.read('manifest.json'))
+        assert manifest['files']['proof.json'] == proof['sha256']
         for name, sha in manifest['files'].items():
             assert hashlib.sha256(archive.read(name)).hexdigest() == sha
         assert '/private/server/path' not in archive.read('proof.json').decode()

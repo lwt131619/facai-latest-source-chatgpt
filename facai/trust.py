@@ -401,6 +401,9 @@ class TrustStore:
                                   'proof_id': proof_id, 'proof_sha256': sha, 'snapshot_token': proof['snapshot_token'],
                                   'created_at': proof['created_at'], 'artifact_scope': proof['artifact_scope']},
                      'proof': proof}.items()}}
+        # The externally supplied/accepted proof hash must also match the actual
+        # exported proof.json bytes, not a subtly different newline variant.
+        files['proof.json'] = canonical(proof).encode()
         files['manifest.json'] = (canonical({'algorithm': 'sha256', 'files': {
             name: hashlib.sha256(content).hexdigest() for name, content in files.items()}})+'\n').encode()
         output = io.BytesIO()
