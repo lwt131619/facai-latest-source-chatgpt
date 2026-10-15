@@ -22,21 +22,28 @@ def credentials(data_dir):
     path = data_dir / 'local-owner.json'
     if path.exists():
         value = json.loads(path.read_text(encoding='utf-8'))
-        if not isinstance(value.get('password'), str) or len(value['password']) < 16:
+        stored = value.get('password_hash') or value.get('password')
+        if not isinstance(stored, str) or len(stored) < 16:
             raise ValueError('Invalid local-owner.json; restore it or supply FACAI_ADMIN_PASSWORD')
         if os.name != 'nt' and path.stat().st_mode & 0o077:
             raise ValueError('local-owner.json must be private: chmod 600 '+str(path))
     else:
-        value = {'password': secrets.token_urlsafe(24)}
+        value = {'password': secrets.token_urlsafe(24), 'setup_complete': False, 'version': 2}
         with open(path, 'x', encoding='utf-8', opener=lambda p, f: os.open(p, f, 0o600)) as handle:
             json.dump(value, handle)
         print('First start: operator username is admin.', flush=True)
-    print('Local login password is stored in: '+str(path), flush=True)
-    print('Open this private file to retrieve it; do not share it.', flush=True)
-    return {'FACAI_ADMIN_PASSWORD': value['password']}
+    result = {'FACAI_ADMIN_PASSWORD': value.get('password_hash') or value['password'],
+              'FACAI_ADMIN_USER': value.get('username', 'admin'), 'FACAI_LOCAL_OWNER_FILE': str(path)}
+    if value.get('setup_complete') is False:
+        result['FACAI_BOOTSTRAP_TOKEN'] = secrets.token_urlsafe(32)
+        print('First-start Owner setup will open in your browser. Relaunch FACAI if the setup link expires.', flush=True)
+    elif not value.get('password_hash'):
+        print('Local login password is stored in: '+str(path), flush=True)
+        print('Open this private file to retrieve it; do not share it.', flush=True)
+    return result
 
 
-def open_when_ready(url, process):
+def open_when_ready(url, process, target=None):
     deadline = time.monotonic() + 60
     # Never send loopback health checks through an external proxy.
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
@@ -44,7 +51,7 @@ def open_when_ready(url, process):
         try:
             with opener.open(url+'/api/v1/health', timeout=1) as response:
                 if response.status == 200 and json.load(response).get('auth_required') is True:
-                    webbrowser.open(url)
+                    webbrowser.open(target or url)
                     return
         except (OSError, ValueError):
             pass
@@ -80,7 +87,10 @@ def main():
     print('FACAI: '+url+' — Ctrl+C stops the server. Model/runtime configuration is still required.', flush=True)
     process = subprocess.Popen([str(python), '-m', 'uvicorn', 'facai.api:app', '--host', '127.0.0.1', '--port', str(args.port)], cwd=ROOT, env=env)
     if not args.no_browser:
-        threading.Thread(target=open_when_ready, args=(url, process), daemon=True).start()
+        target = url + '/setup'
+        if env.get('FACAI_BOOTSTRAP_TOKEN'):
+            target += '#bootstrap=' + env['FACAI_BOOTSTRAP_TOKEN']
+        threading.Thread(target=open_when_ready, args=(url, process, target), daemon=True).start()
     try:
         return process.wait()
     except KeyboardInterrupt:

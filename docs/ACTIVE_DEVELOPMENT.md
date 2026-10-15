@@ -2,6 +2,11 @@
 
 ## WIP checkpoint (not a release)
 
+Next increment in progress: local-appliance Owner bootstrap and recovery.
+`facai/onboarding.py` and launcher changes are WIP, **not tested yet**; setup
+routes/page/tests are the next immediate step. Do not ship this intermediate
+launcher checkpoint as a release. Existing deployments keep environment auth.
+
 The user requested immediate, frequent GitHub WIP checkpoints to prevent loss.
 The first checkpoint was untested. Subsequent targeted validation: existing
 Intent and legacy Proof tests **13 passed**, syntax compilation passed.
