@@ -80,6 +80,13 @@ class TrustStore:
               CREATE TABLE IF NOT EXISTS trust_acceptances (
                 proof_id TEXT PRIMARY KEY REFERENCES trust_proofs(id),
                 document TEXT NOT NULL, created_at TEXT NOT NULL);
+              CREATE TABLE IF NOT EXISTS knowledge_assets (
+                id TEXT PRIMARY KEY, owner_id TEXT NOT NULL,
+                mission_id TEXT NOT NULL REFERENCES missions(id),
+                proof_id TEXT NOT NULL UNIQUE REFERENCES trust_proofs(id),
+                document TEXT NOT NULL, sha256 TEXT NOT NULL,
+                search_text TEXT NOT NULL, created_at TEXT NOT NULL);
+              CREATE INDEX IF NOT EXISTS knowledge_by_owner ON knowledge_assets(owner_id,created_at);
             ''')
 
     def _owned(self, db, owner, mission_id):
@@ -377,3 +384,76 @@ class TrustStore:
             for name, content in files.items():
                 archive.writestr(name, content)
         return output.getvalue()
+
+    def save_knowledge(self, owner, mission_id, proof_id, sha256, title, tags=()):
+        """Explicitly curate an accepted proof; never promote inference to fact."""
+        text(title, 'title', 200)
+        if not isinstance(tags, (list, tuple)) or len(tags) > 20:
+            raise TrustError(422, 'Tags must be a bounded list')
+        for tag in tags:
+            text(tag, 'tag', 50)
+        with self.store.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            proof, sha = self._proof(db, owner, mission_id, proof_id)
+            if sha != sha256:
+                raise TrustError(409, 'Proof hash mismatch')
+            acceptance = db.execute('SELECT document FROM trust_acceptances WHERE proof_id=?', (proof_id,)).fetchone()
+            state = self._state(db, owner, mission_id)
+            if not acceptance or proof['snapshot_token'] != state['snapshot_token'] or state['verification']['acceptance_blockers']:
+                raise TrustError(409, 'Knowledge requires a currently accepted proof snapshot')
+            existing = db.execute('SELECT id FROM knowledge_assets WHERE proof_id=? AND owner_id=?', (proof_id, owner)).fetchone()
+            if existing:
+                return {'id': existing['id'], 'duplicate': True}
+            id = uuid4().hex
+            document = {'schema_version': 1, 'id': id, 'title': title, 'tags': list(dict.fromkeys(tags)),
+                        'created_by': owner, 'created_at': now(), 'trace_id': mission_id,
+                        'source': {'mission_id': mission_id, 'proof_id': proof_id, 'proof_sha256': sha,
+                                   'snapshot_token': proof['snapshot_token'], 'acceptance': json.loads(acceptance['document'])},
+                        'objective': proof['specification']['objective'],
+                        'claims': proof['claims'], 'evidence_references': [
+                            {'id': item['id'], 'sha256': item['sha256'], 'kind': item['kind'], 'source': item['source']}
+                            for item in proof['evidence']],
+                        'confidence': None, 'policy': 'Preserve source claim status and human-review basis; storage is not factual certification'}
+            db.execute('INSERT INTO knowledge_assets VALUES (?,?,?,?,?,?,?,?)',
+                       (id, owner, mission_id, proof_id, canonical(document), digest(document),
+                        title+'\n'+'\n'.join(c['statement'] for c in proof['claims'])+'\n'+' '.join(tags), now()))
+            self._event(db, mission_id, 'TRUST_KNOWLEDGE_SAVED', owner, knowledge_id=id, proof_id=proof_id)
+        return {'id': id, 'duplicate': False}
+
+    def knowledge(self, owner, query='', limit=50, offset=0):
+        text(query, 'query', 200, required=False)
+        if not 1 <= limit <= 100 or not 0 <= offset <= 100000:
+            raise TrustError(422, 'Invalid pagination')
+        # Treat wildcard characters as literal user text; SQL remains parameterized.
+        pattern = '%'+query.replace('\\','\\\\').replace('%','\\%').replace('_','\\_')+'%'
+        with self.store.connect() as db:
+            rows = db.execute("SELECT document,sha256 FROM knowledge_assets WHERE owner_id=? AND search_text LIKE ? ESCAPE '\\' "
+                              'ORDER BY created_at DESC,id LIMIT ? OFFSET ?', (owner, pattern, limit, offset)).fetchall()
+        result = []
+        for row in rows:
+            document = json.loads(row['document'])
+            if digest(document) != row['sha256']:
+                raise TrustError(409, 'Knowledge integrity check failed')
+            result.append({'id': document['id'], 'title': document['title'], 'tags': document['tags'],
+                           'created_at': document['created_at'], 'source': document['source'],
+                           'claim_statuses': [claim['status'] for claim in document['claims']],
+                           'sha256': row['sha256'], 'source_current': None})
+        return {'items': result, 'limit': limit, 'offset': offset,
+                'notice': 'Immutable accepted historical snapshots; open an item to check whether its source is still current'}
+
+    def get_knowledge(self, owner, id):
+        with self.store.connect() as db:
+            db.execute('BEGIN')
+            row = db.execute('SELECT * FROM knowledge_assets WHERE id=? AND owner_id=?', (id, owner)).fetchone()
+            if row is None:
+                raise TrustError(404, 'Knowledge asset not found')
+            document = json.loads(row['document'])
+            if digest(document) != row['sha256']:
+                raise TrustError(409, 'Knowledge integrity check failed')
+            proof, sha = self._proof(db, owner, row['mission_id'], row['proof_id'])
+            if sha != document['source']['proof_sha256']:
+                raise TrustError(409, 'Source proof hash mismatch')
+            state = self._state(db, owner, row['mission_id'])
+            current = proof['snapshot_token'] == state['snapshot_token']
+            return {**document, 'sha256': row['sha256'], 'source_current': current,
+                    'source_current_blockers': state['verification']['acceptance_blockers']}

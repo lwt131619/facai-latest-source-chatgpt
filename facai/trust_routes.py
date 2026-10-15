@@ -1,7 +1,7 @@
 """Owner-scoped Trust v1 API, separate from the legacy execution proof API."""
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
@@ -38,6 +38,12 @@ class AcceptBody(BaseModel):
     reason: str = Field(min_length=1, max_length=2000)
 
 
+class KnowledgeBody(BaseModel):
+    sha256: str = Field(pattern=r'^[0-9a-f]{64}$')
+    title: str = Field(min_length=1, max_length=200)
+    tags: list[str] = Field(default_factory=list, max_length=20)
+
+
 def router_for(store, owner, require_mission, human_writer):
     specifications = MissionSpecifications(store)
     service = TrustStore(store)
@@ -52,6 +58,19 @@ def router_for(store, owner, require_mission, human_writer):
     @router.get('/evidence-center')
     def page():
         return FileResponse(Path(__file__).parent/'static/evidence-center.html')
+
+    @router.get('/knowledge')
+    def knowledge_page():
+        return FileResponse(Path(__file__).parent/'static/knowledge.html')
+
+    @router.get('/api/v1/knowledge')
+    def knowledge(q: str = Query(default='', max_length=200), limit: int = Query(default=50, ge=1, le=100),
+                  offset: int = Query(default=0, ge=0, le=100000)):
+        return call(service.knowledge, owner(), q, limit, offset)
+
+    @router.get('/api/v1/knowledge/{id}')
+    def knowledge_item(id: str):
+        return call(service.get_knowledge, owner(), id)
 
     @router.get('/api/v1/missions/{mission_id}/specification')
     def spec(mission_id: str):
@@ -99,5 +118,10 @@ def router_for(store, owner, require_mission, human_writer):
         return Response(content, media_type='application/zip', headers={
             'Content-Disposition': 'attachment; filename="facai-proof.zip"',
             'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff'})
+
+    @router.post('/api/v1/missions/{mission_id}/trust/proofs/{proof_id}/knowledge', status_code=201)
+    def save_knowledge(mission_id: str, proof_id: str, body: KnowledgeBody, request: Request):
+        human_writer(request)
+        return call(service.save_knowledge, owner(), mission_id, proof_id, body.sha256, body.title, body.tags)
 
     return router
