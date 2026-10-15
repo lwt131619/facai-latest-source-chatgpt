@@ -397,7 +397,7 @@
     "四类冲突与无法分类样例可测试",
     "不能A!=B就无依据判一方正确"
    ],
-   "next_action": "已实现明确规范化subject/predicate/value及四维上下文比较，四类冲突和缺上下文REVIEW有测试；后续补自然语言同义/时间区间推理和可审计冲突解决。 已补Owner带理由撤回（生命周期独立于分类），保留原断言/证据/冲突历史，不通过删除证据解除争议。"
+   "next_action": "classify_conflict 四维合约已由 tests/test_conflict_semantics.py 钉死(13例:不可比/TEMPORAL/SCOPE含environment映射/SEMANTIC/多维报告/双端缺失即REVIEW/空串视为缺失/仅同上下文才DIRECT_CONFLICT/对称性)。剩余:把TrustStore.add_claim的冲突事件流与/evidence-center控制台的展示接线补验收证据。"
   },
   {
    "id": "PROOF-001",
