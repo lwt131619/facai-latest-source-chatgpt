@@ -29,6 +29,11 @@
 
 ## 每个可运行断点
 
+用户最新防丢失要求：每完成一个小步骤立即提交明确文件并推送新主库 main。
+允许 WIP 和尚未全绿的测试，但提交说明及 docs/ACTIVE_DEVELOPMENT.md 必须标明验证状态。
+收到用量警告先保存提交并推送，再继续；重要代码/文档/配置不能只留在临时目录。
+目前 origin 已指向 facai-latest-source-chatgpt，推送前仍需检查目标。
+
 1. 更新 task-registry.json / AGENT_HANDOFF.md：完成、待办、验证范围、阻塞、下一步。
 2. 运行与修改相称的真实验证；完整版本验收要执行接受矩阵。
 3. `python scripts/checkpoint.py --message '...' --paths <明确文件列表> --validation <状态>`。

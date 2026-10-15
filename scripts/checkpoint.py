@@ -71,16 +71,21 @@ def checkpoint(message=None, paths=(), validation='not_run', push=True):
         if (parts.scheme != 'https' or parts.hostname != 'github.com'
                 or parts.path.rstrip('/') not in {'/lwt131619/facai-cloud-public.git', '/lwt131619/facai-latest-source-chatgpt.git'}):
             raise ValueError('Credentials are restricted to the configured FACAI repositories')
-        destination = origin
-        if token:
-            destination = 'https://x-access-token:'+quote(token, safe='')+'@github.com'+parts.path
         state_refs = [f'refs/heads/{target}']
         if target != branch:
             state_refs.append(f'refs/heads/{branch}')
         status['repository'] = parts.path.strip('/').removesuffix('.git')
         status['target_branch'] = target
-        status['credential_source'] = 'GH_TOKEN_PROCESS_ONLY' if token else 'INHERITED_GIT'
-        result = git('push', destination, *[f'HEAD:{ref}' for ref in state_refs], check=False)
+        # Official integration credentials may be injected by the environment;
+        # GH_TOKEN can be a proxy placeholder. Try the working native channel
+        # first instead of replacing it merely because that variable exists.
+        status['credential_source'] = 'INHERITED_GIT'
+        refspecs = [f'HEAD:{ref}' for ref in state_refs]
+        result = git('push', origin, *refspecs, check=False)
+        if result.returncode and token:
+            destination = 'https://x-access-token:'+quote(token, safe='')+'@github.com'+parts.path
+            result = git('push', destination, *refspecs, check=False)
+            status['credential_source'] = 'GH_TOKEN_PROCESS_ONLY_FALLBACK'
         status['push_exit_code'] = result.returncode
         if result.returncode == 0:
             remote = git('ls-remote', origin, *state_refs, check=False)

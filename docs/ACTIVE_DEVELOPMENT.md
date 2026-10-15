@@ -24,7 +24,7 @@ This is not live external execution evidence or a certified truth engine.
 
 Next actions:
 1. Expand edge-case validation and review execution-evidence limitations.
-2. Entry links are connected; run real desktop/mobile browser checks.
+2. Entry links are connected; real Chromium desktop 1440×1000 and mobile 390×844 flow: **2 passed** (login → intent → confirmation → evidence → explicit review → snapshot ZIP → reload). No JS errors or horizontal overflow.
 3. Run the complete regression suite; update task registry and handoff.
 4. Refresh development package and resumable bundle.
 
