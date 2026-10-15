@@ -37,6 +37,7 @@ def test_intent_to_evidence_review_and_download(protected_server, playwright_api
         mission_id = page.locator('#open-mission').get_attribute('href').split('mission=')[1]
         page.goto(protected_server+'/evidence-center?mission='+mission_id)
         page.wait_for_selector('#workspace:visible')
+        page.locator('details > summary').first.click()
         assert '分析这个项目' in page.locator('#spec').inner_text()
         page.fill('#source', 'Local Owner observation, not external attestation')
         page.fill('#content', 'Local version output says 1')
