@@ -23,3 +23,10 @@ KNOWLEDGE_MEMORY.md. Continue the frozen 27-direction task registry, beginning w
 Runtime capacity and safe workspace isolation. Every small step must be explicitly
 committed/pushed; WIP is allowed with an honest validation label. Important scripts
 are in Git, including smoke_appliance.py, smoke_docker.py and verify_package.py.
+
+
+Post-package CI fix: optional real nginx parsing was exercising unwritable system
+cache defaults. The validation wrapper now uses isolated temporary caches/logs;
+real nginx1.30.6 under UID10001 passed HTTP/TLS for both default/custom domains.
+No production template or VPS changed. See docs/validation/nginx-validation.json.
+Check GitHub Actions for final remote results; do not infer CI success from local skips.

@@ -1,0 +1,18 @@
+{
+  "status": "PASS",
+  "nginx_version": "nginx version: nginx/1.30.6",
+  "uid": 10001,
+  "http_and_tls_parsed": true,
+  "domains": [
+    "whstapp.lol",
+    "example.test"
+  ],
+  "production_server_modified": false,
+  "network_requests_from_configs": false,
+  "validated_source_files": {
+    "deploy/validate_config.sh": "46195c9f733166c1e8e90ad87ae76e39f5f322632512170213580fb8fa4c315c",
+    "deploy/nginx/facai-cloud.http.conf": "7ad49e43662379fcf0e7331dc7fe5d32279ec762c22c9e824c31b7725bcde608",
+    "deploy/nginx/facai-cloud.conf": "827085432e3bbf8df58a58338218cb07b98f4fbd29fa796d722748a95828f4b3",
+    "scripts/smoke_nginx.py": "528e835e399521ef53a237100a5a1fcbafc4481af0be856e099e581f505c566c"
+  }
+}

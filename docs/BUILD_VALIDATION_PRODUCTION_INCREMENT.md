@@ -12,3 +12,11 @@
   手动UI测试与后台调度竞争、测试错误依赖源码目录带Git元数据。
 
 最终判断仍是DEVELOPMENT_NOT_PRODUCTION。完整范围/剩余项见RELEASE_STATUS.md。
+
+## 远端CI发现并补齐的真实nginx路径
+
+GitHub Ubuntu runner安装了nginx，本机未安装，首次CI触发可选真实nginx校验并失败。
+以官方nginx镜像/UID10001复现：默认client_temp缓存目录权限不足。
+验证wrapper已将各类缓存/日志隔离至临时目录，自定义域名证书路径也只替换为临时测试证书。
+真实nginx1.30.6的默认/自定义域名HTTP与TLS均通过，未跳过校验、未更改生产模板或服务器。
+源码SHA及实测在docs/validation/nginx-validation.json。已测应用/测试文件保持不变，额外QA变更独立记录。

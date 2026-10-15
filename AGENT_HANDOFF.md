@@ -64,3 +64,11 @@ ZIP是开发包，不带Git历史；bundle才是完整已提交历史。最终�
 5. Rust/Shannon/Kali/BlackArch仍按冻结边界增量接入，不替换现有Core。
 
 完整27方向与验收矩阵继续有效；不得因范围大而删减需求或宣布Production v1.0完成。
+
+## GitHub CI真实nginx补充修复
+
+CI暴露非root nginx -t使用系统缓存目录的问题；已将验证wrapper的日志/临时目录隔离到mktemp，保留真实HTTP/TLS解析。
+实际nginx1.30.6以UID10001、默认及自定义域名HTTP/TLS全部通过；复验python scripts/smoke_nginx.py（需要Git checkout和Docker）。
+详情docs/validation/nginx-validation.json。生产nginx模板没有改动，VPS没有执行部署。
+此后变化仅Nginx验证脚本/QA脚本及交接文档；应用和业务测试源码保持与已全量解压验收的包一致。
+最新CI实际结果读GitHub Actions，不根据本地跳过的nginx路径宣布远端通过。

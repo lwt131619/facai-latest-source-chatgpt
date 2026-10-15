@@ -29,3 +29,8 @@
 
 接手AGENTS.md→AGENT_HANDOFF.md；任务与验收在docs/engineering/。
 证据在docs/validation/，任何Agent不得删掉未完成项来宣布完成。
+
+## 远端CI覆盖补齐
+
+真实nginx解析权限问题已复现并修复。官方nginx1.30.6/UID10001、默认和自定义域名的HTTP/TLS检查通过。
+验证没有改生产模板或部署VPS。最终CI结果以该提交的GitHub Actions为准；机器记录见docs/validation/nginx-validation.json。

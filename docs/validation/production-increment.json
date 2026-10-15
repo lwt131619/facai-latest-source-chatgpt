@@ -123,5 +123,17 @@
     "scope": "Portable nested-repo test and read-back verification even when write credential fails",
     "targeted_passed": 42,
     "included_in_passed_package_suite": true
+  },
+  "post_package_nginx_ci_fix": {
+    "report": "docs/validation/nginx-validation.json",
+    "cause": "Non-root nginx -t attempted compiled system cache directories",
+    "validated_real_nginx": "1.30.6",
+    "uid": 10001,
+    "http_tls_default_and_custom_domains_passed": true,
+    "production_templates_unchanged": true,
+    "changed_source_hashes": {
+      "deploy/validate_config.sh": "46195c9f733166c1e8e90ad87ae76e39f5f322632512170213580fb8fa4c315c",
+      "scripts/smoke_nginx.py": "528e835e399521ef53a237100a5a1fcbafc4481af0be856e099e581f505c566c"
+    }
   }
 }
