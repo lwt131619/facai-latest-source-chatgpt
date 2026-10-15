@@ -1,5 +1,8 @@
 # FACAI / ICS — 从这里断点续接
 
+先读根 `AGENTS.md`。本轮先完成方向标注并融合开发包，尚未实现新Setup/Intent/Trust模块。
+27项任务见 `docs/engineering/task-registry.json`；具体下一步见 DEVELOPMENT_PLAN.md。
+
 本地分支：`facai/production-build`。先读 FACAI_CODEX_HANDOFF.md，再读本文件与
 DEVELOPMENT_PLAN.md。以 `git log`、实际源码和复跑测试为准；历史文档的线上部署
 断言并不表示本次完成。不要覆盖 `/workspace/123` 的早期预览或用它替代真实 ICS。
@@ -47,3 +50,15 @@ git remote set-url origin https://github.com/lwt131619/facai-cloud-public.git
 
 bundle 包含所有已提交历史；未提交文件不在其中，故先检查 dirty=false。
 `dist/FACAI-v1.0-development.zip` 是可运行开发包，不代替完整 Git 历史备份。
+
+## 本轮整合断点
+
+- 原开发ZIP111个文件逐一对照当前源码，0缺失、0内容冲突。
+- 核心源码沿用上次实测版本；没有把中途未完成Store事务改动混入包。
+- 新增统一AGENTS入口、冻结核心/合约/架构决定/27方向/验收/续接runbook和结构校验脚本。
+- 开发包扩充测试/必要vendor元数据/工程说明/桌面壳源码，保留启动、Docker与运行数据语义。
+- 验证：validate_handoff、ZIP逐文件/哈希、从bundle克隆后入口与任务结构验证。
+- 后续先做MISSION-001原子事务与独立确认基础，再接SETUP/INTENT/TRUST，不能直接签授权。
+- 当前Git与连接器写入均403；本地bundle为完整已提交断点，真实状态见随附checkpoint-status.json。
+- 整合ZIP解压后的方向校验及定向测试：59 passed；全部文件哈希已核验。
+- 更新任务后执行 `python scripts/validate_handoff.py --render`，再默认校验，避免可读任务表漂移。

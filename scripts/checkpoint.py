@@ -2,6 +2,7 @@
 import argparse
 from datetime import datetime, timezone
 import json
+import hashlib
 from pathlib import Path
 import re
 import subprocess
@@ -41,10 +42,12 @@ def checkpoint(message=None, paths=(), validation='not_run', push=True):
     bundle = out/'FACAI-resume.bundle'
     git('bundle', 'create', str(bundle), '--all')
     git('bundle', 'verify', str(bundle))
+    bundle_sha256 = hashlib.sha256(bundle.read_bytes()).hexdigest()
+    bundle.with_suffix('.bundle.sha256').write_text(bundle_sha256+'  '+bundle.name+'\n')
     status = {'updated_at': datetime.now(timezone.utc).isoformat(), 'branch': branch,
               'head': head, 'validation': validation,
               'dirty': bool(git('status', '--porcelain').stdout),
-              'bundle': bundle.name, 'bundle_verified': True,
+              'bundle': bundle.name, 'bundle_verified': True, 'bundle_sha256': bundle_sha256,
               'remote_verified': False, 'push_attempted': push}
     if push:
         result = git('push', 'origin', f'HEAD:refs/heads/{branch}', check=False)

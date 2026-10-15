@@ -3,10 +3,11 @@ import hashlib
 import json
 from pathlib import Path
 import re
+import subprocess
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
-ROOT_FILES = ('FACAI_CODEX_HANDOFF.md', 'README.md', 'requirements.txt', 'start.sh', 'start.bat', 'Dockerfile',
+ROOT_FILES = ('AGENTS.md', 'AGENT_HANDOFF.md', 'pytest.ini', 'start-opencode.ps1', 'FACAI_CODEX_HANDOFF.md', 'README.md', 'requirements.txt', 'start.sh', 'start.bat', 'Dockerfile',
               'docker-compose.yml', '.env.example', '.dockerignore',
               'FACAI_CURRENT_STATE_REPORT.md', 'ARCHITECTURE_MAP.md',
               'MODULE_INVENTORY.md', 'DEVELOPMENT_PLAN.md')
@@ -18,6 +19,11 @@ def build():
     files.update((ROOT/'facai').rglob('*.py'))
     files.update(p for p in (ROOT/'facai/static').rglob('*') if p.is_file())
     files.update((ROOT/'scripts').glob('*.py'))
+    files.update((ROOT/'tests').rglob('*.py'))
+    files.update(p for p in (ROOT/'vendor').rglob('*') if p.is_file() and p.suffix in {'.md', '.json'})
+    files.update(p for p in (ROOT/'docs').rglob('*') if p.is_file() and p.suffix in {'.md', '.json'})
+    files.update(p for p in (ROOT/'packaging/app').glob('*') if p.is_file() and p.suffix in {'.js', '.json', '.md', '.ps1', '.png'})
+    files.update((ROOT/'.github/workflows').glob('*.yml'))
     files.add(ROOT/'docs/LOCAL_APPLIANCE.md')
     files.add(ROOT/'docs/BUILD_VALIDATION_2026-10-15.md')
     files.add(ROOT/'docs/DEPLOYMENT.md')
@@ -30,7 +36,11 @@ def build():
         if SECRET.search(data):
             raise ValueError('Credential-shaped content blocks packaging: '+str(file.relative_to(ROOT)))
         contents[file.relative_to(ROOT).as_posix()] = data
+    revision = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=ROOT, capture_output=True)
+    dirty = subprocess.run(['git', 'status', '--porcelain'], cwd=ROOT, capture_output=True)
     manifest = {'status': 'DEVELOPMENT_NOT_PRODUCTION',
+                'source_commit': revision.stdout.decode().strip() if revision.returncode == 0 else None,
+                'source_tree_dirty': bool(dirty.stdout) if dirty.returncode == 0 else None,
                 'files': {name: hashlib.sha256(data).hexdigest() for name, data in contents.items()}}
     out = ROOT/'dist'; out.mkdir(exist_ok=True)
     package = out/'FACAI-v1.0-development.zip'

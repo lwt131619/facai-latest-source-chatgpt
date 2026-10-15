@@ -5,6 +5,13 @@ current stage and pipeline are on the first screen, while mission creation and m
 registration live in collapsible secondary sections. This is a new repository; no prior
 Facai project was modified.
 
+## 开发接手与方向冻结
+
+任何 Agent 先读 [AGENTS.md](AGENTS.md) → [核心不可变量](docs/engineering/CORE_INVARIANTS.md) → [断点交接](AGENT_HANDOFF.md)。
+全部方向、当前状态、源码位置、下一步和验收详见 [27项任务对照](docs/engineering/REQUIREMENTS_TRACEABILITY.md)。
+开发ZIP整合现有启动/后端/控制台、测试与方向说明；完整Git历史另见 `FACAI-resume.bundle`。
+GitHub上传只有远端SHA核对一致才算成功，当前阻塞状态见检查点状态文件。
+
 ## 本地一键启动（新增）
 
 Windows：双击 `start.bat`；macOS/Linux：`./start.sh`。首次需要 Python 3.10+ 和网络。

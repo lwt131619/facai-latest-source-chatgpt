@@ -26,3 +26,7 @@ valid capabilities or rewrite the core wholesale. Keep each checkpoint runnable.
 Do not rewrite remote history or alter unrelated repositories.
 
 Measured state: FACAI_CURRENT_STATE_REPORT.md. Work order: DEVELOPMENT_PLAN.md.
+
+完整接手入口：AGENTS.md。核心细则：docs/engineering/CORE_INVARIANTS.md。
+27项方向与验收：docs/engineering/REQUIREMENTS_TRACEABILITY.md / task-registry.json。
+契约/兼容冲突/最终验收/恢复步骤均在 docs/engineering/，不以本概要代替细则。

@@ -8,3 +8,7 @@ UI: static/index.html, command-center.html, conversion.html, mobile.html.
 Deployment: deploy/systemd + nginx; desktop packaging: packaging/app (remote shell).
 
 Gaps and implementation order: FACAI_CURRENT_STATE_REPORT.md and DEVELOPMENT_PLAN.md.
+
+Detailed source map: docs/engineering/REPOSITORY_MAP.md.
+Frozen contracts: docs/engineering/CORE_CONTRACTS.md.
+Architecture decisions and current conflicts: docs/engineering/ARCHITECTURE_DECISIONS.md.

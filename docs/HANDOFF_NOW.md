@@ -1,3 +1,5 @@
+> 历史交接记录：当前Agent接手请先读根AGENTS.md、AGENT_HANDOFF.md与docs/engineering/task-registry.json。本文历史线上/测试断言不代表当前实现验收。
+
 # 当前交接：FACAI Cloud → Codex++
 
 更新时间：2026-10-02（Asia/Shanghai）

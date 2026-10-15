@@ -1,3 +1,5 @@
+> 历史交接记录：当前Agent接手请先读根AGENTS.md、AGENT_HANDOFF.md与docs/engineering/task-registry.json。本文历史线上/测试断言不代表当前实现验收。
+
 # FACAI 新窗口交接（写给下一个模型/会话）
 
 > 新窗口开场指令模板：**"读取 facai-cloud/HANDOFF-NEXT.md，按其中[立即执行]开始工作"**

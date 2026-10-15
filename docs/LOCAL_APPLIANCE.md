@@ -27,3 +27,6 @@ Electron 当前仍为远程站点客户端。本入口不是 FACAI Production v1
 包含源文件 SHA-256 清单和压缩包校验文件。使用显式文件清单，不打包 data/、
 .env、Git 历史、虚拟环境和依赖缓存。包状态为 DEVELOPMENT_NOT_PRODUCTION。
 GitHub Actions 回归与开发包上传流程已编写，远端执行尚未验证。
+
+当前开发包已融合前一版运行源码，并纳入AGENTS/完整工程方向、测试与必要vendor元数据。
+接手先读AGENTS.md，完整Git历史使用另附FACAI-resume.bundle；别把开发ZIP当成Git仓库。

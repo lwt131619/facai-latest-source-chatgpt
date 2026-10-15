@@ -65,3 +65,12 @@ Final regression: 1259 passed, 28 skipped, 1 warning (84.52s). Docker image buil
 UID10001 execution, login and session persistence across restart passed after fixing
 source read permissions. Detailed evidence: docs/BUILD_VALIDATION_2026-10-15.md.
 GitHub write dry-run returned 403; changes remain local until remote authorization works.
+
+## Direction freeze and merged developer package
+The previous development archive was checked against this checkout: 111 source files,
+zero missing and zero differing contents. Added a unified AGENTS entry, core invariants,
+contracts, architecture decisions, 27 direction tasks with source/acceptance/next action,
+and a resume runbook. Runtime source remains the validated baseline; no unfinished
+Store/Setup/Intent/Trust implementation is claimed. Extended the development archive
+with this handoff, tests and required source metadata. GitHub writes remain403 through
+both Git and connector; verified Git bundle provides the committed resume checkpoint.
