@@ -45,6 +45,14 @@ the pair is REVIEW, rather than guessing a contradiction. DIRECT_CONFLICT and
 REVIEW make the linked conclusions DISPUTED and prevent acceptance. This is not
 an NLP synonym, time-interval or universal semantic inference engine.
 
+Owner can explicitly retract a mistaken assertion with a reason. Retraction is an
+independent lifecycle (`ACTIVE`/`RETRACTED`), never a fifth truth classification.
+The original claim, evidence, reviews and conflict pair remain visible; its
+conflict becomes inactive and is no longer a blocker for active conclusions.
+Retracted claims cannot be silently re-reviewed into applicability; create a new
+corrected assertion instead. No active reviewed claims still blocks acceptance.
+The revision change invalidates old proof/knowledge-current status.
+
 ## Proof and acceptance
 
 Proof creation is allowed while incomplete; its verification file contains the
@@ -89,6 +97,7 @@ All new resources inherit existing authentication and CSRF middleware:
 - `POST .../trust/evidence`
 - `POST .../trust/claims`
 - `POST .../trust/claims/{claim_id}/reviews`
+- `POST .../trust/claims/{claim_id}/retract`
 - `POST .../trust/proofs`
 - `POST .../trust/proofs/{proof_id}/accept`
 - `GET .../trust/proofs/{proof_id}/download`
@@ -100,7 +109,7 @@ reviews are append-only. Limits per mission: 1,000 evidence records, 200 claims,
 8 MiB per file and 32 MiB total. Limit/unavailable output hashes block acceptance.
 
 Tables are additive: mission_specifications, trust_versions, trust_evidence,
-trust_claims, trust_reviews, trust_proofs, trust_acceptances. Existing Store schema
+trust_claims, trust_reviews, trust_retractions, trust_proofs, trust_acceptances. Existing Store schema
 is preserved. Back up the SQLite database before deployment using the established
 backup path. Code rollback leaves these unused tables intact; do not delete
 evidence to make a rollback appear clean.

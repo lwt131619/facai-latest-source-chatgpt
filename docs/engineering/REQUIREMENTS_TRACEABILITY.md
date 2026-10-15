@@ -268,7 +268,7 @@ Evidence Collector→Claim Normalizer→Source Trust→Conflict→Confidence
 - 四类冲突与无法分类样例可测试
 - 不能A!=B就无依据判一方正确
 
-**下一步**：已实现明确规范化subject/predicate/value及四维上下文比较，四类冲突和缺上下文REVIEW有测试；后续补自然语言同义/时间区间推理和可审计冲突解决。
+**下一步**：已实现明确规范化subject/predicate/value及四维上下文比较，四类冲突和缺上下文REVIEW有测试；后续补自然语言同义/时间区间推理和可审计冲突解决。 已补Owner带理由撤回（生命周期独立于分类），保留原断言/证据/冲突历史，不通过删除证据解除争议。
 
 ## PROOF-001 — Proof Artifact与Owner接受
 
@@ -302,7 +302,7 @@ Evidence Collector→Claim Normalizer→Source Trust→Conflict→Confidence
 
 结果按来源/证据状态/任务/产物版本可检索
 
-**现有定位**：`facai/distill.py`、`facai/store.py`
+**现有定位**：`facai/trust.py`、`facai/trust_routes.py`、`facai/static/knowledge.html`、`tests/test_knowledge.py`、`docs/KNOWLEDGE_MEMORY.md`
 
 **验收**：
 
@@ -310,7 +310,7 @@ Evidence Collector→Claim Normalizer→Source Trust→Conflict→Confidence
 - 保留已有有效行为，相关回归及失败路径测试通过
 - 验证命令/结果/提交与外部局限写入交接记录
 
-**下一步**：新增knowledge schema与索引，UNKNOWN不得因进入memory变FACT，保留蒸馏兼容
+**下一步**：已实现Owner显式收录当前已验收Proof、来源/分类/生命周期保持、SHA及Trace、隔离检索/重启/过期标注；后续补检索增强的显式授权与独立来源验证，不自动把INFERENCE变FACT。
 
 ## MOBILE-001 — 手机控制台与通知配置
 

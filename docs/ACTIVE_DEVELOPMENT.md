@@ -43,3 +43,13 @@ Canonical GitHub repository is `lwt131619/facai-latest-source-chatgpt`.
 Git push through the inherited GitHub integration was verified for c0271fc;
 old 403 statements in older handoff files are historical and need correction.
 Never print or persist credentials; no force push is needed for these checkpoints.
+
+
+Latest increment: explicit Knowledge Memory, audited claim retraction and exact
+exported-proof SHA-256 are implemented. 19 Trust/Knowledge tests pass, the full
+Setup/Trust/Knowledge desktop/mobile browser flows pass (4), and a former mobile
+scheduler race was isolated in test fixtures (dedicated scheduling tests remain).
+A real start.py process completed first initialization, hashed Owner persistence,
+shutdown/restart with the same session and restored Intent history. No external
+provider call was made. Final all-browser full suite is running; see the final
+validation report before treating any whole-suite count as current.

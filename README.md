@@ -13,7 +13,17 @@ Facai project was modified.
 任何 Agent 先读 [AGENTS.md](AGENTS.md) → [核心不可变量](docs/engineering/CORE_INVARIANTS.md) → [断点交接](AGENT_HANDOFF.md)。
 全部方向、当前状态、源码位置、下一步和验收详见 [27项任务对照](docs/engineering/REQUIREMENTS_TRACEABILITY.md)。
 开发ZIP整合现有启动/后端/控制台、测试与方向说明；完整Git历史另见 `FACAI-resume.bundle`。
-GitHub上传只有远端SHA核对一致才算成功，当前阻塞状态见检查点状态文件。
+GitHub官方集成已恢复；上传仍以远端SHA核对一致为准，详见检查点状态文件。
+
+## 当前新增的可操作流程
+
+新本机安装打开 `/setup`，创建 Owner、保存单次恢复密钥，再登录配置模型和检测环境。
+`/workspace` 保留原话、修订理解并确认任务，确认不会自动授权或执行。
+`/evidence-center` 管理证据、Claim、人工审查、上下文冲突、Proof ZIP及独立Owner验收。
+`/knowledge` 显式收录并检索已验收快照，保留推断与来源，不自动升级为事实。
+
+详见 [设置向导](docs/SETUP_WIZARD.md)、[证据与证明](docs/TRUST_WORKFLOW.md)、
+[知识资产](docs/KNOWLEDGE_MEMORY.md)。仍为开发版：真实20+Agent、来源独立验证、native跨平台与VPS完整验收尚未完成。
 
 ## 新增：理解预览与确认任务
 
