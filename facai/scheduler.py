@@ -106,26 +106,12 @@ class Scheduler:
                 "worker": self.worker_id, **health}
 
     def _is_parallel_branch(self, job, batch_counts):
-        """True when this job's step runs beside another live step of the mission.
+        """Use the atomic admission reservation, never a racy sibling query."""
+        return job.get('workspace_mode') == 'ISOLATED'
 
-        Such steps execute in isolated git worktrees of the mission workspace so
-        two agents never write the shared tree concurrently, and their branches
-        pass a merge gate before the step counts as complete. Mission-level
-        jobs (no step) never isolate. Dependency readiness is already enforced
-        by ``claim_job``; ``batch_counts`` is the per-mission size of the claim
-        batch, and the store query covers siblings claimed by other workers.
-        """
-        if not job["step_id"]:
-            return False
-        if batch_counts.get(job["mission_id"], 0) > 1:
-            return True
-        try:
-            siblings = self.store.jobs(job["mission_id"])
-        except Exception:
-            return False
-        return any(other["id"] != job["id"] and other["status"] == "RUNNING"
-                   and other["step_id"] not in (None, job["step_id"])
-                   for other in siblings)
+    def _isolation_ready(self, mission_id):
+        mission = self.store.get(mission_id)
+        return bool(mission and checkpoint.isolation_ready(mission['workspace']))
 
     def _model_with_key(self, model, owner):
         """Attach the decrypted credential of an owner-registered model.
@@ -188,25 +174,17 @@ class Scheduler:
                 self.store.finish_job(job["id"], "FAILED",
                                       f"Unsupported agent adapter: {mission.get('agent_id')}")
                 return
-        # True parallel branches of one mission run in isolated git worktrees;
-        # when git (or a repository) is unavailable this degrades to the shared
-        # mission workspace exactly as before.
+        # Admission reserves isolation before any sibling can run. If creating
+        # that workspace fails, do not silently join a concurrently written tree.
         worktree = None
         if self._is_parallel_branch(job, batch_counts or {}):
             base_workspace = mission.get("workspace") or \
                 str(Path(self.root) / "workspaces" / mission["id"])
             worktree = checkpoint.prepare_worktree(base_workspace,
-                                                   suffix=job["step_id"][:8])
+                                                   suffix=job["step_id"][:8]+'-'+job['id'])
             if worktree is None:
-                # Isolation is impossible (git missing, no commits, or a
-                # residue collision that survived cleanup): say so instead of
-                # silently degrading this step into the shared workspace.
-                self.store.append(job["mission_id"], "WORKTREE_FALLBACK",
-                                  {"step_id": job["step_id"],
-                                   "path": base_workspace,
-                                   "reason": "worktree unavailable; step runs unisolated "
-                                             "in the shared mission workspace"},
-                                  job["step_id"], None, mission.get("agent_id") or "opencode")
+                self.store.defer_isolation(job['id'], self.worker_id)
+                return
         # The worker holds execution from here: re-arm the lease so a peer
         # scheduler's recovery pass cannot requeue a live job that already
         # spent part of its claim lease queued (serial lock, backoff, batch).
@@ -310,7 +288,9 @@ class Scheduler:
             for _ in range(slots):
                 job = self.store.claim_job(self.worker_id, self.lease_seconds,
                                            parallel_mission_jobs=min(self.concurrency,
-                                                                     MAX_PARALLEL_PER_MISSION))
+                                                                     MAX_PARALLEL_PER_MISSION),
+                                           isolation_ready=self._isolation_ready,
+                                           max_running_jobs=self.concurrency)
                 if job is None:
                     break
                 jobs.append(job)
