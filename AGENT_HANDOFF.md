@@ -1,95 +1,60 @@
-> 当前用户指定备份仓库：lwt131619/facai-latest-source-chatgpt。公开读取已通；写入仍403，完整代码暂以本地bundle为准。详见docs/GITHUB_AGENT_ACCESS.md。
+# FACAI / ICS — 当前可续接断点
 
-# FACAI / ICS — 从这里断点续接
+先读 AGENTS.md → FACAI_CODEX_HANDOFF.md → docs/engineering/CORE_INVARIANTS.md。
+实际 Git 历史、源码和测试优先于聊天或历史线上描述。
 
-先读根 `AGENTS.md`。方向标注已完成；本轮已实际新增Intent预览/修订/确认/独立授权。Setup/Trust仍未实现。
-27项任务见 `docs/engineering/task-registry.json`；具体下一步见 DEVELOPMENT_PLAN.md。
+## GitHub 与工作目录
 
-本地分支：`facai/production-build`。先读 FACAI_CODEX_HANDOFF.md，再读本文件与
-DEVELOPMENT_PLAN.md。以 `git log`、实际源码和复跑测试为准；历史文档的线上部署
-断言并不表示本次完成。不要覆盖 `/workspace/123` 的早期预览或用它替代真实 ICS。
+- 唯一交接备份库：https://github.com/lwt131619/facai-latest-source-chatgpt
+- 公开 main 已包含完整源码及本轮开发；官方 GitHub 集成推送已经恢复。
+- origin 已改为上述新库；latest 同样指向新库。旧 facai-cloud-public 没有改动。
+- 本地 `/workspace/facai-cloud-public`，工作分支 `facai/production-build`。
+- 用户要求每小步骤明确文件 commit + 普通 push origin HEAD:main；WIP可用，必须如实标验证。
+- 不强推、不删库、不改可见性。其他 Agent 需各自授权 GitHub 集成。
+- checkpoint 默认先使用继承的 Git 认证，失败才考虑 GH_TOKEN 内存临时回退；不持久化凭据。
 
-## 立即接手
+## 本轮实际实现
+
+1. 原 /workspace Intent 预览、原话不可变修订、幂等确认、独立授权保留。
+2. Mission Specification 在确认事务内持久化：目标/约束/原话/修订/真实步骤ID/Trace/SHA。
+3. Trust v1：证据、规范化断言、Owner会话审查、上下文冲突、不可变Proof、受控ZIP导出。
+4. /evidence-center 已连入桌面、手机和理解工作区。
+5. 自动化API Key不能提交Owner审查或验收；所有Trust数据严格按实际Owner隔离。
+6. 未执行/缺每步执行证据/未知或争议Claim不能验收；验收绑定快照，后续事件/证据/产物字节变化使其过期。
+
+重要界限：Owner人工审查不是外部来源认证；事件引用只是数据库记录；哈希只验证字节。
+Legacy /proof.verified 的原含义保持不变。不能将本功能叫作完整TruthEngine或Production完成。
+
+## 真实验证
+
+- 完整回归：1282 passed / 28 skipped / 1上游弃用警告，114.65秒。
+- Trust/Intent/legacy Proof定向：27 passed。
+- 实际 Chromium桌面1440×1000/手机390×844：2 passed；登录→Intent→确认→录证→审查→ZIP下载校验→刷新恢复，无JS错误、无横向溢出。
+- 浏览器与单元测试使用合成测试数据，没有真实Provider/工具项目分析，也未连接VPS部署。
+- 本轮WIP及后续进展实时入口：docs/ACTIVE_DEVELOPMENT.md。
+
+## 立即续接
 
 ```sh
 git status --short
-git log -5 --oneline
+git remote -v
+git log --oneline -8
 python -m pip install -r requirements.txt
+python scripts/validate_handoff.py
 python -m pytest -q
 ```
 
-上一完整基线：1259 passed / 28 skipped（bc6ee5a）。本轮新增功能必须单独验证。
-已实现：真实仓库审计、原生一键启动、Docker、开发包、测试隔离修复。
-待补：首次设置向导、结构化 Intent→确认→授权→执行、Evidence/Proof、并发与全流程验收。
-默认调度并发2、上限8、同任务并发3；OpenCode默认串行，不得把调度线程数叫模型并发。
+当前云环境Python依赖位于 `/workspace/facai-venv`。
+可选浏览器验收：安装playwright后设置 FACAI_TEST_CHROMIUM=/usr/bin/chromium，运行 tests/test_trust_browser.py。
 
-## 每次可运行阶段必须备份
+下一步按任务登记表推进首次Setup/模型连接、Runtime真实多Agent容量、自动可信采证及知识联动。
+不得把默认并发2/上限8/OpenCode串行写成已支持20模型并发，不用随机小数伪装进度。
+Rust/Shannon/Kali/BlackArch仍是增量方向，不替换现有Core。
 
-修改后运行相关测试，再执行（路径必须显式列出）：
+## 备份与恢复
 
-```sh
-python scripts/checkpoint.py --message 'Describe verified change' --paths path/to/file --validation pass
-```
+python scripts/checkpoint.py --validation pass 生成并校验完整dist/FACAI-resume.bundle，并普通推送main和工作分支后比对SHA。
+python scripts/package.py 重建开发包及文件哈希，仍标DEVELOPMENT_NOT_PRODUCTION。
+完整Git历史在bundle，开发ZIP不是Git历史。源码/文档/测试均进Git，产物不含配置秘密。
 
-该命令提交本地代码、生成并验证完整 `dist/FACAI-resume.bundle`，尝试普通 push，
-再通过 `ls-remote` 比对提交。**只有 remote_verified=true 才表示 GitHub 已同步**。
-状态文件 `dist/checkpoint-status.json` / `.git/facai-checkpoint.json` 不含凭据。
-退出2表示本地提交和 bundle 成功、远端同步失败；不要伪称已上传。
-不要使用 force push；不要删除/重建远端库、改公开性或改其他项目。
-
-当前远端权限曾返回403，当前远端main与本地原快照历史也发生变化。保留双方历史，
-使用独立开发分支。不得把这当作强推授权。无需读取/打印任何密钥来排错。
-
-## 无 GitHub 写权限仍可完整接手
-
-下载 `FACAI-resume.bundle` 后：
-
-```sh
-git clone -b facai/production-build FACAI-resume.bundle facai-resumed
-cd facai-resumed
-git remote set-url origin https://github.com/lwt131619/facai-latest-source-chatgpt.git
-```
-
-bundle 包含所有已提交历史；未提交文件不在其中，故先检查 dirty=false。
-`dist/FACAI-v1.0-development.zip` 是可运行开发包，不代替完整 Git 历史备份。
-
-## 本轮整合断点
-
-- 原开发ZIP111个文件逐一对照当前源码，0缺失、0内容冲突。
-- 核心源码沿用上次实测版本；没有把中途未完成Store事务改动混入包。
-- 新增统一AGENTS入口、冻结核心/合约/架构决定/27方向/验收/续接runbook和结构校验脚本。
-- 开发包扩充测试/必要vendor元数据/工程说明/桌面壳源码，保留启动、Docker与运行数据语义。
-- 验证：validate_handoff、ZIP逐文件/哈希、从bundle克隆后入口与任务结构验证。
-- 后续先做MISSION-001原子事务与独立确认基础，再接SETUP/INTENT/TRUST，不能直接签授权。
-- 当前Git与连接器写入均403；本地bundle为完整已提交断点，真实状态见随附checkpoint-status.json。
-- 整合ZIP解压后的方向校验及定向测试：59 passed；全部文件哈希已核验。
-- 更新任务后执行 `python scripts/validate_handoff.py --render`，再默认校验，避免可读任务表漂移。
-
-## 最新实际功能进展：Intent工作区
-
-- 新增 `/workspace`，主控制台和手机页有入口。
-- `intent_workspace.py`保存原话与不可变修订；确认事务创建一份Mission，默认不grant/不排队。
-- `intent_routes.py`复用现有认证/CSRF/Owner，授权为独立Owner动作，控制台仍负责绑定与派发。
-- 新增6项测试含并发幂等、回滚清理、预算402、跨账号隔离、确认无副作用。
-- 真实Chromium桌面/手机完整操作与刷新恢复通过，无JS错误；QA配置了明确测试额度，未绕生产预算。
-- 预览使用保守规则和人工修订，confidence=null；不是完整LLM语义编译器，不假报所有Intent需求完成。
-- 下一步：SETUP-001/完整MissionSpec/Evidence；GitHub仍需核验，checkpoint已读取GH_TOKEN临时凭据。
-- 本功能最终完整回归：1265 passed / 28 skipped / 1上游警告（90.75秒）；原桌面与手机布局2项真实浏览器验收通过。
-- 最新发布结论与缺口：docs/RELEASE_STATUS.md；完整Production仍未完成。
-
-## 历史建库计划（已被下面的新库接入替代）
-
-用户要求新建“最新facai源代码”并上传完整源代码。GitHub不接受中文仓库名，目标为
-`lwt131619/facai-latest-source`，描述“最新 FACAI 源代码”，默认私密。
-已准备 `python scripts/publish_latest_repo.py`：实际POST建库→普通push到新库main→核对SHA，
-凭据仅在进程内。当前建库接口Forbidden，不能标已创建/已同步。旧仓库和历史不删除、不强推。
-该脚本处理已存在的同名私库，不改变可见性，也不覆盖非快进的远端main。
-
-## 新库接入（用户已创建）
-
-用户实际创建facai-latest-source-chatgpt，替代此前待建facai-latest-source计划。
-github-backup.json已更新新库，checkpoint面向新库main及工作分支，保留初始提交与全部源代码历史。
-匿名读取成功；当前Git与连接器写入403，不能说已打开其他Agent写权限或已同步代码。
-
-`publish_latest_repo.py`现为checkpoint兼容入口，不再尝试建旧库/改可见性。新库目标统一读取github-backup.json。
-新增3项同步逻辑测试通过：目标指向新库、两个分支SHA均需一致、拒绝假成功且不持久化凭据。
+VPS历史信息在docs/DEPLOYMENT.md，不代表本轮验证或部署成功。不要照历史记录宣布已上线。

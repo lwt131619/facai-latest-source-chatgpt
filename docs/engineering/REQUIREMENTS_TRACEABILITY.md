@@ -6,7 +6,7 @@
 |---|---|---|---|---|
 | DIR-001 | 统一方向与接手入口 | VERIFIED_LOCAL | P0 |  |
 | AUD-001 | 真实源码审计与测试基线 | VERIFIED_LOCAL | P0 | DIR-001 |
-| SYNC-001 | GitHub检查点与断点备份 | EXTERNAL_BLOCKED | P0 | DIR-001 |
+| SYNC-001 | GitHub检查点与断点备份 | VERIFIED_LOCAL | P0 | DIR-001 |
 | AUTH-001 | Owner Control与授权分离 | PARTIAL | P1 | AUD-001 |
 | SETUP-001 | 首次配置向导与Owner初始化 | NOT_IMPLEMENTED | P1 | AUTH-001 |
 | INTENT-001 | Natural Language Compiler完整合约 | PARTIAL | P1 | AUD-001 |
@@ -20,7 +20,7 @@
 | RUNTIME-001 | 20+Agent并发与恢复 | PARTIAL | P2 | AUTH-001, EVENT-001, MODEL-001 |
 | OPS-001 | Command Center与实时流水线 | PARTIAL | P2 | MISSION-001, EVENT-001, RUNTIME-001 |
 | TRUST-001 | Evidence与Claim Intelligence | PARTIAL | P2 | EVENT-001, DB-001 |
-| CONFLICT-001 | 上下文冲突语义 | NOT_IMPLEMENTED | P2 | TRUST-001 |
+| CONFLICT-001 | 上下文冲突语义 | PARTIAL | P2 | TRUST-001 |
 | PROOF-001 | Proof Artifact与Owner接受 | PARTIAL | P2 | TRUST-001, CONFLICT-001 |
 | API-001 | API/health/status/metrics | PARTIAL | P2 | SETUP-001, MISSION-001, PROOF-001 |
 | KNOWLEDGE-001 | 长期知识资产与记忆 | PARTIAL | P3 | PROOF-001 |
@@ -72,7 +72,7 @@
 - 远端SHA==本地HEAD且remote_verified=true才算已上传
 - 错误不包含凭据，不强推/删库/重建远端
 
-**下一步**：用户已建lwt131619/facai-latest-source-chatgpt；读取成功，Git/令牌/连接器写入仍403。恢复包含新库的有效写授权后运行checkpoint，main与工作分支均核对SHA。
+**下一步**：官方集成原生Git推送已恢复；origin指向facai-latest-source-chatgpt，多个小步骤已普通push并核对main。checkpoint优先继承Git凭据，继续核对main与工作分支。
 
 ## AUTH-001 — Owner Control与授权分离
 
@@ -120,7 +120,7 @@ Human→Machine边界保存原话及action/target/purpose/scope/constraints
 
 明确Confirm/Edit/补信息/Cancel，生成任务规范与验证要求
 
-**现有定位**：`facai/api.py`、`facai/store.py`、`facai/prompting.py`
+**现有定位**：`facai/intent_workspace.py`、`facai/mission_spec.py`、`facai/intent_routes.py`、`facai/store.py`
 
 **验收**：
 
@@ -128,7 +128,7 @@ Human→Machine边界保存原话及action/target/purpose/scope/constraints
 - expected_revision冲突拒绝，重复确认只一个任务
 - 确认不签grant/不排队/不执行，DAG复用现有Store
 
-**下一步**：已实现独立/workspace、原子不授权确认、重复确认幂等、Owner单独授权及控制台执行入口；继续补任务规范字段/验证要求与完整执行→证据验收。
+**下一步**：已新增同事务持久化Mission Specification、原话/确认修订/目标/约束/真实步骤ID与SHA；需继续完善用户自定义输出契约及真实Runtime全流程。
 
 ## DB-001 — 生产持久化与增量迁移
 
@@ -246,7 +246,7 @@ Dashboard/Missions/Agents/Skills/Models/Timeline/Evidence/Artifacts真实可操�
 
 Evidence Collector→Claim Normalizer→Source Trust→Conflict→Confidence
 
-**现有定位**：`facai/evidence.py`、`facai/store.py`
+**现有定位**：`facai/trust.py`、`facai/trust_routes.py`、`facai/static/evidence-center.html`、`tests/test_trust_workflow.py`
 
 **验收**：
 
@@ -254,13 +254,13 @@ Evidence Collector→Claim Normalizer→Source Trust→Conflict→Confidence
 - 采集时间/来源/环境/哈希真实，无执行证据不标语义验证
 - legacy verified不偷换，新完整性/语义验证字段独立
 
-**下一步**：新增TrustEngine持久快照，不改变legacy verified为终态+成本的旧语义
+**下一步**：Trust v1已持久化来源/证据/规范化Claim/人工审查；默认UNKNOWN，未校准confidence=null。后续补独立来源验证、来源信任图和自动采集；事件记录不构成外部执行认证。
 
 ## CONFLICT-001 — 上下文冲突语义
 
 比较时间/范围/环境/定义后分类TEMPORAL/SCOPE/SEMANTIC/DIRECT_CONFLICT
 
-**现有定位**：`facai/evidence.py`
+**现有定位**：`facai/trust.py`、`tests/test_trust_workflow.py`
 
 **验收**：
 
@@ -268,13 +268,13 @@ Evidence Collector→Claim Normalizer→Source Trust→Conflict→Confidence
 - 四类冲突与无法分类样例可测试
 - 不能A!=B就无依据判一方正确
 
-**下一步**：保留双方原陈述与来源，不确定进入审查，不随意判A对B错
+**下一步**：已实现明确规范化subject/predicate/value及四维上下文比较，四类冲突和缺上下文REVIEW有测试；后续补自然语言同义/时间区间推理和可审计冲突解决。
 
 ## PROOF-001 — Proof Artifact与Owner接受
 
 产物/元数据/证据/验证/置信度/Trace统一导出
 
-**现有定位**：`facai/evidence.py`、`facai/checkpoint.py`、`facai/api.py`
+**现有定位**：`facai/trust.py`、`facai/trust_routes.py`、`facai/static/evidence-center.html`、`tests/test_trust_browser.py`
 
 **验收**：
 
@@ -282,7 +282,7 @@ Evidence Collector→Claim Normalizer→Source Trust→Conflict→Confidence
 - 导出哈希可复算，无密钥/路径穿越/跨租户泄漏
 - Owner接受绑定任务/证据修订，修改后不复用旧接受
 
-**下一步**：独立新版本Proof服务，快照哈希、租户导出、Owner接受绑定修订，旧/proof保持兼容
+**下一步**：已实现不可变快照、ZIP清单、产物字节SHA、Owner会话独立验收、变更失效；继续补可信自动执行采集、真实Provider验收与长期知识联动。
 
 ## API-001 — API/health/status/metrics
 

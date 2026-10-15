@@ -60,7 +60,7 @@
     {
       "id": "SYNC-001",
       "title": "GitHub检查点与断点备份",
-      "status": "EXTERNAL_BLOCKED",
+      "status": "VERIFIED_LOCAL",
       "priority": 0,
       "depends_on": [
         "DIR-001"
@@ -77,7 +77,7 @@
         "远端SHA==本地HEAD且remote_verified=true才算已上传",
         "错误不包含凭据，不强推/删库/重建远端"
       ],
-      "next_action": "用户已建lwt131619/facai-latest-source-chatgpt；读取成功，Git/令牌/连接器写入仍403。恢复包含新库的有效写授权后运行checkpoint，main与工作分支均核对SHA。"
+      "next_action": "官方集成原生Git推送已恢复；origin指向facai-latest-source-chatgpt，多个小步骤已普通push并核对main。checkpoint优先继承Git凭据，继续核对main与工作分支。"
     },
     {
       "id": "AUTH-001",
@@ -158,9 +158,10 @@
         "AUTH-001"
       ],
       "source_files": [
-        "facai/api.py",
-        "facai/store.py",
-        "facai/prompting.py"
+        "facai/intent_workspace.py",
+        "facai/mission_spec.py",
+        "facai/intent_routes.py",
+        "facai/store.py"
       ],
       "goal": "明确Confirm/Edit/补信息/Cancel，生成任务规范与验证要求",
       "acceptance": [
@@ -168,7 +169,7 @@
         "expected_revision冲突拒绝，重复确认只一个任务",
         "确认不签grant/不排队/不执行，DAG复用现有Store"
       ],
-      "next_action": "已实现独立/workspace、原子不授权确认、重复确认幂等、Owner单独授权及控制台执行入口；继续补任务规范字段/验证要求与完整执行→证据验收。"
+      "next_action": "已新增同事务持久化Mission Specification、原话/确认修订/目标/约束/真实步骤ID与SHA；需继续完善用户自定义输出契约及真实Runtime全流程。"
     },
     {
       "id": "DB-001",
@@ -360,8 +361,10 @@
         "DB-001"
       ],
       "source_files": [
-        "facai/evidence.py",
-        "facai/store.py"
+        "facai/trust.py",
+        "facai/trust_routes.py",
+        "facai/static/evidence-center.html",
+        "tests/test_trust_workflow.py"
       ],
       "goal": "Evidence Collector→Claim Normalizer→Source Trust→Conflict→Confidence",
       "acceptance": [
@@ -369,18 +372,19 @@
         "采集时间/来源/环境/哈希真实，无执行证据不标语义验证",
         "legacy verified不偷换，新完整性/语义验证字段独立"
       ],
-      "next_action": "新增TrustEngine持久快照，不改变legacy verified为终态+成本的旧语义"
+      "next_action": "Trust v1已持久化来源/证据/规范化Claim/人工审查；默认UNKNOWN，未校准confidence=null。后续补独立来源验证、来源信任图和自动采集；事件记录不构成外部执行认证。"
     },
     {
       "id": "CONFLICT-001",
       "title": "上下文冲突语义",
-      "status": "NOT_IMPLEMENTED",
+      "status": "PARTIAL",
       "priority": 2,
       "depends_on": [
         "TRUST-001"
       ],
       "source_files": [
-        "facai/evidence.py"
+        "facai/trust.py",
+        "tests/test_trust_workflow.py"
       ],
       "goal": "比较时间/范围/环境/定义后分类TEMPORAL/SCOPE/SEMANTIC/DIRECT_CONFLICT",
       "acceptance": [
@@ -388,7 +392,7 @@
         "四类冲突与无法分类样例可测试",
         "不能A!=B就无依据判一方正确"
       ],
-      "next_action": "保留双方原陈述与来源，不确定进入审查，不随意判A对B错"
+      "next_action": "已实现明确规范化subject/predicate/value及四维上下文比较，四类冲突和缺上下文REVIEW有测试；后续补自然语言同义/时间区间推理和可审计冲突解决。"
     },
     {
       "id": "PROOF-001",
@@ -400,9 +404,10 @@
         "CONFLICT-001"
       ],
       "source_files": [
-        "facai/evidence.py",
-        "facai/checkpoint.py",
-        "facai/api.py"
+        "facai/trust.py",
+        "facai/trust_routes.py",
+        "facai/static/evidence-center.html",
+        "tests/test_trust_browser.py"
       ],
       "goal": "产物/元数据/证据/验证/置信度/Trace统一导出",
       "acceptance": [
@@ -410,7 +415,7 @@
         "导出哈希可复算，无密钥/路径穿越/跨租户泄漏",
         "Owner接受绑定任务/证据修订，修改后不复用旧接受"
       ],
-      "next_action": "独立新版本Proof服务，快照哈希、租户导出、Owner接受绑定修订，旧/proof保持兼容"
+      "next_action": "已实现不可变快照、ZIP清单、产物字节SHA、Owner会话独立验收、变更失效；继续补可信自动执行采集、真实Provider验收与长期知识联动。"
     },
     {
       "id": "API-001",
@@ -630,5 +635,18 @@
       "facai/static/mobile.html": "ecd4cc6656d9332a48e01706078ab63a588fe2f460559fc032721fd0926af0d2",
       "tests/test_intent_workspace.py": "8e290c87b31acfbaa63ad25eb6e840388674ee695dd77d66c1fcd59a1fb5d2f8"
     }
+  },
+  "latest_trust_validation": {
+    "full_regression": {
+      "passed": 1282,
+      "skipped": 28,
+      "seconds": 114.65,
+      "source": "a62b07f runtime + existing tests; new browser module collected separately"
+    },
+    "targeted_trust_intent_legacy_passed": 27,
+    "real_chromium_desktop_mobile_passed": 2,
+    "live_provider_execution": false,
+    "vps_deployed": false,
+    "production_acceptance": false
   }
 }

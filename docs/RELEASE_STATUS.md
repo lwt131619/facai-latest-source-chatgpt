@@ -20,15 +20,21 @@
 - 原控制台桌面首屏、手机布局2项真实Chromium测试通过。
 - 没有真实模型/工具项目分析运行；不声称语义结果已验证。
 
+## 本轮增量：Mission Specification 与 Trust v1
+
+- 确认任务同事务保存不可变任务规格及SHA，旧任务不伪造规格。
+- /evidence-center：持久证据/Claim/显式Owner审查/上下文冲突/Proof快照/ZIP/独立验收。
+- 新增14项Trust测试（含参数化），27项Trust+Intent+legacy定向通过。
+- 完整回归1282通过/28跳过；另2项新桌面/手机真实Chromium验收通过。
+- GitHub官方集成已恢复，多个小步骤已普通推送；当前状态以Git远端SHA与checkpoint为准。
+- 没有真实Provider执行或VPS部署。Owner审查不是独立来源认证，事件引用不是外部工具签名证明。
+
 ## 发布阻塞仍存在
 
-1. 首次Setup向导及模型/运行时安装连接没有完整闭环。
-2. 当前理解编译是保守规则/人工修订，未实现完整LLM语义及校准，置信度保持未知。
-3. 完整Mission Specification、20+Agent/0.01%真实计量尚未验收。
-4. Evidence冲突/置信度/Proof接受、知识与native正式安装包仍待补。
-5. GitHub：裸Git、临时URL GH_TOKEN、连接器写入均403。本机Windows推送成功不等于当前
-   运行环境拿到同一凭据。本次GH_TOKEN存在且长度28，不能以长度单独判失效；实际push失败
-   才是本次同步失败证据。checkpoint现已显式使用进程GH_TOKEN，不落远程配置和日志。
+1. 首次Setup向导、Owner初始化、模型/Runtime安装连接仍待闭环。
+2. 自然语言理解仍是明确规则和人工修订，没有完整LLM语义与校准置信度。
+3. 任务规格已落地；用户自定义输出契约及真实执行全流程仍待验收。
+4. 20+Agent实际协作、0.01%真实计量、独立来源信任图/采证、知识与native安装包待完成。
+5. Proof路径已增加但未完成真实Provider/工具/HTTPS跨设备端到端验收，不能宣称Production完成。
 
-接手入口AGENTS.md与AGENT_HANDOFF.md；任务状态以task-registry为准。
-开发ZIP与完整Git bundle会在本次检查点重建；远端只在remote_verified=true时视为成功备份。
+详见docs/TRUST_WORKFLOW.md、AGENT_HANDOFF.md和工程任务登记表。
