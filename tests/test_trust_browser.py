@@ -53,7 +53,7 @@ def test_intent_to_evidence_review_and_download(protected_server, playwright_api
         assert page.locator('#claims script').count() == 0
         page.locator('#claims select').select_option('INFERENCE')
         page.locator('#claims input').fill('Explicit Owner review of local note; independently unverified')
-        page.locator('#claims button').click()
+        page.get_by_role('button',name='Owner 提交审查',exact=True).click()
         page.wait_for_function("document.querySelector('#revision').textContent.includes('Revision 3')")
         assert 'INFERENCE' in page.locator('#claims').inner_text()
         page.click('#snapshot')
@@ -70,7 +70,7 @@ def test_intent_to_evidence_review_and_download(protected_server, playwright_api
             assert json.loads(archive.read('claims.json'))[0]['status'] == 'INFERENCE'
         page.reload()
         page.wait_for_selector('#proofs a.download')
-        assert page.locator('#claims').inner_text().startswith('INFERENCE')
+        assert 'ACTIVE / INFERENCE' in page.locator('#claims').inner_text()
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth + 1')
         # Synthetic execution fixture: use the existing authenticated record APIs.
         # This verifies the gate/UX only, not a real external CLI or model run.

@@ -74,6 +74,9 @@ class TrustStore:
                 claim_id TEXT NOT NULL REFERENCES trust_claims(id),
                 document TEXT NOT NULL, created_at TEXT NOT NULL);
               CREATE INDEX IF NOT EXISTS trust_reviews_mission ON trust_reviews(mission_id);
+              CREATE TABLE IF NOT EXISTS trust_retractions (
+                claim_id TEXT PRIMARY KEY REFERENCES trust_claims(id),
+                mission_id TEXT NOT NULL REFERENCES missions(id), document TEXT NOT NULL);
               CREATE TABLE IF NOT EXISTS trust_proofs (
                 id TEXT PRIMARY KEY, mission_id TEXT NOT NULL REFERENCES missions(id),
                 document TEXT NOT NULL, sha256 TEXT NOT NULL, created_at TEXT NOT NULL);
@@ -181,6 +184,8 @@ class TrustStore:
             if row is None:
                 raise TrustError(404, 'Claim not found')
             claim = json.loads(row['document'])
+            if db.execute('SELECT 1 FROM trust_retractions WHERE claim_id=?', (claim_id,)).fetchone():
+                raise TrustError(409, 'Retracted claims cannot be reviewed; create a corrected claim')
             if verdict != 'UNKNOWN' and not claim['evidence_ids']:
                 raise TrustError(409, 'A supported conclusion needs linked evidence')
             record = {'id': uuid4().hex, 'claim_id': claim_id, 'verdict': verdict,
@@ -189,6 +194,19 @@ class TrustStore:
                        (record['id'], mission_id, claim_id, canonical(record), now()))
             self._event(db, mission_id, 'TRUST_CLAIM_REVIEWED', owner, claim_id=claim_id, verdict=verdict)
         return {'review': record, 'revision': revision + 1}
+
+    def retract(self, owner, mission_id, revision, claim_id, reason):
+        """Withdraw applicability, not history or a conflicting source's existence."""
+        text(reason, 'reason')
+        with self._change(owner, mission_id, revision) as db:
+            if db.execute('SELECT 1 FROM trust_claims WHERE id=? AND mission_id=?', (claim_id, mission_id)).fetchone() is None:
+                raise TrustError(404, 'Claim not found')
+            if db.execute('SELECT 1 FROM trust_retractions WHERE claim_id=?', (claim_id,)).fetchone():
+                raise TrustError(409, 'Claim already retracted')
+            record = {'claim_id': claim_id, 'actor': owner, 'reason': reason, 'retracted_at': now()}
+            db.execute('INSERT INTO trust_retractions VALUES (?,?,?)', (claim_id, mission_id, canonical(record)))
+            self._event(db, mission_id, 'TRUST_CLAIM_RETRACTED', owner, claim_id=claim_id)
+        return {'retraction': record, 'revision': revision + 1}
 
     def _artifacts(self, db, mission):
         """Hash bounded, regular, mission-local output files; never export paths or bytes."""
@@ -240,18 +258,24 @@ class TrustStore:
         reviews = [json.loads(row['document']) for row in db.execute(
             'SELECT document FROM trust_reviews WHERE mission_id=? ORDER BY rowid', (mission_id,))]
         last_review = {review['claim_id']: review for review in reviews}
+        retractions = {row['claim_id']: json.loads(row['document']) for row in db.execute(
+            'SELECT claim_id,document FROM trust_retractions WHERE mission_id=?', (mission_id,))}
         conflicts = []
         for i, left in enumerate(claims):
             for right in claims[i+1:]:
                 conflict = classify_conflict(left, right)
                 if conflict:
-                    conflicts.append({'left': left['id'], 'right': right['id'], **conflict})
-        disputed = {id for c in conflicts if c['classification'] in {'DIRECT_CONFLICT', 'REVIEW'}
+                    conflicts.append({'left': left['id'], 'right': right['id'],
+                                      'active': left['id'] not in retractions and right['id'] not in retractions, **conflict})
+        disputed = {id for c in conflicts if c['active'] and c['classification'] in {'DIRECT_CONFLICT', 'REVIEW'}
                     for id in (c['left'], c['right'])}
         for claim in claims:
             review = last_review.get(claim['id'])
             claim.update(status='DISPUTED' if claim['id'] in disputed else review['verdict'] if review else 'UNKNOWN',
-                         review=review, confidence=None, confidence_basis='No calibrated probability model')
+                         review=review, lifecycle='RETRACTED' if claim['id'] in retractions else 'ACTIVE',
+                         retraction=retractions.get(claim['id']),
+                         confidence=None, confidence_basis='No calibrated probability model')
+        active_claims = [claim for claim in claims if claim['lifecycle'] == 'ACTIVE']
         steps = [dict(row) for row in db.execute(
             'SELECT id,label,position,status,depends_on FROM steps WHERE mission_id=? ORDER BY position', (mission_id,))]
         trace = []
@@ -286,13 +310,13 @@ class TrustStore:
                            and event['type'] in {'OPENCODE_COMPLETED', 'GOOSE_COMPLETED', 'STEP_COMPLETED'}}
         if not steps or any(step['id'] not in completed_steps for step in steps):
             blockers.append('MISSING_STEP_EXECUTION_EVIDENCE')
-        if not claims or any(claim['status'] not in {'FACT', 'INFERENCE'} for claim in claims):
+        if not active_claims or any(claim['status'] not in {'FACT', 'INFERENCE'} for claim in active_claims):
             blockers.append('CLAIMS_REQUIRE_REVIEW')
         return {'schema_version': 1, 'mission_id': mission_id, 'trace_id': mission_id,
                 'revision': revision, 'snapshot_token': token, 'evidence': evidence,
                 'claims': claims, 'reviews': reviews, 'conflicts': conflicts,
                 'specification': json.loads(spec['specification']) if spec else None,
-                'verification': {'integrity_verified': True, 'semantic_verification': 'OWNER_REVIEWED' if claims and all(c['review'] for c in claims) else 'PENDING',
+                'verification': {'integrity_verified': True, 'semantic_verification': 'OWNER_REVIEWED' if active_claims and all(c['review'] for c in active_claims) else 'PENDING',
                                  'execution_verification': 'PERSISTED_RECORDS_ONLY_NOT_EXTERNAL_ATTESTATION',
                                  'acceptance_blockers': blockers, 'confidence': None,
                                  'confidence_basis': 'Human review, not statistically calibrated; hashes verify bytes only'},
@@ -368,7 +392,7 @@ class TrustStore:
         report = ('# FACAI Proof Artifact\n\nMission: ' + mission_id + '\n\n'
                   'Snapshot: ' + proof_id + '\n\nThis report records evidence and explicit Owner reviews. '
                   'It does not certify external source truth. See verification.json for blockers.\n\n' +
-                  '\n'.join('- ' + c['status'] + ': ' + c['statement'] for c in proof['claims']) + '\n')
+                  '\n'.join('- ' + c['lifecycle'] + ' / ' + c['status'] + ': ' + c['statement'] for c in proof['claims']) + '\n')
         files = {'report.md': report.encode(),
                  **{name + '.json': (canonical(value)+'\n').encode() for name, value in {
                      'evidence': proof['evidence'], 'claims': proof['claims'], 'verification': proof['verification'],

@@ -33,6 +33,10 @@ class ReviewBody(Revision):
     reason: str = Field(min_length=1, max_length=2000)
 
 
+class RetractBody(Revision):
+    reason: str = Field(min_length=1, max_length=2000)
+
+
 class AcceptBody(BaseModel):
     sha256: str = Field(pattern=r'^[0-9a-f]{64}$')
     reason: str = Field(min_length=1, max_length=2000)
@@ -106,6 +110,11 @@ def router_for(store, owner, require_mission, human_writer):
     @router.post('/api/v1/missions/{mission_id}/trust/proofs', status_code=201)
     def proof(mission_id: str, body: Revision):
         return call(service.snapshot, owner(), mission_id, body.expected_revision)
+
+    @router.post('/api/v1/missions/{mission_id}/trust/claims/{claim_id}/retract', status_code=201)
+    def retract(mission_id: str, claim_id: str, body: RetractBody, request: Request):
+        human_writer(request)
+        return call(service.retract, owner(), mission_id, body.expected_revision, claim_id, body.reason)
 
     @router.post('/api/v1/missions/{mission_id}/trust/proofs/{proof_id}/accept')
     def accept(mission_id: str, proof_id: str, body: AcceptBody, request: Request):
