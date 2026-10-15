@@ -75,7 +75,7 @@
         "远端SHA==本地HEAD且remote_verified=true才算已上传",
         "错误不包含凭据，不强推/删库/重建远端"
       ],
-      "next_action": "当前403；使用已有授权通道修复后重试普通push，禁止强推/删库"
+      "next_action": "checkpoint已显式采用当前进程GH_TOKEN临时URL凭据且不落配置；该环境GH_TOKEN长度28，真实push仍403。恢复运行时有效凭据后重试并比对SHA。"
     },
     {
       "id": "AUTH-001",
@@ -132,7 +132,11 @@
       "source_files": [
         "facai/intent.py",
         "facai/prompting.py",
-        "facai/conversion.py"
+        "facai/conversion.py",
+        "facai/intent_workspace.py",
+        "facai/intent_routes.py",
+        "facai/static/workspace.html",
+        "tests/test_intent_workspace.py"
       ],
       "goal": "Human→Machine边界保存原话及action/target/purpose/scope/constraints",
       "acceptance": [
@@ -140,7 +144,7 @@
         "READY/NEED_CONTEXT/REVIEW真实区分，缺上下文不虚构",
         "置信度未知或有可说明依据，不硬编码92%"
       ],
-      "next_action": "新增Owner隔离的Intent修订与缺失上下文记录，复用现有转译而不伪造理解概率"
+      "next_action": "已新增规则/人工修订预览、不可变修订及持久化；继续补外部目标上下文、完整Mission Specification与模型语义编译/校准，保持原话。"
     },
     {
       "id": "MISSION-001",
@@ -162,7 +166,7 @@
         "expected_revision冲突拒绝，重复确认只一个任务",
         "确认不签grant/不排队/不执行，DAG复用现有Store"
       ],
-      "next_action": "先为新路径提供原子创建且不issue_grant的Store钩子，再接幂等确认，当前该钩子未实现"
+      "next_action": "已实现独立/workspace、原子不授权确认、重复确认幂等、Owner单独授权及控制台执行入口；继续补任务规范字段/验证要求与完整执行→证据验收。"
     },
     {
       "id": "DB-001",
@@ -605,5 +609,24 @@
       ],
       "next_action": "按验收矩阵逐项实测；未通过项不删除、不用单元测试总数替代最终交付"
     }
-  ]
+  ],
+  "latest_validation": {
+    "base_commit": "3e7de6c",
+    "passed": 1265,
+    "skipped": 28,
+    "seconds": 90.75,
+    "production_acceptance": false,
+    "real_chromium_new_workspace": true,
+    "existing_console_browser_checks_passed": 2,
+    "runtime_source_hashes": {
+      "facai/api.py": "29242572b0c9b63d9abde51b2374745e53af847e0f810d3ff4283e87c3c55ebd",
+      "facai/store.py": "3a964d6384979dc41d7b80d450950e8937ceaefbaae5c3e9fd1c6029f0431f32",
+      "facai/intent_workspace.py": "2a1d3d2c3e49542d5a88606bd0fb41506943e9b3d7c135bde9a6372b3cd7bc17",
+      "facai/intent_routes.py": "c06446486026023a698357f3dd2ab3feaa8621dc3f6a392bf3dfe9a7eb2d4e06",
+      "facai/static/workspace.html": "610c25726b24749384b602d4fcf5293479ae9d0c378ea455039e2c13037af5e5",
+      "facai/static/index.html": "a5cfc672e9c9d0b437cefd49e2f56b1aadb923662c207e395b8837a45f3462e8",
+      "facai/static/mobile.html": "ecd4cc6656d9332a48e01706078ab63a588fe2f460559fc032721fd0926af0d2",
+      "tests/test_intent_workspace.py": "8e290c87b31acfbaa63ad25eb6e840388674ee695dd77d66c1fcd59a1fb5d2f8"
+    }
+  }
 }

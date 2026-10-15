@@ -4265,6 +4265,31 @@ def create_app(data_dir=None, opencode_adapter=None, goose_adapter=None):
         return {"duplicate": False, "request_id": request_id, "mission_id": mission_id,
                 "status": status, "applied": applied, "retryable": retryable}
 
+    # Additive preview/confirmation boundary. Confirmation never issues a grant
+    # or enqueues work; the explicit authorization action uses the existing gate.
+    from .intent_routes import router_for as intent_router
+
+    def before_intent_mission(owner):
+        gate = budget_gate(owner, store)
+        if not gate["allowed"]:
+            raise HTTPException(402, gate["reason"])
+        reserve_mission_create(owner)
+
+    def authorize_intent_mission(mission_id):
+        require_admin_owner()
+        require_mission(mission_id, allow_assist=False)
+        gate = budget_gate(current_owner(), store)
+        if not gate["allowed"]:
+            raise HTTPException(402, gate["reason"])
+        grant = authority_gate.ensure_mission_grant(mission_id)
+        store.append(mission_id, "INTENT_EXECUTION_AUTHORIZED", {
+            "actor": current_owner(), "grant_id": grant.grant_id,
+            "execution": "NOT_DISPATCHED"})
+        return {"mission_id": mission_id, "authorization": "GRANTED",
+                "execution": "NOT_DISPATCHED", "dispatch_via": "existing_mission_console"}
+
+    app.include_router(intent_router(store, current_owner, before_intent_mission,
+                                    authorize_intent_mission))
     return app
 
 

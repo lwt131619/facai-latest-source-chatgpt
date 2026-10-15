@@ -1,6 +1,6 @@
 # FACAI / ICS — 从这里断点续接
 
-先读根 `AGENTS.md`。本轮先完成方向标注并融合开发包，尚未实现新Setup/Intent/Trust模块。
+先读根 `AGENTS.md`。方向标注已完成；本轮已实际新增Intent预览/修订/确认/独立授权。Setup/Trust仍未实现。
 27项任务见 `docs/engineering/task-registry.json`；具体下一步见 DEVELOPMENT_PLAN.md。
 
 本地分支：`facai/production-build`。先读 FACAI_CODEX_HANDOFF.md，再读本文件与
@@ -62,3 +62,15 @@ bundle 包含所有已提交历史；未提交文件不在其中，故先检查 
 - 当前Git与连接器写入均403；本地bundle为完整已提交断点，真实状态见随附checkpoint-status.json。
 - 整合ZIP解压后的方向校验及定向测试：59 passed；全部文件哈希已核验。
 - 更新任务后执行 `python scripts/validate_handoff.py --render`，再默认校验，避免可读任务表漂移。
+
+## 最新实际功能进展：Intent工作区
+
+- 新增 `/workspace`，主控制台和手机页有入口。
+- `intent_workspace.py`保存原话与不可变修订；确认事务创建一份Mission，默认不grant/不排队。
+- `intent_routes.py`复用现有认证/CSRF/Owner，授权为独立Owner动作，控制台仍负责绑定与派发。
+- 新增6项测试含并发幂等、回滚清理、预算402、跨账号隔离、确认无副作用。
+- 真实Chromium桌面/手机完整操作与刷新恢复通过，无JS错误；QA配置了明确测试额度，未绕生产预算。
+- 预览使用保守规则和人工修订，confidence=null；不是完整LLM语义编译器，不假报所有Intent需求完成。
+- 下一步：SETUP-001/完整MissionSpec/Evidence；GitHub仍需核验，checkpoint已读取GH_TOKEN临时凭据。
+- 本功能最终完整回归：1265 passed / 28 skipped / 1上游警告（90.75秒）；原桌面与手机布局2项真实浏览器验收通过。
+- 最新发布结论与缺口：docs/RELEASE_STATUS.md；完整Production仍未完成。

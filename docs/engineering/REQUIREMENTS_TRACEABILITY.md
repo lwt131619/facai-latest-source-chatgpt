@@ -72,7 +72,7 @@
 - 远端SHA==本地HEAD且remote_verified=true才算已上传
 - 错误不包含凭据，不强推/删库/重建远端
 
-**下一步**：当前403；使用已有授权通道修复后重试普通push，禁止强推/删库
+**下一步**：checkpoint已显式采用当前进程GH_TOKEN临时URL凭据且不落配置；该环境GH_TOKEN长度28，真实push仍403。恢复运行时有效凭据后重试并比对SHA。
 
 ## AUTH-001 — Owner Control与授权分离
 
@@ -106,7 +106,7 @@
 
 Human→Machine边界保存原话及action/target/purpose/scope/constraints
 
-**现有定位**：`facai/intent.py`、`facai/prompting.py`、`facai/conversion.py`
+**现有定位**：`facai/intent.py`、`facai/prompting.py`、`facai/conversion.py`、`facai/intent_workspace.py`、`facai/intent_routes.py`、`facai/static/workspace.html`、`tests/test_intent_workspace.py`
 
 **验收**：
 
@@ -114,7 +114,7 @@ Human→Machine边界保存原话及action/target/purpose/scope/constraints
 - READY/NEED_CONTEXT/REVIEW真实区分，缺上下文不虚构
 - 置信度未知或有可说明依据，不硬编码92%
 
-**下一步**：新增Owner隔离的Intent修订与缺失上下文记录，复用现有转译而不伪造理解概率
+**下一步**：已新增规则/人工修订预览、不可变修订及持久化；继续补外部目标上下文、完整Mission Specification与模型语义编译/校准，保持原话。
 
 ## MISSION-001 — 理解预览与确认到Mission
 
@@ -128,7 +128,7 @@ Human→Machine边界保存原话及action/target/purpose/scope/constraints
 - expected_revision冲突拒绝，重复确认只一个任务
 - 确认不签grant/不排队/不执行，DAG复用现有Store
 
-**下一步**：先为新路径提供原子创建且不issue_grant的Store钩子，再接幂等确认，当前该钩子未实现
+**下一步**：已实现独立/workspace、原子不授权确认、重复确认幂等、Owner单独授权及控制台执行入口；继续补任务规范字段/验证要求与完整执行→证据验收。
 
 ## DB-001 — 生产持久化与增量迁移
 

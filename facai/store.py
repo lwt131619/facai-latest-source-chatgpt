@@ -3,6 +3,7 @@
 import json
 import math
 import sqlite3
+from contextlib import nullcontext
 from contextvars import ContextVar
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -461,7 +462,16 @@ class Store:
         db.execute("PRAGMA synchronous=NORMAL")
         return db
 
-    def create(self, title, original_input, labels, owner_id="admin"):
+    def create(self, title, original_input, labels, owner_id="admin", *,
+               connection=None, issue_grant=True, mission_id=None):
+        """Create normally, or insert into a caller transaction without a grant.
+
+        External transactions return only the id until committed. Their caller
+        owns rollback/cleanup; IntentWorkspace handles its new workspace on failure.
+        Existing callers retain full-record results and post-commit grants.
+        """
+        if connection is not None and issue_grant:
+            raise ValueError("External mission transactions cannot issue grants")
         specs = []
         legacy = all(isinstance(item, str) for item in labels)
         for item in labels:
@@ -505,10 +515,13 @@ class Store:
                     deps.append(dep_id)
             spec["depends_on"] = deps
         _validate_step_graph(specs)
-        mission_id = uuid4().hex
+        mission_id = mission_id or uuid4().hex
+        if (not isinstance(mission_id, str) or len(mission_id) != 32
+                or any(c not in "0123456789abcdef" for c in mission_id)):
+            raise ValueError("Invalid mission id")
         workspace = (self.root / "workspaces" / mission_id).resolve()
         workspace.mkdir(parents=True, exist_ok=False)
-        with self.connect() as db:
+        with (nullcontext(connection) if connection is not None else self.connect()) as db:
             db.execute("INSERT INTO missions (id, title, original_input, status, workspace, agent_id,"
                        " model_id, created_at, professional_prompt, owner_id)"
                        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -523,7 +536,10 @@ class Store:
         # The mission grant is issued only after the row is committed: an
         # execution must never be authorized by a grant for a mission the
         # store does not yet serve.
-        ensure_mission_grant(mission_id)
+        if connection is not None:
+            return {"id": mission_id}
+        if issue_grant:
+            ensure_mission_grant(mission_id)
         return self.get(mission_id)
 
     def count_active_missions(self, owner_id):

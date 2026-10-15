@@ -74,3 +74,13 @@ and a resume runbook. Runtime source remains the validated baseline; no unfinish
 Store/Setup/Intent/Trust implementation is claimed. Extended the development archive
 with this handoff, tests and required source metadata. GitHub writes remain403 through
 both Git and connector; verified Git bundle provides the committed resume checkpoint.
+
+## Implemented intent workspace checkpoint
+New actual runtime code now implements owner-scoped persistent intent previews and
+immutable revisions, atomic/idempotent confirmation without grants/jobs, explicit
+Owner authorization and desktop/mobile entry points. Legacy Store.create callers
+retain their existing full-record/post-commit-grant behavior. Final regression:
+1265 passed, 28 skipped (90.75s); real Chromium new flow and two existing console
+layout checks passed. See docs/INTENT_WORKSPACE.md and docs/RELEASE_STATUS.md.
+This supersedes the earlier direction-only checkpoint's absence of this new module;
+Setup/Trust/20-agent/full Production acceptance remain incomplete.

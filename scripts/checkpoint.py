@@ -3,6 +3,8 @@ import argparse
 from datetime import datetime, timezone
 import json
 import hashlib
+import os
+from urllib.parse import quote, urlsplit
 from pathlib import Path
 import re
 import subprocess
@@ -13,7 +15,8 @@ SECRET = re.compile(rb'github_pat_[A-Za-z0-9_]{30,}|gh[pousr]_[A-Za-z0-9]{30,}|-
 
 
 def git(*args, check=True):
-    return subprocess.run(['git', *args], cwd=ROOT, capture_output=True, check=check)
+    return subprocess.run(['git', *args], cwd=ROOT, capture_output=True, check=check,
+                          timeout=60, env=dict(os.environ, GIT_TERMINAL_PROMPT='0'))
 
 
 def checkpoint(message=None, paths=(), validation='not_run', push=True):
@@ -50,7 +53,17 @@ def checkpoint(message=None, paths=(), validation='not_run', push=True):
               'bundle': bundle.name, 'bundle_verified': True, 'bundle_sha256': bundle_sha256,
               'remote_verified': False, 'push_attempted': push}
     if push:
-        result = git('push', 'origin', f'HEAD:refs/heads/{branch}', check=False)
+        token = os.environ.get('GH_TOKEN', '')
+        destination = 'origin'
+        if token:
+            origin = git('remote', 'get-url', 'origin').stdout.decode().strip()
+            parts = urlsplit(origin)
+            if (parts.scheme != 'https' or parts.hostname != 'github.com'
+                    or parts.path.rstrip('/') != '/lwt131619/facai-cloud-public.git'):
+                raise ValueError('GH_TOKEN is restricted to the configured FACAI GitHub repository')
+            destination = 'https://x-access-token:'+quote(token, safe='')+'@github.com'+parts.path
+        status['credential_source'] = 'GH_TOKEN_PROCESS_ONLY' if token else 'INHERITED_GIT'
+        result = git('push', destination, f'HEAD:refs/heads/{branch}', check=False)
         status['push_exit_code'] = result.returncode
         if result.returncode == 0:
             remote = git('ls-remote', 'origin', f'refs/heads/{branch}', check=False)
@@ -74,6 +87,6 @@ if __name__ == '__main__':
     args = parser.parse_args()
     try:
         sys.exit(checkpoint(args.message, args.paths, args.validation, not args.local_only))
-    except (OSError, ValueError, subprocess.CalledProcessError) as exc:
+    except (OSError, ValueError, subprocess.SubprocessError) as exc:
         print('Checkpoint failed: '+type(exc).__name__, file=sys.stderr)
         sys.exit(1)

@@ -17,9 +17,10 @@
    GitHub备份与正式包逐项有证据后才声明Production v1.0。
 
 最近完整测试：bc6ee5a对应1259通过/28跳过。当前代码调度默认2/上限8/同任务3，
-OpenCode串行；没有RustCore、完整Setup/Intent确认/TrustEngine新实现。
+OpenCode串行；没有RustCore、完整Setup/TrustEngine；本轮已新增持久化Intent预览/修订/确认和独立授权路径。
 这次优先把全部大方向标清并融合旧开发ZIP；没有用未验证的中途核心改动混入包。
 
-下一个可运行阶段：先按MISSION-001的next_action实现Store原子事务/不授权新钩子及测试，
-再实现Owner隔离的Intent修订/幂等确认。并行时Setup/Trust用新模块，根api由集成人统一接线。
+新增可运行阶段已实现Store原子事务/不授权新钩子、Owner隔离Intent修订/幂等确认与独立授权，
+真实桌面/手机Chromium通过。下一阶段优先SETUP-001和完整Mission Specification/执行验收；
+Setup/Trust用独立模块，根api由集成人统一接线。
 每个可运行阶段执行checkpoint，不等所有开发结束才备份。

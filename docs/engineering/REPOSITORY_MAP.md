@@ -30,3 +30,9 @@
 | 工程备份 | scripts/checkpoint.py, package.py | bundle/提交/远端SHA验证；源码allowlist与checksum |
 
 外部库vendor/与历史ZIP不要自动视作已安装可用能力；先审核来源、许可与接入位置。
+
+## 新增已实现Intent路径
+
+`intent_workspace.py`：持久修订/原子确认；`intent_routes.py`：独立API/router；
+`static/workspace.html`：可操作预览；`tests/test_intent_workspace.py`：6项边界/幂等/回滚测试。
+Store.create的connection/issue_grant参数为新确认服务提供事务钩子，旧调用默认授权行为保留。

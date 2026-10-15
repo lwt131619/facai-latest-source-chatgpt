@@ -12,6 +12,12 @@ Facai project was modified.
 开发ZIP整合现有启动/后端/控制台、测试与方向说明；完整Git历史另见 `FACAI-resume.bundle`。
 GitHub上传只有远端SHA核对一致才算成功，当前阻塞状态见检查点状态文件。
 
+## 新增：理解预览与确认任务
+
+启动后打开 `/workspace`：输入原话 → 补充/修改理解 → 确认生成任务 → Owner单独授权 → 前往既有任务控制台绑定并执行。
+理解和修订持久化；确认本身不排队、不调用模型和工具。预览为规则提取/人工修订，未校准置信度保持未知。
+现有预算、权限和Runtime要求继续生效。
+
 ## 本地一键启动（新增）
 
 Windows：双击 `start.bat`；macOS/Linux：`./start.sh`。首次需要 Python 3.10+ 和网络。
