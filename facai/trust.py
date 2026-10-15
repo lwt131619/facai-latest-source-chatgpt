@@ -312,8 +312,8 @@ class TrustStore:
     def snapshot(self, owner, mission_id, revision):
         with self.store.connect() as db:
             db.execute('BEGIN IMMEDIATE')
-            self._capacity(db, 'trust_proofs', mission_id, 100)
             state = self._state(db, owner, mission_id)
+            self._capacity(db, 'trust_proofs', mission_id, 100)
             if revision != state['revision']:
                 raise TrustError(409, 'Evidence changed; refresh')
             id = uuid4().hex

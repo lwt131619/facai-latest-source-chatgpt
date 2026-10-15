@@ -9,6 +9,7 @@ and that a ``?mission=<id>`` deep link survives the login round-trip.
 
 import base64
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -16,7 +17,8 @@ import pytest
 
 def _launch(playwright):
     try:
-        browser = playwright.chromium.launch()
+        executable = os.getenv('FACAI_TEST_CHROMIUM')
+        browser = playwright.chromium.launch(**({'executable_path': executable, 'args': ['--no-sandbox']} if executable else {}))
     except Exception as exc:  # browser binary not installed
         pytest.skip(f"Playwright chromium unavailable: {exc}")
     # RUNNING 阶段的循环动画会让 Playwright 的 stability 检测偶发超时；

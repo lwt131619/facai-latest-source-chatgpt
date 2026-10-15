@@ -2,10 +2,13 @@
 
 ## WIP checkpoint (not a release)
 
-Next increment in progress: local-appliance Owner bootstrap and recovery.
-`facai/onboarding.py` and launcher changes are WIP, **not tested yet**; setup
-routes/page/tests are the next immediate step. Do not ship this intermediate
-launcher checkpoint as a release. Existing deployments keep environment auth.
+Local-appliance Owner bootstrap/recovery and /setup are now wired and locally
+tested: setup+launcher+Intent checks **20 passed**, expanded auth/isolation/Trust
+checks **87 passed**. Real desktop/mobile Setup and Evidence flows **4 passed**.
+Existing deployments keep environment auth; fresh local installs get a one-use
+loopback bootstrap URL fragment. The Owner password is hashed; recovery rotates
+its one-use key and invalidates Owner sessions. No live Provider call was made.
+Final complete regression and package refresh are still pending.
 
 The user requested immediate, frequent GitHub WIP checkpoints to prevent loss.
 The first checkpoint was untested. Subsequent targeted validation: existing
