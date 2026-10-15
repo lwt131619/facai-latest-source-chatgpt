@@ -3,7 +3,9 @@
 ## WIP checkpoint (not a release)
 
 The user requested immediate, frequent GitHub WIP checkpoints to prevent loss.
-This first checkpoint has **not been tested yet**. Do not interpret committed or
+The first checkpoint was untested. Subsequent targeted validation: existing
+Intent and legacy Proof tests **13 passed**, syntax compilation passed.
+New Trust workflow tests are being run; not yet claimed passing. Do not interpret committed or
 uploaded code as production acceptance. Existing AGENTS.md and frozen invariants
 continue to apply.
 
