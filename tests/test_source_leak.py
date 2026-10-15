@@ -91,6 +91,22 @@ def test_validation_422_details_carry_no_internal_shapes(tmp_path, monkeypatch):
     assert str(tmp_path) not in detail
 
 
+def test_validation_does_not_echo_passwords_or_whole_model_credentials(tmp_path, monkeypatch):
+    _, client = build(tmp_path, monkeypatch)
+    secret = 'synthetic-private-input-that-must-not-be-reflected'
+    # A missing name otherwise makes Pydantic include the complete request body.
+    response = client.post('/api/v1/my/models', json={
+        'endpoint': 'https://example.invalid/v1', 'model': 'fixture', 'api_key': secret})
+    assert response.status_code == 422
+    assert secret not in response.text
+    assert all('input' not in error and 'ctx' not in error for error in response.json()['detail'])
+    response = client.post('/api/v1/setup/bootstrap', json={
+        'token': 'fixture-bootstrap-token', 'username': 'owner', 'password': secret*20})
+    assert response.status_code == 422
+    assert secret not in response.text and 'fixture-bootstrap-token' not in response.text
+    assert response.json()['detail'][0]['loc'][-1] == 'password'
+
+
 def test_master_key_failure_422_hides_path_and_env_name(tmp_path, monkeypatch):
     """主密钥文件损坏时，register-model 的 422 不带 master.key 路径/变量名。
 

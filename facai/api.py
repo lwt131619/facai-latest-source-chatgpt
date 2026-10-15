@@ -17,6 +17,7 @@ from urllib.parse import quote
 import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import (FileResponse, JSONResponse, PlainTextResponse, RedirectResponse,
                                StreamingResponse, Response)
 from fastapi.staticfiles import StaticFiles
@@ -869,6 +870,15 @@ def create_app(data_dir=None, opencode_adapter=None, goose_adapter=None):
     # and never reads the schema (pinned by tests/test_customer_surface.py).
     app = FastAPI(title="Facai Cloud", version="0.2.0", lifespan=lifespan,
                   openapi_url=None, docs_url=None, redoc_url=None)
+
+    @app.exception_handler(RequestValidationError)
+    async def safe_validation_error(request, exc):
+        # Pydantic's default `input` may be an entire model/login request,
+        # including API keys and passwords. Keep useful field errors only.
+        return JSONResponse(status_code=422, content={'detail': [
+            {key: error[key] for key in ('type', 'loc', 'msg') if key in error}
+            for error in exc.errors()]})
+
     app.state.store = store
     app.state.registries = registries
     app.state.boundary = boundary_governor
