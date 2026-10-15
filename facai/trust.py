@@ -392,7 +392,7 @@ class TrustStore:
         report = ('# FACAI Proof Artifact\n\nMission: ' + mission_id + '\n\n'
                   'Snapshot: ' + proof_id + '\n\nThis report records evidence and explicit Owner reviews. '
                   'It does not certify external source truth. See verification.json for blockers.\n\n' +
-                  '\n'.join('- ' + c['lifecycle'] + ' / ' + c['status'] + ': ' + c['statement'] for c in proof['claims']) + '\n')
+                  '\n'.join('- ' + c.get('lifecycle', 'ACTIVE') + ' / ' + c['status'] + ': ' + c['statement'] for c in proof['claims']) + '\n')
         files = {'report.md': report.encode(),
                  **{name + '.json': (canonical(value)+'\n').encode() for name, value in {
                      'evidence': proof['evidence'], 'claims': proof['claims'], 'verification': proof['verification'],

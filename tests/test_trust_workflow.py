@@ -213,6 +213,32 @@ def test_spec_failure_rolls_back_intent_confirmation(tmp_path, monkeypatch):
     assert intents.get('alice', intent['id'])['state'] == 'DRAFT'
 
 
+def test_retract_conflicting_claim_preserves_both_sources_and_invalidates_snapshot(tmp_path):
+    store, service, id = mission(tmp_path)
+    reviewed(service, id)
+    source = service.get('alice', id)['evidence'][0]['id']
+    other = claim(service, id, 3, [source], value='2')['claim']
+    state = service.get('alice', id)
+    assert all(c['status']=='DISPUTED' for c in state['claims'])
+    proof = service.snapshot('alice', id, state['revision'])
+    service.retract('alice', id, state['revision'], other['id'], 'Wrong environment; withdraw applicability, keep original record')
+    state = service.get('alice', id)
+    assert len(state['claims']) == 2 and len(state['conflicts']) == 1
+    assert state['conflicts'][0]['classification']=='DIRECT_CONFLICT' and not state['conflicts'][0]['active']
+    assert state['claims'][0]['status']=='FACT'
+    assert state['claims'][1]['lifecycle']=='RETRACTED'
+    assert state['claims'][1]['retraction']['actor']=='alice'
+    assert not state['proofs'][0]['current']
+    assert 'CLAIMS_REQUIRE_REVIEW' not in state['verification']['acceptance_blockers']
+    with pytest.raises(TrustError, match='Retracted'):
+        service.review('alice',id,state['revision'],other['id'],verdict='FACT',reason='cannot resurrect silently')
+    with pytest.raises(TrustError):
+        service.retract('bob',id,state['revision'],other['id'],'cross owner')
+    first=state['claims'][0]['id']
+    service.retract('alice',id,state['revision'],first,'withdraw remaining claim')
+    assert 'CLAIMS_REQUIRE_REVIEW' in service.get('alice',id)['verification']['acceptance_blockers']
+
+
 def test_api_auth_csrf_cross_owner_and_machine_cannot_review(tmp_path, monkeypatch):
     monkeypatch.setenv('FACAI_USERS_JSON', '{"admin":"trust-admin-password","alice":"trust-alice-password"}')
     monkeypatch.setenv('FACAI_SCHEDULER_ENABLED','0')
