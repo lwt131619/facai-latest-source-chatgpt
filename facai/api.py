@@ -242,6 +242,10 @@ PUBLIC_PATHS = frozenset({
     "/api/v1/auth/logout",
     "/api/v1/auth/session",
     "/api/v1/health",
+    "/health",
+    "/setup",
+    "/api/v1/setup/bootstrap",
+    "/api/v1/setup/recover",
     "/api/v1/n8n/callback",
     "/favicon.ico",
 })
@@ -1324,6 +1328,7 @@ def create_app(data_dir=None, opencode_adapter=None, goose_adapter=None):
         return response
 
     @app.get("/api/v1/health")
+    @app.get("/health")
     def health():
         return {"status": "ready", "phase": 2, "auth_required": auth.enabled}
 
@@ -4299,6 +4304,30 @@ def create_app(data_dir=None, opencode_adapter=None, goose_adapter=None):
             raise HTTPException(403, 'Owner review requires an authenticated console session')
 
     app.include_router(trust_router(store, current_owner, require_mission, require_human_review))
+    from .setup_routes import router_for as setup_router
+    from .mission_spec import digest as specification_digest
+
+    def setup_model_fingerprint(model_id):
+        model = registries.resolve('models', model_id, owner_id=current_owner())
+        if model is None:
+            return None
+        key = None
+        if model.get('user_model_id'):
+            key = store.user_model_encrypted_key(current_owner(), model['user_model_id'])
+        elif model.get('api_key_env'):
+            key = os.getenv(model['api_key_env'], '')
+        return specification_digest({'configuration': model, 'credential': key})
+
+    async def setup_model_probe(model_id):
+        model = registries.resolve('models', model_id, owner_id=current_owner())
+        if model is None:
+            raise HTTPException(404, 'Model not found')
+        if model.get('user_model_id'):
+            return await test_user_model(model['user_model_id'])
+        return await test_model_connection(model_id)
+
+    app.include_router(setup_router(store, auth, current_owner, require_admin_owner, registries,
+                                   setup_model_probe, setup_model_fingerprint))
     return app
 
 
