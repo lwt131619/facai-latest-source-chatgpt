@@ -247,8 +247,12 @@ class TrustStore:
                          review=review, confidence=None, confidence_basis='No calibrated probability model')
         steps = [dict(row) for row in db.execute(
             'SELECT id,label,position,status,depends_on FROM steps WHERE mission_id=? ORDER BY position', (mission_id,))]
-        trace = [dict(row) for row in db.execute(
-            'SELECT id,sequence,type,step_id,agent_id,occurred_at FROM events WHERE mission_id=? ORDER BY sequence', (mission_id,))]
+        trace = []
+        for row in db.execute('SELECT id,sequence,type,step_id,agent_id,occurred_at,payload FROM events '
+                              'WHERE mission_id=? ORDER BY sequence', (mission_id,)):
+            event = dict(row)
+            event['payload_sha256'] = hashlib.sha256(event.pop('payload').encode()).hexdigest()
+            trace.append(event)
         # Execution fingerprint excludes our own audit events so creating or accepting
         # a proof does not invalidate itself. Any other new event invalidates acceptance.
         execution = {'mission': {key: mission[key] for key in ('id', 'status', 'agent_id', 'model_id', 'skill_id', 'runtime_id', 'professional_prompt')},
@@ -259,7 +263,8 @@ class TrustStore:
         if spec and digest(json.loads(spec['specification'])) != spec['sha256']:
             raise TrustError(409, 'Mission specification integrity check failed')
         revision = self._revision(db, mission_id)
-        token = digest({'revision': revision, 'execution': execution, 'specification': spec['sha256'] if spec else None})
+        token = digest({'revision': revision, 'execution': execution, 'evidence': evidence,
+                        'claims': claims, 'reviews': reviews, 'specification': spec['sha256'] if spec else None})
         blockers = []
         if not spec:
             blockers.append('MISSING_CONFIRMED_MISSION_SPECIFICATION')
@@ -281,6 +286,7 @@ class TrustStore:
                 'claims': claims, 'reviews': reviews, 'conflicts': conflicts,
                 'specification': json.loads(spec['specification']) if spec else None,
                 'verification': {'integrity_verified': True, 'semantic_verification': 'OWNER_REVIEWED' if claims and all(c['review'] for c in claims) else 'PENDING',
+                                 'execution_verification': 'PERSISTED_RECORDS_ONLY_NOT_EXTERNAL_ATTESTATION',
                                  'acceptance_blockers': blockers, 'confidence': None,
                                  'confidence_basis': 'Human review, not statistically calibrated; hashes verify bytes only'},
                 'execution': {**execution, 'mission': {k: v for k, v in execution['mission'].items() if k != 'professional_prompt'}},
@@ -293,6 +299,8 @@ class TrustStore:
             proofs = []
             for row in db.execute('SELECT id,sha256,created_at,document FROM trust_proofs WHERE mission_id=? ORDER BY rowid DESC', (mission_id,)):
                 document = json.loads(row['document'])
+                if digest(document) != row['sha256']:
+                    raise TrustError(409, 'Proof integrity check failed')
                 accepted = db.execute('SELECT document FROM trust_acceptances WHERE proof_id=?', (row['id'],)).fetchone()
                 current = document['snapshot_token'] == state['snapshot_token']
                 proofs.append({'id': row['id'], 'sha256': row['sha256'], 'created_at': row['created_at'],
