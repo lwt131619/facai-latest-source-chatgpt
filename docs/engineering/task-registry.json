@@ -5,9 +5,11 @@
   "product": "FACAI / ICS Production Platform v1.0",
   "source_baseline_commit": "933b431",
   "last_full_regression": {
-    "commit": "bc6ee5a",
-    "passed": 1259,
-    "skipped": 28,
+    "commit": "ad6ee2c",
+    "passed": 1318,
+    "skipped": 12,
+    "seconds": 165.53,
+    "real_browser_enabled": true,
     "production_acceptance": false
   },
   "status_definitions": {
@@ -55,7 +57,7 @@
         "保留已有有效行为，相关回归及失败路径测试通过",
         "验证命令/结果/提交与外部局限写入交接记录"
       ],
-      "next_action": "以bc6ee5a的1259通过/28跳过为基线，不冒称全产品验收"
+      "next_action": "最新全量1318通过/12跳过，真实浏览器已启用；Proof导出最终修正另19项通过和Docker字节哈希核验。完整证据见docs/validation/production-increment.json，不把测试总数当作生产验收。"
     },
     {
       "id": "SYNC-001",
@@ -328,7 +330,7 @@
         "线程/CLI进程/模型并发分别计量，OpenCode默认串行不默默移除",
         "同任务分支隔离/超时/失败/取消/结果幂等有证据"
       ],
-      "next_action": "当前默认2/上限8/同任务3/OpenCode串行；先补排队租约续期，再提升容量并分别实测"
+      "next_action": "默认并发2/上限8/同任务3、OpenCode默认串行；先解决缺worktree时共享工作区fallback的并行隔离，再做容量/租约/配额与真实20+执行测试。不能只改线程上限宣布完成。"
     },
     {
       "id": "OPS-001",
@@ -623,23 +625,15 @@
     }
   ],
   "latest_validation": {
-    "base_commit": "3e7de6c",
-    "passed": 1265,
-    "skipped": 28,
-    "seconds": 90.75,
-    "production_acceptance": false,
-    "real_chromium_new_workspace": true,
-    "existing_console_browser_checks_passed": 2,
-    "runtime_source_hashes": {
-      "facai/api.py": "29242572b0c9b63d9abde51b2374745e53af847e0f810d3ff4283e87c3c55ebd",
-      "facai/store.py": "3a964d6384979dc41d7b80d450950e8937ceaefbaae5c3e9fd1c6029f0431f32",
-      "facai/intent_workspace.py": "2a1d3d2c3e49542d5a88606bd0fb41506943e9b3d7c135bde9a6372b3cd7bc17",
-      "facai/intent_routes.py": "c06446486026023a698357f3dd2ab3feaa8621dc3f6a392bf3dfe9a7eb2d4e06",
-      "facai/static/workspace.html": "610c25726b24749384b602d4fcf5293479ae9d0c378ea455039e2c13037af5e5",
-      "facai/static/index.html": "a5cfc672e9c9d0b437cefd49e2f56b1aadb923662c207e395b8837a45f3462e8",
-      "facai/static/mobile.html": "ecd4cc6656d9332a48e01706078ab63a588fe2f460559fc032721fd0926af0d2",
-      "tests/test_intent_workspace.py": "8e290c87b31acfbaa63ad25eb6e840388674ee695dd77d66c1fcd59a1fb5d2f8"
-    }
+    "report": "docs/validation/production-increment.json",
+    "full_suite_passed": 1318,
+    "full_suite_skipped": 12,
+    "post_suite_export_fix_targeted_passed": 19,
+    "native_restart_verified": true,
+    "docker_internal_service_restart_verified": true,
+    "docker_host_port_access": "NOT_VERIFIED_IN_CLOUD_NAMESPACE",
+    "live_provider_execution": false,
+    "production_acceptance": false
   },
   "latest_trust_validation": {
     "full_regression": {

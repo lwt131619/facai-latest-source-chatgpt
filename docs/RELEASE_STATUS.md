@@ -40,3 +40,12 @@
 详见docs/TRUST_WORKFLOW.md、AGENT_HANDOFF.md和工程任务登记表。
 
 Setup本轮：20项定向、87项扩展安全/Trust回归、4项Setup+Trust真实浏览器和2项旧控制台布局通过。最终完整回归待重跑；详见docs/SETUP_WIZARD.md。
+
+## 最新检查点（本轮最终记录优先）
+
+- 完整回归：1318通过 / 12跳过 / 1上游弃用警告，165.53秒，启用真实Chromium。
+- Proof导出SHA字节对齐最终修正：另19项Trust/Knowledge通过，Docker实际导出核验通过。
+- 本机启动器与Docker内部服务/鉴权/重启持久化实测通过；Docker宿主端口访问在当前云命名空间未验收。
+- 任务规格、Setup、Evidence/Claim/Conflict/撤回、Proof/验收、Knowledge均有增量实际路径。
+- 没有真实Provider运行、VPS部署、20+Agent验收或Windows/macOS正式包验收；结论仍NOT_READY_FOR_PRODUCTION_V1。
+- 机器可读范围与源码哈希：docs/validation/production-increment.json。旧章节数字是此前阶段的历史范围。

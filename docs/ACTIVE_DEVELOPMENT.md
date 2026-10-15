@@ -53,3 +53,10 @@ A real start.py process completed first initialization, hashed Owner persistence
 shutdown/restart with the same session and restored Intent history. No external
 provider call was made. Final all-browser full suite is running; see the final
 validation report before treating any whole-suite count as current.
+
+
+Current full-suite checkpoint: 1318 passed / 12 skipped, real Chromium enabled.
+The final exported-proof-byte patch separately passed 19 Trust/Knowledge tests and
+was verified in an actual non-root Docker container. Native startup and restart
+smoke checks passed. See docs/validation/production-increment.json for exact scope
+and hashes. Remaining work is documented; no production acceptance is claimed.

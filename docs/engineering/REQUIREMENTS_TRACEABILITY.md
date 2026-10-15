@@ -58,7 +58,7 @@
 - 保留已有有效行为，相关回归及失败路径测试通过
 - 验证命令/结果/提交与外部局限写入交接记录
 
-**下一步**：以bc6ee5a的1259通过/28跳过为基线，不冒称全产品验收
+**下一步**：最新全量1318通过/12跳过，真实浏览器已启用；Proof导出最终修正另19项通过和Docker字节哈希核验。完整证据见docs/validation/production-increment.json，不把测试总数当作生产验收。
 
 ## SYNC-001 — GitHub检查点与断点备份
 
@@ -226,7 +226,7 @@ Users/Owner/Agents/Skills/Missions/Executions/Events/Evidence/Claims/Artifacts/K
 - 线程/CLI进程/模型并发分别计量，OpenCode默认串行不默默移除
 - 同任务分支隔离/超时/失败/取消/结果幂等有证据
 
-**下一步**：当前默认2/上限8/同任务3/OpenCode串行；先补排队租约续期，再提升容量并分别实测
+**下一步**：默认并发2/上限8/同任务3、OpenCode默认串行；先解决缺worktree时共享工作区fallback的并行隔离，再做容量/租约/配额与真实20+执行测试。不能只改线程上限宣布完成。
 
 ## OPS-001 — Command Center与实时流水线
 

@@ -60,3 +60,16 @@ python scripts/package.py 重建开发包及文件哈希，仍标DEVELOPMENT_NOT
 完整Git历史在bundle，开发ZIP不是Git历史。源码/文档/测试均进Git，产物不含配置秘密。
 
 VPS历史信息在docs/DEPLOYMENT.md，不代表本轮验证或部署成功。不要照历史记录宣布已上线。
+
+## 当前最终验证与下一阶段优先项
+
+本轮完整真实浏览器回归1318通过/12跳过（165.53秒）；随后Proof导出字节SHA修正另19项通过，并有Docker实测。
+证据JSON：docs/validation/production-increment.json；native复验：python scripts/smoke_appliance.py；Docker内部服务复验：python scripts/smoke_docker.py。
+真实启动器：新Owner初始化、哈希保存、重启同一会话和Intent历史恢复通过。
+Docker：UID10001、登录/同一会话跨重启、Mission规格/证据持久化、Proof导出SHA通过；当前云命名空间宿主映射端口访问未验收。
+知识资产/审查撤回/历史分类保持已接线，细则见docs/KNOWLEDGE_MEMORY.md。
+本轮所有小步均已普通push到新主库main，最终SHA请实时git ls-remote核对。
+
+下一Agent优先：RUNTIME-001。先审计scheduler.py worktree缺失时会回退共享目录的现状，不能直接提高同任务并发或关OpenCode串行。
+还需：20+实际协作/可测进度、完整语义Compiler、独立可信来源验证、native Windows/macOS及真实VPS验收。
+Owner本地恢复密钥仅重置登录，不冒充Runtime控制权；任务预算默认仍为0，需要明确充值/配置。
