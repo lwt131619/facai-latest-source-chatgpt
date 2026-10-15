@@ -6,6 +6,7 @@ from uuid import uuid4
 
 from .prompting import deterministic_plan
 from .store import now
+from .mission_spec import MissionSpecifications
 
 FIELDS = {'action', 'target', 'purpose', 'scope', 'constraints'}
 ACTIONS = [('analyze', r'分析|analy[sz]e'), ('inspect', r'检查|inspect|check'),
@@ -62,6 +63,7 @@ def interpretation(raw, supplied=None):
 class IntentWorkspace:
     def __init__(self, store):
         self.store = store
+        self.specifications = MissionSpecifications(store)
         with store.connect() as db:
             db.executescript('''
               CREATE TABLE IF NOT EXISTS intent_requests (
@@ -162,6 +164,11 @@ class IntentWorkspace:
                 created = uuid4().hex
                 self.store.create(plan.title, row['raw_request'], list(plan.steps), owner_id=owner,
                                   connection=db, issue_grant=False, mission_id=created)
+                steps = [dict(step) for step in db.execute(
+                    'SELECT id,label,position,depends_on FROM steps WHERE mission_id=? ORDER BY position', (created,))]
+                for step in steps:
+                    step['depends_on'] = json.loads(step['depends_on'])
+                self.specifications.create(db, created, view, steps)
                 prompt = ('用户原话：'+row['raw_request']+'\n已确认理解：'+json.dumps({k: view[k] for k in FIELDS}, ensure_ascii=False)
                           +'\n仅执行已确认目标；未明确的目标不自行添加。验证要求：以实际执行证据对照已确认目标和约束。')
                 db.execute('UPDATE missions SET professional_prompt=? WHERE id=?', (prompt, created))

@@ -4290,6 +4290,15 @@ def create_app(data_dir=None, opencode_adapter=None, goose_adapter=None):
 
     app.include_router(intent_router(store, current_owner, before_intent_mission,
                                     authorize_intent_mission))
+    from .trust_routes import router_for as trust_router
+
+    def require_human_review(request):
+        # A scoped automation key may submit evidence, but it cannot impersonate
+        # the Owner's interactive review or acceptance. Keep CSRF in middleware.
+        if auth.enabled and (bearer_api_key(request) is not None or auth.session_from_request(request) is None):
+            raise HTTPException(403, 'Owner review requires an authenticated console session')
+
+    app.include_router(trust_router(store, current_owner, require_mission, require_human_review))
     return app
 
 
