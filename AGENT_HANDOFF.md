@@ -74,3 +74,11 @@ bundle 包含所有已提交历史；未提交文件不在其中，故先检查 
 - 下一步：SETUP-001/完整MissionSpec/Evidence；GitHub仍需核验，checkpoint已读取GH_TOKEN临时凭据。
 - 本功能最终完整回归：1265 passed / 28 skipped / 1上游警告（90.75秒）；原桌面与手机布局2项真实浏览器验收通过。
 - 最新发布结论与缺口：docs/RELEASE_STATUS.md；完整Production仍未完成。
+
+## 用户指定新增备份仓库
+
+用户要求新建“最新facai源代码”并上传完整源代码。GitHub不接受中文仓库名，目标为
+`lwt131619/facai-latest-source`，描述“最新 FACAI 源代码”，默认私密。
+已准备 `python scripts/publish_latest_repo.py`：实际POST建库→普通push到新库main→核对SHA，
+凭据仅在进程内。当前建库接口Forbidden，不能标已创建/已同步。旧仓库和历史不删除、不强推。
+该脚本处理已存在的同名私库，不改变可见性，也不覆盖非快进的远端main。
