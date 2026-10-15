@@ -170,7 +170,8 @@ CREATE TABLE IF NOT EXISTS jobs (
  priority INTEGER NOT NULL DEFAULT 0, attempts INTEGER NOT NULL DEFAULT 0,
  max_attempts INTEGER NOT NULL DEFAULT 1, timeout INTEGER NOT NULL DEFAULT 300,
  lease_owner TEXT, lease_expires_at TEXT, error TEXT,
- created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+ created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+ workspace_mode TEXT NOT NULL DEFAULT 'SHARED'
 );
 CREATE INDEX IF NOT EXISTS jobs_by_status ON jobs(status, priority, created_at);
 CREATE INDEX IF NOT EXISTS jobs_by_mission ON jobs(mission_id);
@@ -415,6 +416,8 @@ class Store:
         job_columns = {row[1] for row in db.execute("PRAGMA table_info(jobs)")}
         if "not_before" not in job_columns:
             db.execute("ALTER TABLE jobs ADD COLUMN not_before TEXT")
+        if "workspace_mode" not in job_columns:
+            db.execute("ALTER TABLE jobs ADD COLUMN workspace_mode TEXT NOT NULL DEFAULT 'SHARED'")
         # One on-chain txid backs at most one recharge: attaching it to a second
         # recharge is a double-claim attempt. Partial index (NULL/'' excluded)
         # so recharges without a txid never collide. Deliberately NOT in SCHEMA:
@@ -1044,7 +1047,8 @@ class Store:
                           else "RUNNING" if "RUNNING" in states else current_status)
         db.execute("UPDATE missions SET status=? WHERE id=?", (mission_status, mission_id))
 
-    def claim_job(self, worker_id, lease_seconds, parallel_mission_jobs=1):
+    def claim_job(self, worker_id, lease_seconds, parallel_mission_jobs=1, *,
+                  isolation_ready=None, max_running_jobs=None):
         """Claim the next runnable job under a lease, atomically.
 
         ``lease_seconds`` is a floor for short jobs, never the whole story: the
@@ -1070,6 +1074,9 @@ class Store:
             # Serialize claim decisions across scheduler threads/processes, and
             # never run two writers in the same mission workspace at once.
             db.execute("BEGIN IMMEDIATE")
+            if max_running_jobs is not None and db.execute(
+                    "SELECT count(*) FROM jobs WHERE status='RUNNING'").fetchone()[0] >= max(1, int(max_running_jobs)):
+                return None
             missions = [row[0] for row in db.execute(
                 "SELECT DISTINCT mission_id FROM jobs WHERE status='QUEUED'")]
             for mission_id in missions:
@@ -1078,28 +1085,40 @@ class Store:
                 "SELECT j.* FROM jobs AS j WHERE j.status='QUEUED'"
                 " AND (j.not_before IS NULL OR j.not_before <= ?) AND NOT EXISTS ("
                 "SELECT 1 FROM jobs AS active WHERE active.mission_id=j.mission_id "
-                "AND active.status='RUNNING' AND (active.step_id IS NULL OR j.step_id IS NULL "
+                "AND active.status='RUNNING' AND (active.workspace_mode<>'ISOLATED' OR active.step_id IS NULL OR j.step_id IS NULL "
                 "OR active.step_id=j.step_id OR (SELECT COUNT(*) FROM jobs AS running "
                 "WHERE running.mission_id=j.mission_id AND running.status='RUNNING') >= ?))"
                 " ORDER BY j.priority DESC, j.created_at", (now(), limit)).fetchall()
-            row = None
+            runnable = []
             for candidate in candidates:
                 if candidate["step_id"] is None:
-                    row = candidate
-                    break
+                    runnable.append(candidate)
+                    continue
                 step = db.execute("SELECT depends_on FROM steps WHERE mission_id=? AND id=?",
                                   (candidate["mission_id"], candidate["step_id"])).fetchone()
                 dependencies = json.loads(step["depends_on"])
                 if not dependencies:
-                    row = candidate
-                    break
+                    runnable.append(candidate)
+                    continue
                 marks = ",".join("?" for _ in dependencies)
                 ready = db.execute(
                     f"SELECT COUNT(*) FROM steps WHERE mission_id=? AND id IN ({marks}) AND status='COMPLETED'",
                     (candidate["mission_id"], *dependencies)).fetchone()[0]
                 if ready == len(dependencies):
-                    row = candidate
-                    break
+                    runnable.append(candidate)
+            row, mode, serial_fallback = None, 'SHARED', False
+            for candidate in runnable:
+                active = db.execute("SELECT count(*) FROM jobs WHERE mission_id=? AND status='RUNNING'",
+                                    (candidate['mission_id'],)).fetchone()[0]
+                peers = any(other['mission_id'] == candidate['mission_id'] and other['id'] != candidate['id']
+                            and other['step_id'] and other['step_id'] != candidate['step_id'] for other in runnable)
+                parallel_requested = bool(limit > 1 and candidate['step_id'] and (active or peers))
+                isolated = parallel_requested and isolation_ready is not None and isolation_ready(candidate['mission_id'])
+                if active and not isolated:
+                    continue
+                row, mode = candidate, 'ISOLATED' if isolated else 'SHARED'
+                serial_fallback = parallel_requested and not isolated
+                break
             if row is None:
                 return None
             requested = int(lease_seconds)
@@ -1115,14 +1134,35 @@ class Store:
             expires = (datetime.now(timezone.utc) + timedelta(seconds=lease)).isoformat()
             cursor = db.execute(
                 "UPDATE jobs SET status='RUNNING', lease_owner=?, lease_expires_at=?,"
-                " attempts=attempts+1, updated_at=? WHERE id=? AND status='QUEUED'",
-                (worker_id, expires, now(), row["id"]))
+                " attempts=attempts+1, updated_at=?,workspace_mode=? WHERE id=? AND status='QUEUED'",
+                (worker_id, expires, now(), mode, row["id"]))
             if cursor.rowcount != 1:
                 return None
             self._event(db, row["mission_id"], row["step_id"], None, None, "JOB_STARTED",
-                        {"job_id": row["id"], "worker": worker_id, "attempt": row["attempts"] + 1})
+                        {"job_id": row["id"], "worker": worker_id, "attempt": row["attempts"] + 1,
+                         "workspace_mode": mode})
+            if serial_fallback:
+                self._event(db, row['mission_id'], row['step_id'], None, None, 'WORKSPACE_SERIALIZED',
+                            {'job_id': row['id'], 'reason': 'Isolation unavailable; exclusive shared workspace reservation'})
             claimed = db.execute("SELECT * FROM jobs WHERE id=?", (row["id"],)).fetchone()
         return dict(claimed)
+
+    def defer_isolation(self, job_id, worker_id):
+        """Release an unexecuted isolated claim without consuming a run attempt."""
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            row = db.execute("SELECT * FROM jobs WHERE id=? AND lease_owner=? AND status='RUNNING'",
+                             (job_id, worker_id)).fetchone()
+            if row is None:
+                return False
+            later = (datetime.now(timezone.utc)+timedelta(seconds=2)).isoformat()
+            db.execute("UPDATE jobs SET status='QUEUED',attempts=MAX(0,attempts-1),not_before=?,"
+                       "lease_owner=NULL,lease_expires_at=NULL,workspace_mode='SHARED',updated_at=? WHERE id=?",
+                       (later, now(), job_id))
+            self._event(db, row['mission_id'], row['step_id'], None, None, 'WORKTREE_UNAVAILABLE',
+                        {'job_id': job_id, 'execution': 'NOT_STARTED', 'retryable': True,
+                         'reason': 'Isolated workspace creation failed; shared concurrent execution refused'})
+        return True
 
     def touch_job_lease(self, job_id, timeout):
         """Extend a RUNNING job's lease once its worker actually holds execution.

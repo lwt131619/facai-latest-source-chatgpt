@@ -102,6 +102,16 @@ def _safe_suffix(suffix):
     return cleaned or "branch"
 
 
+def isolation_ready(workspace):
+    """Preflight only; callers must still handle actual worktree creation failure."""
+    try:
+        base = Path(workspace)
+        return (_git_available() and _git_is_valid(base)
+                and _run(['rev-parse', '--verify', 'HEAD'], base).returncode == 0)
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
 def prepare_worktree(base_workspace, suffix):
     """Create an isolated linked worktree of the mission workspace.
 

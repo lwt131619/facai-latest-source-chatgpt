@@ -1,5 +1,10 @@
 # Active development checkpoint
 
+Runtime next increment WIP: persistent shared/isolated workspace reservations,
+atomic global admission ceiling, worktree preflight and fail-closed deferral are
+being added. Scheduler wiring and focused tests are pending. Previous package
+acceptance refers to the prior runtime, not this untested intermediate commit.
+
 Current stage is validated development, not Production v1.0. The working tree's
 code is committed and backed up in the user-selected GitHub repository. Verify
 actual final SHA with git ls-remote; never infer success from this sentence alone.
