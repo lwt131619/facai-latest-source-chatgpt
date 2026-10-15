@@ -26,11 +26,13 @@ pass() { printf 'PASS: %s\n' "$*"; }
 fail() { printf 'FAIL: %s\n' "$*"; FAIL=1; }
 skip() { printf 'SKIP: %s\n' "$*"; }
 # Ignore comment lines so explanatory text cannot satisfy or break a check.
+# Consume the whole pipe: grep -q can SIGPIPE its producer under pipefail,
+# intermittently treating a real match as a failed deployment check.
 strip_comments() { grep -v -E '^[[:space:]]*#' "$1"; }
-contains() { strip_comments "$1" | grep -q -- "$2"; }
-not_contains() { ! strip_comments "$1" | grep -q -- "$2"; }
-contains_fixed() { strip_comments "$1" | grep -qF -- "$2"; }
-not_contains_fixed() { ! strip_comments "$1" | grep -qF -- "$2"; }
+contains() { strip_comments "$1" | grep -- "$2" >/dev/null; }
+not_contains() { ! strip_comments "$1" | grep -- "$2" >/dev/null; }
+contains_fixed() { strip_comments "$1" | grep -F -- "$2" >/dev/null; }
+not_contains_fixed() { ! strip_comments "$1" | grep -F -- "$2" >/dev/null; }
 
 # --- shell syntax -----------------------------------------------------------
 for sh in "${ROOT}"/deploy/*.sh; do

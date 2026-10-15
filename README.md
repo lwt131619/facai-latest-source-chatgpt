@@ -5,6 +5,12 @@ current stage and pipeline are on the first screen, while mission creation and m
 registration live in collapsible secondary sections. This is a new repository; no prior
 Facai project was modified.
 
+## 本地一键启动（新增）
+
+Windows：双击 `start.bat`；macOS/Linux：`./start.sh`。首次需要 Python 3.10+ 和网络。
+默认打开 http://127.0.0.1:8080，保留既有数据库和调度器。
+登录凭据、Docker 用法和当前交付限制见 [本地交付说明](docs/LOCAL_APPLIANCE.md)。
+
 ## Run
 
 ```powershell

@@ -1,0 +1,15 @@
+services:
+  facai:
+    build: .
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      FACAI_ADMIN_PASSWORD: ${FACAI_ADMIN_PASSWORD:?Set FACAI_ADMIN_PASSWORD in .env before starting}
+      FACAI_DATA_DIR: /app/data
+    volumes:
+      - facai-data:/app/data
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+volumes:
+  facai-data:

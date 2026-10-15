@@ -112,3 +112,26 @@ def protected_server(tmp_path, monkeypatch, playwright_api):
     yield base
     server.should_exit = True
     thread.join(timeout=5)
+
+
+@pytest.fixture(autouse=True)
+def hermetic_model_registration_dns(monkeypatch, request):
+    """Registry/storage tests use fake keys and must not depend on external DNS.
+
+    Keep production SSRF validation active. Only public fixture hostnames in these
+    three storage/isolation modules get a stable public answer; localhost and all
+    explicit SSRF tests retain their own resolver behavior.
+    """
+    if request.module.__name__.split('.')[-1] not in {
+        'test_customer_surface', 'test_tenant_isolation_registries', 'test_user_models'
+    }:
+        return
+    real = socket.getaddrinfo
+    fixture_hosts = {'api.deepseek.com', 'api.openai.com', 'api.anthropic.com', 'example.com'}
+
+    def resolve(host, port, *args, **kwargs):
+        if host in fixture_hosts:
+            return [(socket.AF_INET, socket.SOCK_STREAM, 6, '', ('93.184.216.34', port or 0))]
+        return real(host, port, *args, **kwargs)
+
+    monkeypatch.setattr(socket, 'getaddrinfo', resolve)

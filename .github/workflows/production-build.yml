@@ -1,0 +1,24 @@
+name: FACAI development package
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: python -m pip install -r requirements.txt
+      - run: python -m pytest -q
+      - run: python scripts/package.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FACAI-development-package
+          path: dist/FACAI-v1.0-development.zip*
+          if-no-files-found: error

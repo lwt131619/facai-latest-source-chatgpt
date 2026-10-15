@@ -20,3 +20,5 @@ packaging/app/node_modules/
 packaging/app/dist/
 .zcode/
 *.bak-*
+.venv/
+dist/
