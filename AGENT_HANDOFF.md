@@ -1,3 +1,5 @@
+> 当前用户指定备份仓库：lwt131619/facai-latest-source-chatgpt。公开读取已通；写入仍403，完整代码暂以本地bundle为准。详见docs/GITHUB_AGENT_ACCESS.md。
+
 # FACAI / ICS — 从这里断点续接
 
 先读根 `AGENTS.md`。方向标注已完成；本轮已实际新增Intent预览/修订/确认/独立授权。Setup/Trust仍未实现。
@@ -45,7 +47,7 @@ python scripts/checkpoint.py --message 'Describe verified change' --paths path/t
 ```sh
 git clone -b facai/production-build FACAI-resume.bundle facai-resumed
 cd facai-resumed
-git remote set-url origin https://github.com/lwt131619/facai-cloud-public.git
+git remote set-url origin https://github.com/lwt131619/facai-latest-source-chatgpt.git
 ```
 
 bundle 包含所有已提交历史；未提交文件不在其中，故先检查 dirty=false。
@@ -75,10 +77,19 @@ bundle 包含所有已提交历史；未提交文件不在其中，故先检查 
 - 本功能最终完整回归：1265 passed / 28 skipped / 1上游警告（90.75秒）；原桌面与手机布局2项真实浏览器验收通过。
 - 最新发布结论与缺口：docs/RELEASE_STATUS.md；完整Production仍未完成。
 
-## 用户指定新增备份仓库
+## 历史建库计划（已被下面的新库接入替代）
 
 用户要求新建“最新facai源代码”并上传完整源代码。GitHub不接受中文仓库名，目标为
 `lwt131619/facai-latest-source`，描述“最新 FACAI 源代码”，默认私密。
 已准备 `python scripts/publish_latest_repo.py`：实际POST建库→普通push到新库main→核对SHA，
 凭据仅在进程内。当前建库接口Forbidden，不能标已创建/已同步。旧仓库和历史不删除、不强推。
 该脚本处理已存在的同名私库，不改变可见性，也不覆盖非快进的远端main。
+
+## 新库接入（用户已创建）
+
+用户实际创建facai-latest-source-chatgpt，替代此前待建facai-latest-source计划。
+github-backup.json已更新新库，checkpoint面向新库main及工作分支，保留初始提交与全部源代码历史。
+匿名读取成功；当前Git与连接器写入403，不能说已打开其他Agent写权限或已同步代码。
+
+`publish_latest_repo.py`现为checkpoint兼容入口，不再尝试建旧库/改可见性。新库目标统一读取github-backup.json。
+新增3项同步逻辑测试通过：目标指向新库、两个分支SHA均需一致、拒绝假成功且不持久化凭据。

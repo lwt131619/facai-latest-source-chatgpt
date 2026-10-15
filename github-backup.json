@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "repository": "lwt131619/facai-latest-source-chatgpt",
+  "target_branch": "main",
+  "working_branch": "facai/production-build",
+  "preserve_other_histories": true,
+  "force_push": false
+}

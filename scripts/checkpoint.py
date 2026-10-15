@@ -53,21 +53,40 @@ def checkpoint(message=None, paths=(), validation='not_run', push=True):
               'bundle': bundle.name, 'bundle_verified': True, 'bundle_sha256': bundle_sha256,
               'remote_verified': False, 'push_attempted': push}
     if push:
+        settings_file = ROOT/'github-backup.json'
+        settings = json.loads(settings_file.read_text()) if settings_file.exists() else None
         token = os.environ.get('GH_TOKEN', '')
-        destination = 'origin'
-        if token:
+        if settings:
+            repository = settings['repository']
+            target = settings['target_branch']
+            if repository not in {'lwt131619/facai-latest-source-chatgpt', 'lwt131619/facai-cloud-public'}:
+                raise ValueError('Unapproved backup destination')
+            if not re.fullmatch(r'[A-Za-z0-9._/-]+', target):
+                raise ValueError('Invalid backup branch')
+            origin = 'https://github.com/'+repository+'.git'
+        else:
             origin = git('remote', 'get-url', 'origin').stdout.decode().strip()
-            parts = urlsplit(origin)
-            if (parts.scheme != 'https' or parts.hostname != 'github.com'
-                    or parts.path.rstrip('/') != '/lwt131619/facai-cloud-public.git'):
-                raise ValueError('GH_TOKEN is restricted to the configured FACAI GitHub repository')
+            target = branch
+        parts = urlsplit(origin)
+        if (parts.scheme != 'https' or parts.hostname != 'github.com'
+                or parts.path.rstrip('/') not in {'/lwt131619/facai-cloud-public.git', '/lwt131619/facai-latest-source-chatgpt.git'}):
+            raise ValueError('Credentials are restricted to the configured FACAI repositories')
+        destination = origin
+        if token:
             destination = 'https://x-access-token:'+quote(token, safe='')+'@github.com'+parts.path
+        state_refs = [f'refs/heads/{target}']
+        if target != branch:
+            state_refs.append(f'refs/heads/{branch}')
+        status['repository'] = parts.path.strip('/').removesuffix('.git')
+        status['target_branch'] = target
         status['credential_source'] = 'GH_TOKEN_PROCESS_ONLY' if token else 'INHERITED_GIT'
-        result = git('push', destination, f'HEAD:refs/heads/{branch}', check=False)
+        result = git('push', destination, *[f'HEAD:{ref}' for ref in state_refs], check=False)
         status['push_exit_code'] = result.returncode
         if result.returncode == 0:
-            remote = git('ls-remote', 'origin', f'refs/heads/{branch}', check=False)
-            status['remote_verified'] = remote.returncode == 0 and remote.stdout.decode().split()[:1] == [head]
+            remote = git('ls-remote', origin, *state_refs, check=False)
+            actual = {parts[1]: parts[0] for line in remote.stdout.decode().splitlines()
+                      if len(parts := line.split()) == 2}
+            status['remote_verified'] = remote.returncode == 0 and all(actual.get(ref) == head for ref in state_refs)
         # Never persist or echo raw Git stderr, which may contain credential URLs.
         status['sync_status'] = 'SYNCED' if status['remote_verified'] else 'PUSH_FAILED'
     else:

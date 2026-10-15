@@ -64,7 +64,7 @@
 
 每个可运行阶段提交并核对远端SHA，保留完整Git历史
 
-**现有定位**：`scripts/checkpoint.py`、`AGENT_HANDOFF.md`
+**现有定位**：`scripts/checkpoint.py`、`AGENT_HANDOFF.md`、`github-backup.json`、`docs/GITHUB_AGENT_ACCESS.md`
 
 **验收**：
 
@@ -72,7 +72,7 @@
 - 远端SHA==本地HEAD且remote_verified=true才算已上传
 - 错误不包含凭据，不强推/删库/重建远端
 
-**下一步**：checkpoint已显式采用当前进程GH_TOKEN临时URL凭据且不落配置；该环境GH_TOKEN长度28，真实push仍403。恢复运行时有效凭据后重试并比对SHA。
+**下一步**：用户已建lwt131619/facai-latest-source-chatgpt；读取成功，Git/令牌/连接器写入仍403。恢复包含新库的有效写授权后运行checkpoint，main与工作分支均核对SHA。
 
 ## AUTH-001 — Owner Control与授权分离
 

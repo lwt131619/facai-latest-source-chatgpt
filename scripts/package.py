@@ -7,7 +7,7 @@ import subprocess
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
-ROOT_FILES = ('AGENTS.md', 'AGENT_HANDOFF.md', 'pytest.ini', 'start-opencode.ps1', 'FACAI_CODEX_HANDOFF.md', 'README.md', 'requirements.txt', 'start.sh', 'start.bat', 'Dockerfile',
+ROOT_FILES = ('github-backup.json', 'AGENTS.md', 'AGENT_HANDOFF.md', 'pytest.ini', 'start-opencode.ps1', 'FACAI_CODEX_HANDOFF.md', 'README.md', 'requirements.txt', 'start.sh', 'start.bat', 'Dockerfile',
               'docker-compose.yml', '.env.example', '.dockerignore',
               'FACAI_CURRENT_STATE_REPORT.md', 'ARCHITECTURE_MAP.md',
               'MODULE_INVENTORY.md', 'DEVELOPMENT_PLAN.md')

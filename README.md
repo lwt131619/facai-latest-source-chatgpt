@@ -1,9 +1,12 @@
-# Facai Cloud · Mission Control
+# FACAI 最新源代码 · ICS 开发主仓库
 
 A live Mission Control for isolated missions: the selected mission's real overall progress,
 current stage and pipeline are on the first screen, while mission creation and model
 registration live in collapsible secondary sections. This is a new repository; no prior
 Facai project was modified.
+
+当前用户指定开发与备份仓库：`https://github.com/lwt131619/facai-latest-source-chatgpt`。
+任何 Agent 的读取、推送和续接说明见 [GitHub 接手权限](docs/GITHUB_AGENT_ACCESS.md)。
 
 ## 开发接手与方向冻结
 

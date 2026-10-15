@@ -13,7 +13,7 @@
 ## 正常GitHub接手
 
 ```sh
-git clone --branch facai/production-build https://github.com/lwt131619/facai-cloud-public.git
+git clone --branch facai/production-build https://github.com/lwt131619/facai-latest-source-chatgpt.git
 cd facai-cloud-public
 git status --short
 git log -5 --oneline
@@ -30,7 +30,7 @@ python -m pytest -q
 git bundle verify FACAI-resume.bundle
 git clone --branch facai/production-build FACAI-resume.bundle facai-resumed
 cd facai-resumed
-git remote set-url origin https://github.com/lwt131619/facai-cloud-public.git
+git remote set-url origin https://github.com/lwt131619/facai-latest-source-chatgpt.git
 ```
 
 bundle保留已提交全部历史。开发ZIP是启动/交付包，不能代替Git历史。
@@ -69,3 +69,5 @@ python scripts/checkpoint.py --message 'task-id: verified change' --paths file1 
 任务登记以task-registry.json为单一状态源。修改后执行：
 `python scripts/validate_handoff.py --render`，生成可读对照并校验依赖/源码/入口。
 默认不带参数时若Markdown与JSON不同将失败，避免状态在两份说明间漂移。
+
+新库权限和同步事实见docs/GITHUB_AGENT_ACCESS.md；github-backup.json是当前推送目标单一来源。
