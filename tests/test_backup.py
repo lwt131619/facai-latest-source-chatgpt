@@ -186,12 +186,19 @@ def test_same_second_backups_are_distinct_and_private(tmp_path, monkeypatch):
 
 
 def test_backup_uri_paths_and_incremental_tables_are_rehearsed(tmp_path):
-    root = tmp_path / 'data?# space'
+    # '?' and '#' are legal path characters on POSIX and survive Path.as_uri()
+    # percent-encoding round-trips; Windows forbids both in filenames, so the
+    # URI-stress characters degrade to space + unicode on nt (still non-trivial
+    # for as_uri(), which percent-encodes the non-ASCII).
+    import sys
+    uri_dir = 'data?# space' if sys.platform != 'win32' else 'data space 中文'
+    uri_file = 'snapshot?#.sqlite3' if sys.platform != 'win32' else 'snapshot 中文.sqlite3'
+    root = tmp_path / uri_dir
     seed(root)
     with sqlite3.connect(root / 'facai.sqlite3') as db:
         db.execute('CREATE TABLE "future evidence" (id INTEGER, value TEXT)')
         db.execute('INSERT INTO "future evidence" VALUES (1, ?)', ('preserved',))
-    snapshot = create_backup(root, root / 'snapshot?#.sqlite3')
+    snapshot = create_backup(root, root / uri_file)
     report = drill_backup(root, snapshot)
     assert report['ok']
     assert report['backup_counts']['future evidence'] == 1

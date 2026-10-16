@@ -74,8 +74,25 @@ def _enqueue_independent_jobs(store, count=24):
     return job_ids
 
 
-def _drain(store, schedulers, deadline_seconds=120):
-    """Every worker thread loops run_once() until the fleet has nothing left."""
+def _seed_one_job_per_worker(schedulers):
+    """Deterministic participation: each worker claims one job synchronously
+    before the concurrent free-for-all. run_once() is claim→execute, so on a
+    slow runner one thread can drain the fleet before a peer wakes (observed
+    on ubuntu-latest); the scheduler guarantees no double-claim and capacity
+    honesty, not fair distribution."""
+    for scheduler in schedulers:
+        original = scheduler.concurrency
+        scheduler.concurrency = 1
+        try:
+            scheduler.run_once()
+        finally:
+            scheduler.concurrency = original
+
+
+def _drain(store, schedulers, deadline_seconds=120, seed=False):
+    """Every worker thread loops run_once() until the fleet has nothing left.
+    seed=True first claims one job per worker synchronously (see
+    _seed_one_job_per_worker) so participation is deterministic."""
     def work(scheduler):
         deadline = time.monotonic() + deadline_seconds
         while time.monotonic() < deadline:
@@ -85,6 +102,8 @@ def _drain(store, schedulers, deadline_seconds=120):
             if not done:
                 time.sleep(0.02)
     start = time.monotonic()
+    if seed:
+        _seed_one_job_per_worker(schedulers)
     with ThreadPoolExecutor(max_workers=len(schedulers)) as pool:
         list(pool.map(work, schedulers))
     return time.monotonic() - start
@@ -96,7 +115,7 @@ def test_24_independent_jobs_never_double_claim_and_respect_capacity(tmp_path):
     job_ids = _enqueue_independent_jobs(store, count=24)
     assert len(job_ids) == 24
 
-    elapsed = _drain(store, schedulers)
+    elapsed = _drain(store, schedulers, seed=True)
 
     jobs = {job["id"]: job for job in store.jobs()}
     assert len(jobs) == 24
