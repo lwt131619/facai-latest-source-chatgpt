@@ -17,6 +17,8 @@ from pathlib import Path
 import pytest
 
 MOBILE = Path(__file__).resolve().parents[1] / "facai" / "static" / "mobile.html"
+SW = Path(__file__).resolve().parents[1] / "facai" / "static" / "sw.js"
+MANIFEST = Path(__file__).resolve().parents[1] / "facai" / "static" / "mobile.webmanifest"
 
 # 外链白名单：与 tests/test_customer_surface.py 的静态面扫描同口径。
 ALLOWED_HOSTS = {"whstapp.lol", "api.deepseek.com", "github.com", "www.w3.org",
@@ -118,3 +120,24 @@ def test_mobile_surface_leaks_no_credential_shapes(html):
 def test_mobile_external_hosts_stay_on_allowlist(html):
     hosts = set(re.findall(r"https?://([A-Za-z0-9.-]+)", html))
     assert hosts <= ALLOWED_HOSTS, f"mobile 页出现白名单外域名：{hosts - ALLOWED_HOSTS}"
+
+
+def test_mobile_files_tab_wires_the_real_artifacts_center(html):
+    """文件 Tab 必须真的调产物中心端点（不再是占位 stub）。"""
+    assert "apiRequest('GET', '/api/v1/artifacts')" in html, "文件 Tab 要接 GET /api/v1/artifacts"
+    assert "产物中心待接" not in html, "旧的待接占位文案必须清掉"
+
+
+def test_mobile_pwa_install_chain_is_wired(html):
+    """手机页自身的安装链：独立 manifest + https/secure-context 门控的 SW 注册。"""
+    assert '<link rel="manifest" href="/static/mobile.webmanifest">' in html, \
+        "手机页挂独立 mobile.webmanifest，不再复用指向桌面台的根 manifest"
+    assert "'serviceWorker' in navigator" in html and "navigator.serviceWorker.register" in html, \
+        "手机页必须自己注册 /sw.js（不能只靠 / 与 /login 顺带覆盖）"
+    manifest = MANIFEST.read_text(encoding="utf-8")
+    assert '"start_url": "/static/mobile.html"' in manifest or "'start_url': '/static/mobile.html'" in manifest, \
+        "独立 manifest 的 start_url 必须指向手机页自身"
+    sw = SW.read_text(encoding='utf-8')
+    assert '"/static/mobile.html"' in sw, "SHELL 必须含手机页，否则已装 SW 的设备离线打不开手机页"
+    assert '"facai-shell-v2"' in sw, "SHELL 变更必须伴随 CACHE 版本升级（activate 才会清 v1）"
+    assert '"/api/"' in sw and "respondWith" in sw, "/api/ 一律直穿不缓存，仅外壳回退缓存"

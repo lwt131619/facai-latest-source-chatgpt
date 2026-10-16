@@ -453,7 +453,10 @@ class Store:
         return bool(removed)
 
     def connect(self):
-        db = sqlite3.connect(self.database, timeout=10)
+        # 30s busy timeout: an 8-thread fleet on one store (test_eventbus) can
+        # out-wait a 10s lock wait on a slow runner; this only extends how long
+        # SQLite WAITS for the lock, it never holds it longer.
+        db = sqlite3.connect(self.database, timeout=30)
         db.row_factory = sqlite3.Row
         db.execute("PRAGMA foreign_keys=ON")
         # WAL lets scheduler threads, the web layer and the digest job read and
