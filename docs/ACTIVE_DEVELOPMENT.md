@@ -1,3 +1,12 @@
+## Desktop current full regression
+
+2026-10-16 source code after fa0b798 and Electron wiring tests: Python suite
+1364 passed /6 skipped /0 failed with real Chromium,225.02 seconds. Node suite
+8 passed /0 failed, including a real backend process and mocked Electron
+window lifecycle. Bundle/ZIP validation pending next artifact commit. Exact
+source hashes and unverified platform items:docs/validation/desktop-increment.json.
+GitHub Actions status has not been independently checked this turn.
+
 Electron integration wiring checks added after backend test: mocked Electron
 window verified local Owner setup URL and stop-on-quit; remote window verified
 same-origin boundaries. Node total8 passed /0 failed. First test run exposed a
