@@ -1,3 +1,7 @@
+Agent entry now explicitly requires upstream comparison before edits, protects
+diverged work, and marks03434f4 handoff as integrated historical context.
+Local launcher + backup tests:20 passed /0 failed; full Chromium regression running.
+
 Local backup launchers added with independent source/working-directory handling;
 package allowlist includes both launchers and scripts. Linux subprocess tests
 exercise actual snapshot+restore drill and failure on missing database; Windows
