@@ -1,3 +1,13 @@
+## Skill observed usage WIP
+
+Skill execution attribution now records the resolved skill version and omits
+skill_id when a bound skill was disabled/removed before dispatch. Owner-scoped
+GET /api/v1/registries/skills/{key}/usage aggregates only terminal CLI/model
+events with a resolved skill name, across versions and soft deletion. It reports
+execution status, not causal skill effectiveness or semantic verification.
+Focused skill/isolation/execution/registry tests: 61 passed /0 failed. UI
+integration and full post-change regression remain pending at this checkpoint.
+
 ## Reprompt audit provenance
 
 JOB_REPROMPTED now links the exact FEEDBACK_RESOLVED event and gate while

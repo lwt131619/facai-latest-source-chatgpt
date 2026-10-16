@@ -804,6 +804,51 @@ class Store:
             rows = db.execute("SELECT * FROM events WHERE mission_id=? AND sequence>? ORDER BY sequence", (mission_id, after))
             return [{**dict(row), "payload": json.loads(row["payload"])} for row in rows]
 
+    def skill_usage(self, skill_id, owner_id="admin", recent_limit=20):
+        """Observed terminal CLI/model outcomes for one owner's resolved skill.
+
+        Count only events with a runtime-resolved skill name. A mission binding
+        alone is not proof that a disabled/removed skill was used. This is an
+        execution-outcome measure, not a claim that the skill caused success or
+        that its output passed semantic verification.
+        """
+        from .gateway import OUTCOMES
+        types = ("OPENCODE_COMPLETED", "OPENCODE_FAILED", "OPENCODE_TIMEOUT", *OUTCOMES)
+        placeholders = ",".join("?" for _ in types)
+        source = (
+            " FROM events e JOIN missions m ON m.id=e.mission_id"
+            " WHERE m.owner_id=? AND e.type IN (" + placeholders + ")"
+            " AND json_extract(e.payload,'$.skill_id')=?"
+            " AND json_type(e.payload,'$.skill_name')='text'")
+        params = (owner_id, *types, skill_id)
+        with self.connect() as db:
+            rows = db.execute(
+                "SELECT e.type AS status, json_extract(e.payload,'$.skill_version')"
+                " AS version, COUNT(*) AS count" + source +
+                " GROUP BY e.type, version ORDER BY version, e.type", params).fetchall()
+            recent = db.execute(
+                "SELECT e.id AS event_id, e.mission_id, e.step_id, e.type AS status,"
+                " e.occurred_at, json_extract(e.payload,'$.skill_version') AS version"
+                + source + " ORDER BY e.sequence DESC LIMIT ?",
+                (*params, max(1, min(int(recent_limit), 100)))).fetchall()
+        by_status, by_version = {}, {}
+        for row in rows:
+            count = row["count"]
+            by_status[row["status"]] = by_status.get(row["status"], 0) + count
+            version = row["version"]
+            version_group = by_version.setdefault(version, {"version": version,
+                                                            "observed_results": 0})
+            version_group["observed_results"] += count
+        observed = sum(by_status.values())
+        completed = by_status.get("OPENCODE_COMPLETED", 0) + by_status.get("MODEL_COMPLETED", 0)
+        return {"skill_id": skill_id, "source": "resolved_skill_terminal_events",
+                "observed_results": observed, "completed": completed,
+                "other_outcomes": observed - completed,
+                "completion_rate": completed / observed if observed else None,
+                "by_status": by_status, "by_version": list(by_version.values()),
+                "recent": [dict(row) for row in recent],
+                "limitation": "Execution terminal status only; not semantic verification or skill causal impact."}
+
     def events_for_owner(self, owner_id, after=0):
         """The Event Bus spine: every event of every mission one owner owns,
         in one global sequence — multi-client replay and live subscription

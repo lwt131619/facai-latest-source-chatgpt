@@ -414,3 +414,55 @@ class TestDisabledSkillApiSurface:
         _register_via_import(client)
         client.delete("/api/v1/registries/skills/code-review")
         assert "code-review" not in client.get("/api/v1/registries/skills").json()
+
+
+class TestSkillUsage:
+    def test_attribution_requires_resolved_skill_and_captures_version(self):
+        from facai.execution import mission_attribution
+        mission = {"skill_id": "code-review", "agent_id": "opencode"}
+        assert "skill_id" not in mission_attribution(mission, {}, skill=None)
+        active = mission_attribution(mission, {}, skill={
+            "name": "code-review", "version": "1.2.0"})
+        assert active["skill_id"] == "code-review"
+        assert active["skill_version"] == "1.2.0"
+
+    def test_usage_counts_only_resolved_outcomes_by_owner_and_version(self, tmp_path):
+        store = Store(tmp_path)
+        own = store.create("Own", "request", ["step"], owner_id="admin")["id"]
+        other = store.create("Other", "request", ["step"], owner_id="tenant")["id"]
+        for mission_id, status, payload in [
+            (own, "OPENCODE_STARTED", {"skill_id": "code-review", "skill_name": "code-review"}),
+            (own, "OPENCODE_COMPLETED", {"skill_id": "code-review", "skill_name": "code-review",
+                                             "skill_version": "1.2.0"}),
+            (own, "MODEL_RATE_LIMITED", {"skill_id": "code-review", "skill_name": "code-review",
+                                           "skill_version": "2.0.0"}),
+            (own, "OPENCODE_FAILED", {"skill_id": "code-review"}),
+            (other, "OPENCODE_COMPLETED", {"skill_id": "code-review", "skill_name": "code-review"}),
+        ]:
+            store.append(mission_id, status, payload)
+        usage = store.skill_usage("code-review", owner_id="admin")
+        assert usage["observed_results"] == 2
+        assert usage["completed"] == 1
+        assert usage["other_outcomes"] == 1
+        assert usage["completion_rate"] == 0.5
+        assert {row["version"]: row["observed_results"] for row in usage["by_version"]} \
+            == {"1.2.0": 1, "2.0.0": 1}
+        assert {row["mission_id"] for row in usage["recent"]} == {own}
+        assert store.skill_usage("code-review", owner_id="missing")["completion_rate"] is None
+
+    def test_usage_endpoint_survives_soft_remove_without_cross_tenant_leak(self, tmp_path, monkeypatch):
+        client = _admin_client(tmp_path, monkeypatch)
+        _register_via_import(client)
+        store = client.app.state.store
+        mission_id = store.create("Review", "request", ["step"], owner_id="admin")["id"]
+        store.append(mission_id, "OPENCODE_COMPLETED", {
+            "skill_id": "code-review", "skill_name": "code-review", "skill_version": "1.2.0"})
+        path = "/api/v1/registries/skills/code-review/usage"
+        assert client.get(path).json()["observed_results"] == 1
+        assert client.delete("/api/v1/registries/skills/code-review").status_code == 200
+        assert client.get(path).json()["observed_results"] == 1
+        tenant = client.post("/api/v1/auth/register", json={
+            "username": "usage-tenant", "password": "usage-pass-1234"})
+        assert tenant.status_code == 201
+        client.headers.update({"X-CSRF-Token": tenant.json()["csrf_token"]})
+        assert client.get(path).status_code == 404

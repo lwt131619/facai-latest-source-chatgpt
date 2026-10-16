@@ -67,8 +67,11 @@ def mission_attribution(mission, model, runtime=None, skill=None, model_ref=None
         "runtime_kind": runtime.get("kind"),
         "runtime_provider": runtime.get("provider"),
         "runtime_location": runtime.get("location"),
-        "skill_id": mission.get("skill_id"),
+        # A bound but disabled/removed skill resolves to None at dispatch.
+        # Do not report it as used merely because the mission still names it.
+        "skill_id": mission.get("skill_id") if skill else None,
         "skill_name": skill.get("name"),
+        "skill_version": skill.get("version"),
     }
     return {key: value for key, value in attribution.items() if value is not None}
 

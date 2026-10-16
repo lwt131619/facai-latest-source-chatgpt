@@ -190,7 +190,7 @@ Users/Owner/Agents/Skills/Missions/Executions/Events/Evidence/Claims/Artifacts/K
 
 发现/安装/版本/依赖/调用/更新/禁用/移除/审查与效果记录
 
-**现有定位**：`facai/skills.py`、`facai/distill.py`、`facai/boundary.py`、`facai/registries.py`
+**现有定位**：`facai/skills.py`、`facai/distill.py`、`facai/boundary.py`、`facai/registries.py`、`facai/store.py`、`facai/execution.py`、`facai/api.py`、`tests/test_skill_lifecycle.py`
 
 **验收**：
 
@@ -198,7 +198,7 @@ Users/Owner/Agents/Skills/Missions/Executions/Events/Evidence/Claims/Artifacts/K
 - 保留已有有效行为，相关回归及失败路径测试通过
 - 验证命令/结果/提交与外部局限写入交接记录
 
-**下一步**：版本落库/禁用生效(conversion打分+API执行+scheduler派发三路同口径dispatchable_skill)/软删tombstone+三端点(启用/软删/审计)已入库,boundary journal记SKILL_DISABLED/ENABLED/REMOVED。下一步:skill_usage聚合(④)、版本感知更新previous_version/sha(⑤)、依赖字段(⑥)。
+**下一步**：版本落库、禁用三路生效、软删tombstone及治理日志已入库。/registries/skills/{key}/usage 从实际解析Skill的终态执行事件按Owner与版本汇总，不把绑定或成功状态误认验证；统计入口需接控制台。下一步:版本感知更新previous_version/sha、依赖字段、Skill效果与人工验收分层。
 
 ## ROUTER-001 — 能力到Agent/Skill/Tool路由
 

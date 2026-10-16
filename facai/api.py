@@ -2564,6 +2564,19 @@ def create_app(data_dir=None, opencode_adapter=None, goose_adapter=None):
             raise HTTPException(404, "Skill not deleted or not found")
         return tombstone
 
+    @app.get("/api/v1/registries/skills/{key}/usage")
+    def skill_usage(key: str):
+        """Owner-scoped observed execution outcomes, including old versions.
+
+        A tombstoned skill retains its usage history; the endpoint never calls
+        a model or infers effectiveness from a successful CLI exit status.
+        """
+        owner = current_owner()
+        if (registries.resolve("skills", key, owner_id=owner) is None
+                and store.registry_tombstone("skills", key, owner_id=owner) is None):
+            raise HTTPException(404, "Skill not found")
+        return store.skill_usage(key, owner_id=owner)
+
     # 任务详情上的技能解析走 enabled 闸：禁用技能在详情/执行面解析为未绑定
     # （与 conversion 打分口径一致；scheduler 派发点由主会话接入）。
 
