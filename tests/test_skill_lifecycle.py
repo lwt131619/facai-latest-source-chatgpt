@@ -425,6 +425,7 @@ class TestSkillUsage:
             "name": "code-review", "version": "1.2.0"})
         assert active["skill_id"] == "code-review"
         assert active["skill_version"] == "1.2.0"
+        assert active["skill_invocation_verified"] is False
 
     def test_usage_counts_only_resolved_outcomes_by_owner_and_version(self, tmp_path):
         store = Store(tmp_path)
@@ -445,6 +446,8 @@ class TestSkillUsage:
         assert usage["completed"] == 1
         assert usage["other_outcomes"] == 1
         assert usage["completion_rate"] == 0.5
+        assert usage["skill_invocation_verified"] is False
+        assert usage["source"] == "resolved_skill_attributed_terminal_events"
         assert {row["version"]: row["observed_results"] for row in usage["by_version"]} \
             == {"1.2.0": 1, "2.0.0": 1}
         assert {row["mission_id"] for row in usage["recent"]} == {own}

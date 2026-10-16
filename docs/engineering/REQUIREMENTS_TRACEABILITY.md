@@ -198,7 +198,7 @@ Users/Owner/Agents/Skills/Missions/Executions/Events/Evidence/Claims/Artifacts/K
 - 保留已有有效行为，相关回归及失败路径测试通过
 - 验证命令/结果/提交与外部局限写入交接记录
 
-**下一步**：版本落库、禁用三路生效、软删tombstone及治理日志已入库。/registries/skills/{key}/usage 从实际解析Skill的终态事件按Owner与版本汇总，指挥中心技能卡可按需查看真实调用统计并声明非语义验收。下一步:版本感知更新previous_version/sha、依赖字段、Skill效果与人工验收分层。
+**下一步**：版本落库、禁用三路生效、软删tombstone及治理日志已入库。/registries/skills/{key}/usage 与指挥中心只展示按Owner/版本聚合的已解析Skill元数据执行归因；当前SKILL.md正文未传给运行时，不得称真实调用。下一步优先接通Owner控制下的Skill正文保存/执行与版本锁定，再做版本感知更新previous_version/sha、依赖字段、效果验收。
 
 ## ROUTER-001 — 能力到Agent/Skill/Tool路由
 

@@ -1,10 +1,21 @@
+## Skill attribution semantics correction
+
+Audit found that SKILL.md import persists metadata only; no adapter loads the
+body. The new /usage endpoint therefore explicitly reports resolved-skill
+attributed terminal events, with skill_invocation_verified=false. The Command
+Center labels these as attribution and says Skill body execution is unverified.
+Actual version-locked Skill body storage/invocation is the next engineering
+gap, not claimed complete. Full regression before this wording/metadata-only
+correction: 1427 passed /7 skipped /0 failed with real Chromium, 267.49s on
+d338b3c. Focused regression after correction is recorded separately.
+
 ## Skill observed usage WIP
 
 Skill execution attribution now records the resolved skill version and omits
 skill_id when a bound skill was disabled/removed before dispatch. Owner-scoped
-GET /api/v1/registries/skills/{key}/usage aggregates only terminal CLI/model
-events with a resolved skill name, across versions and soft deletion. It reports
-execution status, not causal skill effectiveness or semantic verification.
+GET /api/v1/registries/skills/{key}/usage aggregates terminal CLI/model events
+attributed to resolved skill metadata, across versions and soft deletion. It
+does not prove actual Skill invocation, causal effectiveness or verification.
 Focused skill/isolation/execution/registry tests: 61 passed /0 failed. Command
 Center skill cards now fetch this owner-scoped endpoint on demand; a real
 Chromium drawer test plus lifecycle suite passed 34/34. It labels terminal

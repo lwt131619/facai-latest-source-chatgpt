@@ -52,8 +52,9 @@ def opencode_model_ref(model):
 def mission_attribution(mission, model, runtime=None, skill=None, model_ref=None):
     """The provider/model/runtime/skill identity attached to every task event.
 
-    The console reads these exact fields, so a stage always shows which upstream
-    provider, model, execution location and skill produced the result.
+    The console reads these exact fields. Skill fields currently identify
+    resolved registry metadata; importing a SKILL.md does not yet connect its
+    body to the adapter, so attribution cannot certify skill invocation.
     """
     model = model or {}
     runtime = runtime or {}
@@ -72,6 +73,7 @@ def mission_attribution(mission, model, runtime=None, skill=None, model_ref=None
         "skill_id": mission.get("skill_id") if skill else None,
         "skill_name": skill.get("name"),
         "skill_version": skill.get("version"),
+        "skill_invocation_verified": False if skill else None,
     }
     return {key: value for key, value in attribution.items() if value is not None}
 

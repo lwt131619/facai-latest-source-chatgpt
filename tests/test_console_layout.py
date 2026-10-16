@@ -651,7 +651,8 @@ def test_skill_usage_drawer_reads_owner_scoped_results(console_server, playwrigh
         page.locator("#reg").click()
         page.locator('button[data-skill="code-review"]').click()
         usage = page.locator('[data-usage-for="code-review"]')
-        usage.get_by_text("实际终态 0", exact=False).wait_for()
+        usage.get_by_text("归因终态 0", exact=False).wait_for()
+        assert "Skill 正文执行未验证" in usage.inner_text()
         assert "运行完成不代表事实已验证" in usage.inner_text()
         browser.close()
 

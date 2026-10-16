@@ -406,7 +406,7 @@ async function openRegistry(){
       const version = entry.version ? ` · v${esc(entry.version)}` : " · 版本未记录";
       const disabled = entry.enabled === false ? " · 已禁用" : "";
       return `<div class="item"><b>${esc(entry.name || k)}</b>${version}${disabled}` +
-        `<button class="facai-btn" type="button" data-skill="${esc(k)}">查看调用</button>` +
+        `<button class="facai-btn" type="button" data-skill="${esc(k)}">查看执行归因</button>` +
         `<div class="skill-usage" data-usage-for="${esc(k)}"></div></div>`;
     }).join("") : `<div class="item">（空）</div>`);
   let matrixHtml = "";
@@ -431,15 +431,16 @@ async function openRegistry(){
   box.querySelectorAll("button[data-skill]").forEach(btn => {
     btn.onclick = async () => {
       const target = btn.parentElement.querySelector(".skill-usage");
-      target.textContent = "读取实际执行记录…";
+      target.textContent = "读取执行归因记录…";
       try {
         const usage = await api(`/api/v1/registries/skills/${encodeURIComponent(btn.dataset.skill)}/usage`);
         const versions = usage.by_version.map(v =>
           `${v.version || "未记录版本"}: ${v.observed_results}`).join(" · ");
-        target.textContent = `实际终态 ${usage.observed_results} · 运行完成 ${usage.completed}` +
+        target.textContent = `归因终态 ${usage.observed_results} · 运行完成 ${usage.completed}` +
           ` · 其他结果 ${usage.other_outcomes}` +
-          (versions ? ` · ${versions}` : "") + "。运行完成不代表事实已验证。";
-      } catch (err) { target.textContent = `调用记录读取失败：${err.message}`; }
+          (versions ? ` · ${versions}` : "") +
+          "。Skill 正文执行未验证；运行完成不代表事实已验证。";
+      } catch (err) { target.textContent = `归因记录读取失败：${err.message}`; }
     };
   });
   box.querySelectorAll("button[data-act]").forEach(btn => {

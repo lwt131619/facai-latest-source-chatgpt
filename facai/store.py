@@ -805,12 +805,12 @@ class Store:
             return [{**dict(row), "payload": json.loads(row["payload"])} for row in rows]
 
     def skill_usage(self, skill_id, owner_id="admin", recent_limit=20):
-        """Observed terminal CLI/model outcomes for one owner's resolved skill.
+        """Terminal CLI/model outcomes attributed to resolved skill metadata.
 
         Count only events with a runtime-resolved skill name. A mission binding
-        alone is not proof that a disabled/removed skill was used. This is an
-        execution-outcome measure, not a claim that the skill caused success or
-        that its output passed semantic verification.
+        alone is not proof that a disabled/removed skill was resolved. The
+        runtime does not yet load SKILL.md body, so these counts cannot be
+        presented as actual skill invocations or effectiveness.
         """
         from .gateway import OUTCOMES
         types = ("OPENCODE_COMPLETED", "OPENCODE_FAILED", "OPENCODE_TIMEOUT", *OUTCOMES)
@@ -841,13 +841,14 @@ class Store:
             version_group["observed_results"] += count
         observed = sum(by_status.values())
         completed = by_status.get("OPENCODE_COMPLETED", 0) + by_status.get("MODEL_COMPLETED", 0)
-        return {"skill_id": skill_id, "source": "resolved_skill_terminal_events",
+        return {"skill_id": skill_id, "source": "resolved_skill_attributed_terminal_events",
                 "observed_results": observed, "completed": completed,
                 "other_outcomes": observed - completed,
                 "completion_rate": completed / observed if observed else None,
+                "skill_invocation_verified": False,
                 "by_status": by_status, "by_version": list(by_version.values()),
                 "recent": [dict(row) for row in recent],
-                "limitation": "Execution terminal status only; not semantic verification or skill causal impact."}
+                "limitation": "Registry attribution only: SKILL.md body was not invoked; terminal status is not semantic verification."}
 
     def events_for_owner(self, owner_id, after=0):
         """The Event Bus spine: every event of every mission one owner owns,

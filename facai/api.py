@@ -2566,10 +2566,10 @@ def create_app(data_dir=None, opencode_adapter=None, goose_adapter=None):
 
     @app.get("/api/v1/registries/skills/{key}/usage")
     def skill_usage(key: str):
-        """Owner-scoped observed execution outcomes, including old versions.
+        """Owner-scoped outcomes attributed to skill metadata, across versions.
 
-        A tombstoned skill retains its usage history; the endpoint never calls
-        a model or infers effectiveness from a successful CLI exit status.
+        A tombstoned skill retains attribution history. This does not prove
+        the SKILL.md body ran; the adapter is not yet wired to load it.
         """
         owner = current_owner()
         if (registries.resolve("skills", key, owner_id=owner) is None
