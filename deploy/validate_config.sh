@@ -199,9 +199,13 @@ http {
     fastcgi_temp_path ${tmp}/fastcgi_temp;
     uwsgi_temp_path ${tmp}/uwsgi_temp;
     scgi_temp_path ${tmp}/scgi_temp;
-    include ${HTTP_CONF};
+    include ${tmp}/http-copy.conf;
 }
 EOF
+  # The -t copies listen on unprivileged ports: `nginx -t` still opens listen
+  # sockets, and a non-root CI runner cannot bind 80/443. The REAL port
+  # contract is asserted textually above; this check is about config validity.
+  sed -E '/listen/ { s/\b80\b/18080/g; s/\b443\b/18443/g; }' "$HTTP_CONF" > "$tmp/http-copy.conf"
   if nginx -t -c "$tmp/nginx-http.conf" -p "$tmp" >"$tmp/http-check.log" 2>&1; then
     pass "nginx -t accepts the HTTP bootstrap"
   else
@@ -213,7 +217,8 @@ EOF
     openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
       -keyout "$tmp/certs/privkey.pem" -out "$tmp/certs/fullchain.pem" \
       -subj "/CN=${DOMAIN}" >/dev/null 2>&1
-    sed -E "s#/etc/letsencrypt/live/[^/]+/#${tmp}/certs/#g" "$TLS_CONF" > "$tmp/tls.conf"
+    sed -E "s#/etc/letsencrypt/live/[^/]+/#${tmp}/certs/#g" \
+      -e '/listen/ { s/\b80\b/18080/g; s/\b443\b/18443/g; }' "$TLS_CONF" > "$tmp/tls.conf"
     cat > "$tmp/nginx-tls.conf" <<EOF
 pid ${tmp}/logs/nginx.pid;
 error_log ${tmp}/logs/error.log;

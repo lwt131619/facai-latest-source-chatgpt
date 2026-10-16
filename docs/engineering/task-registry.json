@@ -331,7 +331,7 @@
     "线程/CLI进程/模型并发分别计量，OpenCode默认串行不默默移除",
     "同任务分支隔离/超时/失败/取消/结果幂等有证据"
    ],
-   "next_action": "受控适配器实测+车队上限修复已入库(d28e996):24独立任务/4worker零双重认领;FACAI_MAX_RUNNING_JOBS三层确定性测试钉死。真实CLI实弹已入库(scripts/smoke_local.py 11/11两连跑;scripts/smoke_fleet.py 16/16):4真实任务经真实uvicorn并发派发(FACAI_MAX_WORKERS=4,OPENCODE_SERIAL=0),6.5秒全部COMPLETED,每任务恰好1次OPENCODE_STARTED(零双重认领)/6条OUTPUT/产物f0-f3.txt内容逐一精确匹配/4行成本记账;单任务19事件链(OPENCODE_STARTED→OUTPUT×6→ARTIFACT_CREATED→COST_RECORDED/COST_PRICED→GIT_CHECKPOINT→JOB_COMPLETED)。剩余:真实CLI的崩溃恢复与更大规模(20+)并发验收(需真实配额支撑);调度并发2/上限8/同任务3不变。"
+   "next_action": "受控适配器实测+车队上限修复已入库(d28e996):24独立任务/4worker零双重认领;FACAI_MAX_RUNNING_JOBS三层确定性测试钉死。真实CLI实弹已入库(scripts/smoke_local.py 11/11两连跑;scripts/smoke_fleet.py 16/16:4真实任务并发派发6.5秒全COMPLETED,零双重认领,产物逐一精确匹配,4行成本记账)。真实CLI崩溃恢复实弹已入库(scripts/smoke_recovery.py 8/8):死worker以已过期租约认领后消失→peer恢复恰好重排一次(JOB_REQUEUED事件钉住,attempts 0→1)→真CLI补跑COMPLETED,恰好1次OPENCODE_STARTED,产物r0.txt内容精确匹配,1行成本记账。剩余:20+真实并发规模(需真实配额支撑);调度并发2/上限8/同任务3不变。"
   },
   {
    "id": "OPS-001",
