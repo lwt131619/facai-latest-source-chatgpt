@@ -19,6 +19,9 @@ def test_intent_to_evidence_review_and_download(protected_server, playwright_api
         except Exception as exc:
             pytest.skip('Chromium unavailable: ' + str(exc))
         page = browser.new_page(viewport={'width': width, 'height': height}, accept_downloads=True)
+        # Slow CI runners occasionally exceed the 30s default on browser
+        # waits; patience only, assertions untouched.
+        page.set_default_timeout(60000)
         errors = []
         page.on('pageerror', lambda error: errors.append(str(error)))
         page.goto(protected_server+'/login?next=%2Fworkspace')

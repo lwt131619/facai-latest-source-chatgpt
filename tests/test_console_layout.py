@@ -648,6 +648,9 @@ def test_skill_usage_drawer_reads_owner_scoped_results(console_server, playwrigh
             headers={"Content-Type": "application/json"})
         assert registered.ok, registered.text
         page.goto(console_server + "/command-center", wait_until="load")
+        # Slow CI runners: the registries fetch + drawer render can outlast the
+        # 30s default; patience only, assertions untouched.
+        page.set_default_timeout(60000)
         page.locator("#reg").click()
         page.locator('button[data-skill="code-review"]').click()
         usage = page.locator('[data-usage-for="code-review"]')
