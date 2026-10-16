@@ -7,8 +7,10 @@ Channel model-conversion fallback now records a CONVERSION_FALLBACK mission
 event in the same transaction as mission creation, with only model id, error
 class and deterministic fallback source. PROMPT_CONVERTED also carries these
 provenance fields. No-model conversion creates no false fallback event.
-Focused conversion/router tests: 55 passed /0 failed. Full regression after
-this change: NOT_RUN. Native package remains NOT_VERIFIED.
+Focused conversion/router tests: 55 passed /0 failed. Full regression on
+a38808b: 1423 passed /7 skipped /0 failed with real Chromium, 242.72 seconds.
+Machine-readable details: docs/validation/takeover-582f3d8.json. Native
+package remains NOT_VERIFIED.
 
 ## Bundled desktop source WIP
 

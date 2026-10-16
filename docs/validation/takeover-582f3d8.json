@@ -1,0 +1,26 @@
+{
+  "status": "PARTIAL_NOT_PRODUCTION",
+  "upstream_integrated": "582f3d8106798d70695bbfd09bba22055ab5cef6",
+  "tested_source_commit": "a38808b0c29602ecc8ea164ba0aa63b5781729f1",
+  "date_utc": "2026-10-16",
+  "full_python_regression": {
+    "command": "FACAI_TEST_CHROMIUM=/usr/bin/chromium /workspace/facai-venv/bin/python -m pytest -q",
+    "passed": 1423,
+    "skipped": 7,
+    "failed": 0,
+    "seconds": 242.72,
+    "real_chromium_enabled": true
+  },
+  "node_desktop_regression": {
+    "passed": 12,
+    "failed": 0,
+    "scope": "bundled source simulation and Electron wiring stub; before 582f3d8 Python changes"
+  },
+  "handoff_registry": "27 directions validated; no dependency cycles",
+  "not_verified": [
+    "GitHub Actions result for this commit",
+    "real paid provider scale",
+    "native Windows/macOS installer and bundled Python",
+    "VPS deployment and complete Production v1.0 acceptance"
+  ]
+}
