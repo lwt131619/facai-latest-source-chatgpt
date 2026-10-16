@@ -5,8 +5,11 @@ skill_id when a bound skill was disabled/removed before dispatch. Owner-scoped
 GET /api/v1/registries/skills/{key}/usage aggregates only terminal CLI/model
 events with a resolved skill name, across versions and soft deletion. It reports
 execution status, not causal skill effectiveness or semantic verification.
-Focused skill/isolation/execution/registry tests: 61 passed /0 failed. UI
-integration and full post-change regression remain pending at this checkpoint.
+Focused skill/isolation/execution/registry tests: 61 passed /0 failed. Command
+Center skill cards now fetch this owner-scoped endpoint on demand; a real
+Chromium drawer test plus lifecycle suite passed 34/34. It labels terminal
+execution success separately from factual verification. Full post-change
+regression remains pending at this checkpoint.
 
 ## Reprompt audit provenance
 

@@ -100,6 +100,8 @@
   .regdrawer h3{margin:var(--sp-3) 0 var(--sp-2);font-size:var(--fs-sm);color:var(--mut);}
   .regdrawer .item{padding:6px 8px;font-size:var(--fs-xs);border-radius:var(--r-sm);
                    background:var(--panel);margin-bottom:4px;color:var(--txt);}
+  .regdrawer .skill-usage{font-size:var(--fs-2xs);color:var(--mut);margin-top:5px;
+                          line-height:1.5;overflow-wrap:anywhere;}
   .pool{padding:8px 10px;border-radius:var(--r-sm);background:var(--panel);
         margin-bottom:6px;font-size:var(--fs-xs);}
   .pool .prow{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-2);}
@@ -397,6 +399,16 @@ async function openRegistry(){
         `<div class="item">${esc(nameOf(entries[k]) || k)}</div>`).join("")
         : `<div class="item">（空）</div>`);
   };
+  const skillKeys = Object.keys(skills || {});
+  const skillHtml = `<h3>技能 SKILLS · ${skillKeys.length}</h3>` +
+    (skillKeys.length ? skillKeys.map(k => {
+      const entry = skills[k] || {};
+      const version = entry.version ? ` · v${esc(entry.version)}` : " · 版本未记录";
+      const disabled = entry.enabled === false ? " · 已禁用" : "";
+      return `<div class="item"><b>${esc(entry.name || k)}</b>${version}${disabled}` +
+        `<button class="facai-btn" type="button" data-skill="${esc(k)}">查看调用</button>` +
+        `<div class="skill-usage" data-usage-for="${esc(k)}"></div></div>`;
+    }).join("") : `<div class="item">（空）</div>`);
   let matrixHtml = "";
   if (matrix && matrix.pools) {
     const order = matrix.route_order || Object.keys(matrix.pools);
@@ -414,8 +426,22 @@ async function openRegistry(){
   box.innerHTML =
     `<button class="facai-btn close" onclick="document.getElementById('regdrawer').classList.remove('show')">收起</button>` +
     matrixHtml +
-    section("技能 SKILLS", skills, v => v.name) +
+    skillHtml +
     section("案例 CASES", cases, v => v.title);
+  box.querySelectorAll("button[data-skill]").forEach(btn => {
+    btn.onclick = async () => {
+      const target = btn.parentElement.querySelector(".skill-usage");
+      target.textContent = "读取实际执行记录…";
+      try {
+        const usage = await api(`/api/v1/registries/skills/${encodeURIComponent(btn.dataset.skill)}/usage`);
+        const versions = usage.by_version.map(v =>
+          `${v.version || "未记录版本"}: ${v.observed_results}`).join(" · ");
+        target.textContent = `实际终态 ${usage.observed_results} · 运行完成 ${usage.completed}` +
+          ` · 其他结果 ${usage.other_outcomes}` +
+          (versions ? ` · ${versions}` : "") + "。运行完成不代表事实已验证。";
+      } catch (err) { target.textContent = `调用记录读取失败：${err.message}`; }
+    };
+  });
   box.querySelectorAll("button[data-act]").forEach(btn => {
     btn.onclick = async () => {
       const m = btn.dataset.m;

@@ -280,6 +280,7 @@
         "facai/store.py",
         "facai/execution.py",
         "facai/api.py",
+        "facai/static/command-center.html",
         "tests/test_skill_lifecycle.py"
       ],
       "goal": "发现/安装/版本/依赖/调用/更新/禁用/移除/审查与效果记录",
@@ -288,7 +289,7 @@
         "保留已有有效行为，相关回归及失败路径测试通过",
         "验证命令/结果/提交与外部局限写入交接记录"
       ],
-      "next_action": "版本落库、禁用三路生效、软删tombstone及治理日志已入库。/registries/skills/{key}/usage 从实际解析Skill的终态执行事件按Owner与版本汇总，不把绑定或成功状态误认验证；统计入口需接控制台。下一步:版本感知更新previous_version/sha、依赖字段、Skill效果与人工验收分层。"
+      "next_action": "版本落库、禁用三路生效、软删tombstone及治理日志已入库。/registries/skills/{key}/usage 从实际解析Skill的终态事件按Owner与版本汇总，指挥中心技能卡可按需查看真实调用统计并声明非语义验收。下一步:版本感知更新previous_version/sha、依赖字段、Skill效果与人工验收分层。"
     },
     {
       "id": "ROUTER-001",

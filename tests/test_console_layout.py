@@ -635,6 +635,27 @@ def test_model_matrix_renders_real_stats_columns_and_watermark_note():
     assert "cooldown_base_s" in html and "cooldown_max_s" in html
 
 
+def test_skill_usage_drawer_reads_owner_scoped_results(console_server, playwright_api):
+    """The skill card fetches observed usage; empty history stays explicitly zero."""
+    with playwright_api.sync_playwright() as p:
+        browser = _launch(p)
+        page = browser.new_page(viewport={"width": 1440, "height": 900})
+        registered = page.request.put(
+            console_server + "/api/v1/registries/skills/code-review",
+            data=json.dumps({"name": "code-review", "description": "Review code",
+                             "version": "1.2.0", "source_url": "https://github.com/example/review",
+                             "license": "MIT", "review_status": "approved"}),
+            headers={"Content-Type": "application/json"})
+        assert registered.ok, registered.text
+        page.goto(console_server + "/command-center", wait_until="load")
+        page.locator("#reg").click()
+        page.locator('button[data-skill="code-review"]').click()
+        usage = page.locator('[data-usage-for="code-review"]')
+        usage.get_by_text("实际终态 0", exact=False).wait_for()
+        assert "运行完成不代表事实已验证" in usage.inner_text()
+        browser.close()
+
+
 def test_mobile_me_tab_keeps_channel_binding_form_an_honest_static_demo():
     """mobile.html「我的」区绑定入口：与总控台同名的表单必须存在、凭据框
     type=password、真实 API 以注释位标注；整个页面保持零 fetch 的静态演示
