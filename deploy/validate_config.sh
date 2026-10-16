@@ -217,7 +217,7 @@ EOF
     openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
       -keyout "$tmp/certs/privkey.pem" -out "$tmp/certs/fullchain.pem" \
       -subj "/CN=${DOMAIN}" >/dev/null 2>&1
-    sed -E "s#/etc/letsencrypt/live/[^/]+/#${tmp}/certs/#g" \
+    sed -E -e "s#/etc/letsencrypt/live/[^/]+/#${tmp}/certs/#g" \
       -e '/listen/ { s/\b80\b/18080/g; s/\b443\b/18443/g; }' "$TLS_CONF" > "$tmp/tls.conf"
     cat > "$tmp/nginx-tls.conf" <<EOF
 pid ${tmp}/logs/nginx.pid;
