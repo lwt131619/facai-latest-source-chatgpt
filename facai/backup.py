@@ -1,12 +1,10 @@
 """Verified SQLite backup and restore for the Facai data directory.
 
-This backs up the mission database (missions, steps, events, sessions,
-artifacts, checkpoints, costs, jobs and registries). Registry values reference
-credentials by environment-variable name only, so no raw key is stored or
-copied by a backup.
-
-Workspace files and artifacts live on disk outside the database and are not
-included here; copy them separately if a full workspace restore is required.
+This copies all SQLite tables, including encrypted model credentials. It does
+not include master.key, local-owner.json, environment credentials or workspace
+files; those require a separate private backup. Restore must run with all
+FACAI processes stopped. Database integrity is not proof of complete appliance
+recovery or availability of external providers.
 """
 
 import argparse
@@ -33,23 +31,30 @@ def create_backup(data_dir, dest=None):
     if not source_file.exists():
         raise FileNotFoundError(f"No database at {source_file}")
     if dest is None:
-        dest = root / "backups" / f"facai-{_timestamp()}.sqlite3"
+        directory = root / 'backups'
+        directory.mkdir(parents=True, exist_ok=True)
+        dest = _unique_path(directory, f'facai-{_timestamp()}.sqlite3')
     dest = Path(dest).resolve()
+    if dest == source_file:
+        raise ValueError('Backup destination must differ from the live database')
     dest.parent.mkdir(parents=True, exist_ok=True)
-    source = sqlite3.connect(source_file)
-    target = sqlite3.connect(dest)
+    # Reserve a private new file. Never clobber a prior snapshot, including when
+    # a caller supplies a destination that another process has just created.
+    fd = os.open(dest, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    os.close(fd)
     try:
-        with target:
-            source.backup(target)  # consistent online snapshot
-    finally:
-        source.close()
-        target.close()
+        _snapshot_database(source_file, dest)
+        if not verify_backup(dest)['ok']:
+            raise ValueError('Created backup failed integrity verification')
+    except BaseException:
+        _discard_staged(dest)
+        raise
     return dest
 
 
 def _snapshot_database(source_path, dest_path):
     """Copy a live SQLite database consistently, including pending journal data."""
-    source = sqlite3.connect(source_path, timeout=10)
+    source = sqlite3.connect(Path(source_path).resolve().as_uri() + "?mode=ro", uri=True, timeout=10)
     target = sqlite3.connect(dest_path, timeout=10)
     try:
         source.backup(target)
@@ -62,7 +67,7 @@ def verify_backup(backup_path):
     backup_path = Path(backup_path).resolve()
     if not backup_path.exists():
         return {"ok": False, "reason": "missing", "path": str(backup_path)}
-    connection = sqlite3.connect(f"file:{backup_path}?mode=ro", uri=True)
+    connection = sqlite3.connect(backup_path.as_uri() + "?mode=ro", uri=True)
     try:
         tables = {row[0] for row in connection.execute(
             "SELECT name FROM sqlite_master WHERE type='table'")}
@@ -164,12 +169,14 @@ def restore_backup(data_dir, backup_path):
 
 
 def _counts(database):
-    connection = sqlite3.connect(f"file:{Path(database).resolve()}?mode=ro", uri=True)
+    connection = sqlite3.connect(Path(database).resolve().as_uri() + "?mode=ro", uri=True)
     try:
         present = {row[0] for row in connection.execute(
             "SELECT name FROM sqlite_master WHERE type='table'")}
-        return {table: connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
-                for table in COUNTABLE_TABLES if table in present}
+        # Include incremental schemas (Intent, evidence, claims, knowledge,
+        # permissions) rather than a frozen legacy table allowlist.
+        return {table: connection.execute('SELECT COUNT(*) FROM "' + table.replace('"', '""') + '"').fetchone()[0]
+                for table in sorted(present) if not table.startswith('sqlite_')}
     finally:
         connection.close()
 
@@ -178,7 +185,8 @@ def drill_backup(data_dir, dest=None):
     """Rehearse a full restore into a throwaway directory.
 
     Takes a verified backup, restores it somewhere temporary and compares row
-    counts against the live database. The live database is never modified and no
+    counts against that immutable snapshot. Live drift is informational, not
+    restore corruption. The live database is never modified and no
     credential value is read or printed: only table names and counts are reported.
     """
     live = Path(data_dir).resolve() / "facai.sqlite3"
@@ -188,17 +196,23 @@ def drill_backup(data_dir, dest=None):
     report = verify_backup(backup)
     if not report["ok"]:
         return {"ok": False, "stage": "verify", "backup": str(backup), **report}
+    backup_counts = _counts(backup)
     live_counts = _counts(live)
     rehearsal = Path(tempfile.mkdtemp(prefix="facai-drill-"))
     try:
         restored = restore_backup(rehearsal, backup)
         restored_counts = _counts(restored)
-        mismatches = {table: (live_counts.get(table, 0), restored_counts.get(table, 0))
-                      for table in COUNTABLE_TABLES
-                      if live_counts.get(table, 0) != restored_counts.get(table, 0)}
+        mismatches = {table: (backup_counts.get(table), restored_counts.get(table))
+                      for table in sorted(backup_counts.keys() | restored_counts.keys())
+                      if backup_counts.get(table) != restored_counts.get(table)}
+        live_drift = {table: (backup_counts.get(table), live_counts.get(table))
+                      for table in sorted(backup_counts.keys() | live_counts.keys())
+                      if backup_counts.get(table) != live_counts.get(table)}
         return {"ok": not mismatches, "stage": "restore", "backup": str(backup),
                 "restored": str(restored), "live_counts": live_counts,
-                "restored_counts": restored_counts, "mismatches": mismatches}
+                "restored_counts": restored_counts, "backup_counts": backup_counts,
+                "mismatches": mismatches, "live_drift": live_drift,
+                "scope": "DATABASE_ONLY", "secrets_and_workspace_restored": False}
     finally:
         shutil.rmtree(rehearsal, ignore_errors=True)
 
@@ -218,18 +232,23 @@ def main(argv=None):
     if args.command == "create":
         path = create_backup(args.data_dir, args.dest)
         print(_manifest(path))
+        return 0 if verify_backup(path)['ok'] else 1
     elif args.command == "verify":
         if not args.dest:
             parser.error("--dest is required for verify")
         print(_manifest(args.dest))
+        return 0 if verify_backup(args.dest)['ok'] else 1
     elif args.command == "restore":
         if not args.dest:
             parser.error("--dest is required for restore")
         restored = restore_backup(args.data_dir, args.dest)
         print(f"Restored {args.dest} -> {restored}")
+        return 0
     else:
-        print(json.dumps(drill_backup(args.data_dir, args.dest), ensure_ascii=False, indent=2))
+        report = drill_backup(args.data_dir, args.dest)
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+        return 0 if report['ok'] else 1
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

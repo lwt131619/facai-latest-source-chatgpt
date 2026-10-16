@@ -1,3 +1,15 @@
+## Recovery increment after overlap check
+
+Fetched origin/main and confirmed 9b49940 already includes external03434f4 and
+all six follow-up commits. No new upstream changes or overlap were found.
+Database backup now reserves private snapshots without clobbering existing files,
+handles URI-special filenames, validates created snapshots, and cleans failed
+snapshots. Recovery drills compare against the immutable backup, report live
+write drift separately, and count incremental tables including evidence/knowledge.
+CLI verify/drill failure returns nonzero. Focused backup suite: 14 passed.
+Scope is DATABASE_ONLY; key/config/workspaces are not claimed restored.
+This is the next increment, not covered by the prior1355-pass full regression.
+
 ## Latest complete regression: 1355 passed / 6 skipped / 0 failures
 
 2026-10-16: real Chromium enabled; full suite completed in 184.22 seconds on

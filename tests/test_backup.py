@@ -142,8 +142,10 @@ def test_restore_drill_reports_count_drift(tmp_path):
     # directory, so counts must match the backup, not the mutated live database.
     store.create('快照之后', 'x', ['开发'])
     report = drill_backup(tmp_path, dest=backup)
-    assert report['ok'] is False
+    assert report['ok'] is True
     assert report['restored_counts']['missions'] == 1
+    assert report['backup_counts']['missions'] == 1
+    assert report['live_drift']['missions'] == (1, 2)
 
 
 def test_backup_contains_no_raw_api_keys(tmp_path):
@@ -155,3 +157,68 @@ def test_backup_contains_no_raw_api_keys(tmp_path):
     with sqlite3.connect(backup) as db:
         values = ' '.join(str(row[0]) for row in db.execute("SELECT value FROM registries"))
     assert 'api_key_env' in values and 'sk-' not in values
+
+
+def test_backup_does_not_overwrite_live_or_existing_snapshot(tmp_path):
+    store, _ = seed(tmp_path)
+    live = tmp_path / 'facai.sqlite3'
+    with pytest.raises(ValueError, match='live database'):
+        create_backup(tmp_path, live)
+    snapshot = create_backup(tmp_path)
+    original = snapshot.read_bytes()
+    store.create('新任务', '原话', ['测试'])
+    with pytest.raises(FileExistsError):
+        create_backup(tmp_path, snapshot)
+    assert snapshot.read_bytes() == original
+    assert len(store.list()) == 2
+
+
+def test_same_second_backups_are_distinct_and_private(tmp_path, monkeypatch):
+    seed(tmp_path)
+    monkeypatch.setattr(backup_module, '_timestamp', lambda: 'same-second')
+    first = create_backup(tmp_path)
+    second = create_backup(tmp_path)
+    assert first != second
+    assert verify_backup(first)['ok'] and verify_backup(second)['ok']
+    if backup_module.os.name != 'nt':
+        assert first.stat().st_mode & 0o077 == 0
+        assert second.stat().st_mode & 0o077 == 0
+
+
+def test_backup_uri_paths_and_incremental_tables_are_rehearsed(tmp_path):
+    root = tmp_path / 'data?# space'
+    seed(root)
+    with sqlite3.connect(root / 'facai.sqlite3') as db:
+        db.execute('CREATE TABLE "future evidence" (id INTEGER, value TEXT)')
+        db.execute('INSERT INTO "future evidence" VALUES (1, ?)', ('preserved',))
+    snapshot = create_backup(root, root / 'snapshot?#.sqlite3')
+    report = drill_backup(root, snapshot)
+    assert report['ok']
+    assert report['backup_counts']['future evidence'] == 1
+    assert report['restored_counts']['future evidence'] == 1
+    assert report['scope'] == 'DATABASE_ONLY'
+    assert report['secrets_and_workspace_restored'] is False
+
+
+def test_backup_cli_failure_has_nonzero_exit_code(tmp_path):
+    import subprocess
+    import sys
+    missing = tmp_path / 'missing.sqlite3'
+    result = subprocess.run([sys.executable, '-m', 'facai.backup', 'verify', '--dest', str(missing)],
+                            capture_output=True, text=True)
+    assert result.returncode == 1
+    assert '"ok": false' in result.stdout
+
+
+def test_failed_online_backup_removes_reserved_destination(tmp_path, monkeypatch):
+    seed(tmp_path)
+    destination = tmp_path / 'failed.sqlite3'
+
+    def fail(*args):
+        raise OSError('disk failure')
+
+    monkeypatch.setattr(backup_module, '_snapshot_database', fail)
+    with pytest.raises(OSError, match='disk failure'):
+        create_backup(tmp_path, destination)
+    assert not destination.exists()
+    assert len(Store(tmp_path).list()) == 1
