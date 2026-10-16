@@ -1,0 +1,37 @@
+{
+  "status": "DEVELOPMENT_NOT_PRODUCTION",
+  "tested_code_commit": "bfda07dfc1574ac1a485d22def29a7c6ac7793fc",
+  "documentation_commit_at_completion": "89c427c470e409699f95ec55e9becfb23a764006",
+  "full_regression": {
+    "tests": "1369",
+    "failures": "0",
+    "errors": "0",
+    "skipped": "6",
+    "time": "221.503"
+  },
+  "passed": 1363,
+  "real_chromium_enabled": true,
+  "focused_backup_launcher_tests": 20,
+  "backup_scope": "DATABASE_ONLY",
+  "verified": [
+    "private non-overwriting snapshots",
+    "incremental database tables restored",
+    "informational live drift",
+    "CLI failure status",
+    "actual POSIX launcher subprocess",
+    "snapshot integrity and isolated restore drill"
+  ],
+  "not_verified": [
+    "full appliance key/config/workspace recovery",
+    "Windows/macOS native launchers",
+    "VPS deployment",
+    "real provider 20+ concurrency"
+  ],
+  "source_sha256": {
+    "facai/backup.py": "a1a0c5636a43474a750a29d1cd08343eb5e3637290a82a1dafc618f8574286c4",
+    "scripts/backup_local.py": "4f09a1a4f86fdc124868ed7f64961ae0465f038750c3c480ec43d2b39d8035df",
+    "backup.sh": "ccb94fa395339db60bb570473381ecd926d934311c5b0e0c32662e27e5d4da1a",
+    "backup.bat": "98a03c90fde2d6858def09786ba4952af9388189fc3ef7012d7b43f013fe97a8",
+    "tests/test_backup.py": "bb9fd5c39a0c9905c5db46bff1df4b30bc84cfab0177dbc56d455d4dbbc509bc"
+  }
+}

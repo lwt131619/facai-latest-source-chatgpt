@@ -1,3 +1,12 @@
+## Latest full regression:1363 passed /6 skipped /0 failures
+
+2026-10-16 recovery increment, real Chromium enabled,221.55 seconds.
+Code tested:bfda07d; subsequent89c427c changes agent-entry documentation only.
+Exact runtime/launcher hashes and limitations:docs/validation/recovery-increment.json.
+20 related backup/launcher tests passed, including real POSIX launcher subprocess.
+No full-appliance key/config/workspace restoration or VPS/Windows/macOS claim.
+UPDATE-001 remains PARTIAL. Rebuilt package metadata identifies its own source SHA.
+
 Agent entry now explicitly requires upstream comparison before edits, protects
 diverged work, and marks03434f4 handoff as integrated historical context.
 Local launcher + backup tests:20 passed /0 failed; full Chromium regression running.
