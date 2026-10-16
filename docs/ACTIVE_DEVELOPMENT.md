@@ -104,3 +104,16 @@ byte-identical tails. EVENT-001's registry entry now records what is actually
 built (vocabulary validation, owner-scoped cursor replay, SSE contract, legacy
 pass-through, isolation, auth) and the one honest remainder: new paths switch
 to canonical names when the first client consumes them — not before.
+
+## Delivery package rebuilt and QA-verified at a871959 (takeover agent, 2026-10-16)
+
+scripts/package.py rebuilt dist/FACAI-v1.0-development.zip from the current
+tree (408 files) and scripts/verify_package.py passed independently: archive
+and manifest hashes verified per file, the packaged validate_handoff runs
+clean (27 directions, no cycles, all required files present), and the QA
+record pins package_source_commit=a871959 with source_manifest_verified=true.
+One honest finding from the pass: editing task-registry.json without rerunning
+validate_handoff.py --render makes the in-package handoff check fail (it
+should — the traceability doc was stale); the render step is now part of the
+flow. PKG-001 keeps PARTIAL: Windows is exercised constantly (start chain,
+smokes, package QA), macOS and cross-device/VPS acceptance remain open.

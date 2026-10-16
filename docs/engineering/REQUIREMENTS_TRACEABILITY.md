@@ -156,7 +156,7 @@ Users/Owner/Agents/Skills/Missions/Executions/Events/Evidence/Claims/Artifacts/K
 - 保留已有有效行为，相关回归及失败路径测试通过
 - 验证命令/结果/提交与外部局限写入交接记录
 
-**下一步**：定义规范核心事件与旧事件映射，新增路径同事务写事件，补游标重放/幂等
+**下一步**：已建成并有测试钉死(tests/test_eventbus.py 8例三连绿):规范词表CANONICAL_TYPES写入端校验(publish拒绝未知类型/非dict)、owner级全局流(events_for_owner)、/api/v1/events?after=与SSE流同光标契约、legacy类型原样流过、跨owner隔离、端点鉴权;新增并发追加测试:8线程24事件全局序号严格有序无重复,同光标双客户端重放逐字节一致(幂等)。剩余:首批消费端出现时把新路径的发布切到规范名(现无客户端消费CamelCase,不预先改语义)。
 
 ## PKG-001 — 一键启动与交付包
 
@@ -170,7 +170,7 @@ Users/Owner/Agents/Skills/Missions/Executions/Events/Evidence/Claims/Artifacts/K
 - 保留前面已验证的启动/Docker/持久化能力
 - 新说明/备份脚本进入包；Windows/macOS分开实测
 
-**下一步**：已实现一键Owner初始化/恢复、原生和容器内部重启验证、ZIP逐文件哈希与全包解压测试；继续完成Windows/macOS和宿主跨设备/VPS验收，不将开发包标Production。
+**下一步**：已实现一键Owner初始化/恢复、原生和容器内部重启验证、ZIP逐文件哈希与全包解压测试。2026-10-16接管代理在a871959重建交付包并独立QA通过(scripts/package.py + verify_package.py):408文件archive+manifest逐文件哈希一致,包内validate_handoff 27方向无环全文件在位,package_source_commit=a871959,source_manifest_verified=true(包重建即源码快照)。过程发现并修正:改task-registry.json后必须--render重生成REQUIREMENTS_TRACEABILITY,否则包内handoff校验如实失败。剩余:Windows/macOS分开实测(Windows已多次本地实跑:start链路+冒烟+包验证)、宿主跨设备/VPS交付验收(阻塞于SSH),不将开发包标Production。
 
 ## MODEL-001 — 多Provider/多Key模型资源池
 
@@ -226,7 +226,7 @@ Users/Owner/Agents/Skills/Missions/Executions/Events/Evidence/Claims/Artifacts/K
 - 线程/CLI进程/模型并发分别计量，OpenCode默认串行不默默移除
 - 同任务分支隔离/超时/失败/取消/结果幂等有证据
 
-**下一步**：默认并发2/上限8/同任务3、OpenCode默认串行；先解决缺worktree时共享工作区fallback的并行隔离，再做容量/租约/配额与真实20+执行测试。不能只改线程上限宣布完成。
+**下一步**：受控适配器实测+车队上限修复已入库(d28e996):24独立任务/4worker零双重认领;FACAI_MAX_RUNNING_JOBS三层确定性测试钉死。真实CLI实弹已入库(scripts/smoke_local.py 11/11两连跑;scripts/smoke_fleet.py 16/16):4真实任务经真实uvicorn并发派发(FACAI_MAX_WORKERS=4,OPENCODE_SERIAL=0),6.5秒全部COMPLETED,每任务恰好1次OPENCODE_STARTED(零双重认领)/6条OUTPUT/产物f0-f3.txt内容逐一精确匹配/4行成本记账;单任务19事件链(OPENCODE_STARTED→OUTPUT×6→ARTIFACT_CREATED→COST_RECORDED/COST_PRICED→GIT_CHECKPOINT→JOB_COMPLETED)。剩余:真实CLI的崩溃恢复与更大规模(20+)并发验收(需真实配额支撑);调度并发2/上限8/同任务3不变。
 
 ## OPS-001 — Command Center与实时流水线
 
@@ -268,7 +268,7 @@ Evidence Collector→Claim Normalizer→Source Trust→Conflict→Confidence
 - 四类冲突与无法分类样例可测试
 - 不能A!=B就无依据判一方正确
 
-**下一步**：已实现明确规范化subject/predicate/value及四维上下文比较，四类冲突和缺上下文REVIEW有测试；后续补自然语言同义/时间区间推理和可审计冲突解决。 已补Owner带理由撤回（生命周期独立于分类），保留原断言/证据/冲突历史，不通过删除证据解除争议。
+**下一步**：classify_conflict 四维合约已由 tests/test_conflict_semantics.py 钉死(13例:不可比/TEMPORAL/SCOPE含environment映射/SEMANTIC/多维报告/双端缺失即REVIEW/空串视为缺失/仅同上下文才DIRECT_CONFLICT/对称性)。剩余:把TrustStore.add_claim的冲突事件流与/evidence-center控制台的展示接线补验收证据。
 
 ## PROOF-001 — Proof Artifact与Owner接受
 
