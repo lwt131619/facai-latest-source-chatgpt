@@ -21,6 +21,10 @@ jobs:
       - run: python -m pip install -r requirements.txt
       - run: python -m pip install playwright
       - run: python -m playwright install --with-deps chromium
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: node --test packaging/app/test/*.test.js
       - run: python -m pytest -q --junitxml=dist/pytest.xml
       - uses: actions/upload-artifact@v4
         if: always()

@@ -1,12 +1,15 @@
-// FACAI 桌面客户端：Electron 壳加载 https://whstapp.lol
-// 打包：cd packaging/app && npm install && npm run dist
-const { app, BrowserWindow, shell, Menu } = require("electron");
+// FACAI desktop: remote compatibility by default; source checkout can start a local service.
+const { app, BrowserWindow, shell, Menu, dialog } = require("electron");
 const path = require("path");
 const { isInternal, mayOpenExternal } = require("./navigation");
+const { startLocalService } = require("./local-runtime");
 
 const HOME = "https://whstapp.lol";
 
-function createWindow() {
+let localService = null;
+let stopping = false;
+
+function createWindow(home = HOME, target = home) {
   const win = new BrowserWindow({
     width: 1380,
     height: 900,
@@ -23,15 +26,16 @@ function createWindow() {
     },
   });
 
-  win.loadURL(HOME);
+  win.loadURL(target);
 
   // 外链一律走系统浏览器，客户端永远留在工作台内
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (!isInternal(url, HOME) && mayOpenExternal(url)) shell.openExternal(url);
+    if (isInternal(url, home)) win.loadURL(url);
+    else if (mayOpenExternal(url)) shell.openExternal(url);
     return { action: "deny" };
   });
   win.webContents.on("will-navigate", (event, url) => {
-    if (!isInternal(url, HOME)) {
+    if (!isInternal(url, home)) {
       event.preventDefault();
       if (mayOpenExternal(url)) shell.openExternal(url);
     }
@@ -40,11 +44,36 @@ function createWindow() {
 
 Menu.setApplicationMenu(null); // 干净应用窗，无菜单栏
 
-app.whenReady().then(() => {
-  createWindow();
-  app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
-  });
+app.whenReady().then(async () => {
+  try {
+    if (process.env.FACAI_DESKTOP_MODE === "local") {
+      localService = await startLocalService();
+      localService.child.once("exit", () => {
+        if (!stopping) {
+          dialog.showErrorBox("FACAI 本地服务已停止", "本地服务意外退出；请检查 Python 环境后重新打开 FACAI。");
+          app.quit();
+        }
+      });
+      createWindow(localService.home, localService.url);
+    } else {
+      createWindow();
+    }
+    app.on("activate", () => {
+      if (BrowserWindow.getAllWindows().length === 0) {
+        createWindow(localService ? localService.home : HOME);
+      }
+    });
+  } catch (error) {
+    dialog.showErrorBox("FACAI 本地服务启动失败", error.message);
+    app.quit();
+  }
+});
+
+app.on("before-quit", (event) => {
+  if (!localService || stopping) return;
+  event.preventDefault();
+  stopping = true;
+  localService.stop().finally(() => app.quit());
 });
 
 app.on("window-all-closed", () => {

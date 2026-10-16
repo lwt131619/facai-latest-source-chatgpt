@@ -3,6 +3,13 @@
 先读AGENTS.md → FACAI_CODEX_HANDOFF.md → docs/engineering/CORE_INVARIANTS.md。
 源码、Git历史、任务登记表和实测报告优先于历史聊天及旧VPS上线描述。
 
+## Desktop本地源码模式增量
+
+`packaging/app`有Electron本地模式，先阅读docs/LOCAL_APPLIANCE.md。
+实测Linux Node启动真实FACAI、打开Owner向导、关闭服务并释放8080。
+已修远程窗口相似域名前缀误判；安装包尚未内嵌Python/源码，Windows/macOS
+native安装包未认证，DESKTOP-001保持PARTIAL。
+
 ## 恢复交付增量
 
 backup.sh / backup.bat 提供本地数据库备份与隔离恢复演练，不修改在线数据。

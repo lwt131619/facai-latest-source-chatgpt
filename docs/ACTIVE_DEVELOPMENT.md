@@ -1,3 +1,10 @@
+Desktop source mode increment: Electron can start the existing Python launcher
+from a source checkout, wait for loopback health, receive a one-use setup URL
+only via its private child stdout pipe, and stop its child on quit. Remote mode
+still works. Node tests start a real API process and check failure cases:
+6 passed. Native Electron installer/browser lifecycle on Windows/macOS remains
+NOT_VERIFIED; installed Electron package currently omits bundled Python/source.
+
 ## Desktop increment WIP
 
 Fresh fetch:4381ef9 equals origin/main; clean baseline. Electron navigation now

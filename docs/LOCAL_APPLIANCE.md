@@ -24,7 +24,15 @@ Docker：复制 .env.example 为 .env，设置强 FACAI_ADMIN_PASSWORD，然后
 不要加 `-v`（会删除数据库卷）。健康检查只证明 API 可响应。
 
 手机跨设备访问需要单独部署 HTTPS 反向代理，参照 DEPLOYMENT.md；默认仅本机访问。
-Electron 当前仍为远程站点客户端。本入口不是 FACAI Production v1.0 完整验收声明。
+Electron 源码本地模式：进入 `packaging/app`，先 `npm install`，运行
+`npm run start:local`。窗口会启动当前源码树的 Python/FACAI 服务，确认本机
+127.0.0.1:8080 就绪后打开 Owner 首次向导；已有 Owner 则打开控制台。
+关闭应用会停止由本次窗口启动的服务。8080 被占用、Python 丢失或源码缺失时会
+显示错误，不会连接其他进程。需要指定源码树或 Python 时分别设置
+`FACAI_SOURCE_DIR` / `FACAI_DESKTOP_PYTHON`，用户数据仍由 FACAI_DATA_DIR 管理。
+未启用本地模式的 Electron 保留已有远程站点行为。现有 Electron 安装包仍不内嵌
+Python 和 FACAI 源码；Windows/macOS 本地安装包与完整生命周期需平台实测，
+不能把本机源码模式认作正式离线发行版。本入口不是 Production v1.0 验收声明。
 
 开发包：`python scripts/package.py` 生成 dist/FACAI-v1.0-development.zip，
 包含源文件 SHA-256 清单和压缩包校验文件。使用显式文件清单，不打包 data/、

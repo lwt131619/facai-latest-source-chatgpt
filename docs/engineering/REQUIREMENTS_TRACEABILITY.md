@@ -330,7 +330,7 @@ Evidence Collector→Claim Normalizer→Source Trust→Conflict→Confidence
 
 启动软件即有可操作本地FACAI服务
 
-**现有定位**：`packaging/app/main.js`、`packaging/app/package.json`、`scripts/start.py`
+**现有定位**：`packaging/app/main.js`、`packaging/app/package.json`、`scripts/start.py`、`packaging/app/local-runtime.js`、`packaging/app/navigation.js`、`packaging/app/start-local.js`、`packaging/app/test/local-runtime.test.js`、`packaging/app/test/navigation.test.js`
 
 **验收**：
 
@@ -338,7 +338,7 @@ Evidence Collector→Claim Normalizer→Source Trust→Conflict→Confidence
 - 保留已有有效行为，相关回归及失败路径测试通过
 - 验证命令/结果/提交与外部局限写入交接记录
 
-**下一步**：现Electron仅远程站点壳；增加本地模式/生命周期/端口检测，再实测native安装包
+**下一步**：Electron源码本地模式已调用原生启动器、等待8080健康、传递一次性Owner向导入口、退出停服务；远程模式保留。Linux真实后端Node测试6通过；继续Windows/macOS native安装包资源内嵌、生命周期和端口冲突平台验收。
 
 ## UPDATE-001 — 跨平台更新/备份/迁移/回滚
 

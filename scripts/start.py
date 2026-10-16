@@ -62,6 +62,7 @@ def main():
     parser = argparse.ArgumentParser(description='Start existing FACAI on localhost')
     parser.add_argument('--port', type=int, default=8080)
     parser.add_argument('--no-browser', action='store_true')
+    parser.add_argument('--desktop-handoff', action='store_true', help=argparse.SUPPRESS)
     args = parser.parse_args()
     if not 1 <= args.port <= 65535:
         parser.error('port must be between 1 and 65535')
@@ -85,11 +86,15 @@ def main():
     env['FACAI_DATA_DIR'] = str(data)
     url = 'http://127.0.0.1:'+str(args.port)
     print('FACAI: '+url+' — Ctrl+C stops the server. Model/runtime configuration is still required.', flush=True)
+    target = url
+    if env.get('FACAI_BOOTSTRAP_TOKEN'):
+        target += '/setup#bootstrap=' + env['FACAI_BOOTSTRAP_TOKEN']
+    if args.desktop_handoff:
+        # Only a directly spawned desktop process should request this pipe line.
+        # The URL fragment carries a one-time key: never write it to logs/files.
+        print('FACAI_DESKTOP_TARGET=' + target, flush=True)
     process = subprocess.Popen([str(python), '-m', 'uvicorn', 'facai.api:app', '--host', '127.0.0.1', '--port', str(args.port)], cwd=ROOT, env=env)
     if not args.no_browser:
-        target = url + '/setup'
-        if env.get('FACAI_BOOTSTRAP_TOKEN'):
-            target += '#bootstrap=' + env['FACAI_BOOTSTRAP_TOKEN']
         threading.Thread(target=open_when_ready, args=(url, process, target), daemon=True).start()
     try:
         return process.wait()

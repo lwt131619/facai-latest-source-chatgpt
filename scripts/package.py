@@ -23,6 +23,7 @@ def build():
     files.update(p for p in (ROOT/'vendor').rglob('*') if p.is_file() and p.suffix in {'.md', '.json'})
     files.update(p for p in (ROOT/'docs').rglob('*') if p.is_file() and p.suffix in {'.md', '.json'})
     files.update(p for p in (ROOT/'packaging/app').glob('*') if p.is_file() and p.suffix in {'.js', '.json', '.md', '.ps1', '.png'})
+    files.update((ROOT/'packaging/app/test').glob('*.js'))
     files.update((ROOT/'.github/workflows').glob('*.yml'))
     files.add(ROOT/'docs/LOCAL_APPLIANCE.md')
     files.add(ROOT/'docs/BUILD_VALIDATION_2026-10-15.md')

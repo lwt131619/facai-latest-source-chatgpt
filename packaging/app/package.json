@@ -7,7 +7,9 @@
   "license": "UNLICENSED",
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder --win --x64"
+    "start:local": "node start-local.js",
+    "dist": "electron-builder --win --x64",
+    "test": "node --test test/*.test.js"
   },
   "devDependencies": {
     "electron": "^31.0.0",
@@ -16,10 +18,25 @@
   "build": {
     "appId": "com.facai.workstation",
     "productName": "FACAI",
-    "directories": { "output": "dist" },
-    "files": ["main.js", "navigation.js", "icon.png"],
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "navigation.js",
+      "local-runtime.js",
+      "start-local.js",
+      "icon.png"
+    ],
     "win": {
-      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
       "icon": "icon.png"
     },
     "nsis": {
