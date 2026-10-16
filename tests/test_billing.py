@@ -13,6 +13,7 @@ rather than having a split invented for it.
 """
 
 import json
+import os
 import sqlite3
 
 import pytest
@@ -230,7 +231,7 @@ def test_console_billing_panel_shows_the_frozen_unit_prices(console_server, play
     """The 我的账单 panel quotes the frozen rates it received, never a local guess."""
     with playwright_api.sync_playwright() as p:
         try:
-            browser = p.chromium.launch()
+            browser = p.chromium.launch(args=['--no-sandbox'], **({'executable_path': os.environ['FACAI_TEST_CHROMIUM']} if os.getenv('FACAI_TEST_CHROMIUM') else {}))
         except Exception as exc:  # browser binary not installed
             pytest.skip(f"Playwright chromium unavailable: {exc}")
         page = browser.new_page(viewport={"width": 1280, "height": 900})

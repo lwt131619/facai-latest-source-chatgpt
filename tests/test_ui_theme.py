@@ -8,13 +8,14 @@ Playwright or its browser is unavailable so the core suite stays runnable.
 """
 
 import json
+import os
 
 import pytest
 
 
 def _launch(playwright):
     try:
-        return playwright.chromium.launch()
+        return playwright.chromium.launch(args=['--no-sandbox'], **({'executable_path': os.environ['FACAI_TEST_CHROMIUM']} if os.getenv('FACAI_TEST_CHROMIUM') else {}))
     except Exception as exc:  # browser binary not installed
         pytest.skip(f"Playwright chromium unavailable: {exc}")
 

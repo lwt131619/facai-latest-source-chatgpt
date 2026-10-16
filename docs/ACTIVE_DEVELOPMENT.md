@@ -1,3 +1,9 @@
+CI portability fixes: model-registration DNS fixtures now include mission control;
+three browser launch sites support FACAI_TEST_CHROMIUM and container flags;
+shared browser servers hand an already bound socket to uvicorn, removing the
+bind/close/rebind race. Real Chromium focused suite: 52 passed, 0 failed.
+Mobile execution-assignment/resource-summary UI is next WIP, not covered by that run.
+
 Mobile follow-up: real Chromium artifact ownership/inert preview/download/logout
 passed. Offline shell test exposed all-or-nothing cache.addAll failure when / is
 401 before login; installation now caches each shell resource independently.

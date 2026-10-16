@@ -8,6 +8,7 @@ active, and the endpoint sits behind the dashboard's authentication.
 """
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -219,7 +220,7 @@ def test_console_fetches_panel_for_the_dashboard_user(tmp_path, monkeypatch):
 
 def _launch(playwright):
     try:
-        return playwright.chromium.launch()
+        return playwright.chromium.launch(args=['--no-sandbox'], **({'executable_path': os.environ['FACAI_TEST_CHROMIUM']} if os.getenv('FACAI_TEST_CHROMIUM') else {}))
     except Exception as exc:  # browser binary not installed
         pytest.skip(f"Playwright chromium unavailable: {exc}")
 

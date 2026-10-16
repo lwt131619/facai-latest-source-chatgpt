@@ -61,31 +61,29 @@ def hermetic_upstream(monkeypatch):
     monkeypatch.setattr("facai.api.complete", no_upstream)
 
 
-def _free_port():
-    sock = socket.socket()
-    sock.bind(("127.0.0.1", 0))
-    port = sock.getsockname()[1]
-    sock.close()
-    return port
-
-
-def _serve(app, base):
+def _serve(app):
+    """Keep the listening socket reserved until uvicorn owns it (no TOCTOU)."""
     import uvicorn
 
-    config = uvicorn.Config(app, host="127.0.0.1", port=int(base.rsplit(":", 1)[1]),
-                            log_level="warning", lifespan="on")
+    sock = socket.socket()
+    sock.bind(('127.0.0.1', 0))
+    base = f'http://127.0.0.1:{sock.getsockname()[1]}'
+    config = uvicorn.Config(app, log_level='warning', lifespan='on')
     server = uvicorn.Server(config)
-    thread = threading.Thread(target=server.run, daemon=True)
+    thread = threading.Thread(target=server.run, kwargs={'sockets': [sock]}, daemon=True)
     thread.start()
     for _ in range(200):
         try:
-            urllib.request.urlopen(base + "/api/v1/health", timeout=0.5)
+            urllib.request.urlopen(base + '/api/v1/health', timeout=0.5)
             break
         except Exception:
             time.sleep(0.05)
     else:
-        raise RuntimeError("uvicorn did not start")
-    return server, thread
+        server.should_exit = True
+        thread.join(timeout=5)
+        sock.close()
+        raise RuntimeError('uvicorn did not start')
+    return server, thread, base
 
 
 @pytest.fixture
@@ -101,8 +99,7 @@ def console_server(tmp_path, monkeypatch, playwright_api):
     # Actual scheduler/adapter execution is covered by its dedicated tests.
     monkeypatch.setenv("FACAI_SCHEDULER_ENABLED", "0")
     monkeypatch.setenv("FACAI_CHANNEL_NOTIFY_ENABLED", "0")
-    base = f"http://127.0.0.1:{_free_port()}"
-    server, thread = _serve(create_app(tmp_path), base)
+    server, thread, base = _serve(create_app(tmp_path))
     yield base
     server.should_exit = True
     thread.join(timeout=5)
@@ -114,8 +111,7 @@ def protected_server(tmp_path, monkeypatch, playwright_api):
     monkeypatch.setenv("FACAI_SCHEDULER_ENABLED", "0")
     monkeypatch.setenv("FACAI_CHANNEL_NOTIFY_ENABLED", "0")
     monkeypatch.delenv("FACAI_COOKIE_SECURE", raising=False)
-    base = f"http://127.0.0.1:{_free_port()}"
-    server, thread = _serve(create_app(tmp_path), base)
+    server, thread, base = _serve(create_app(tmp_path))
     yield base
     server.should_exit = True
     thread.join(timeout=5)
@@ -126,11 +122,12 @@ def hermetic_model_registration_dns(monkeypatch, request):
     """Registry/storage tests use fake keys and must not depend on external DNS.
 
     Keep production SSRF validation active. Only public fixture hostnames in these
-    three storage/isolation modules get a stable public answer; localhost and all
+    storage/isolation/control modules get a stable public answer; localhost and all
     explicit SSRF tests retain their own resolver behavior.
     """
     if request.module.__name__.split('.')[-1] not in {
-        'test_customer_surface', 'test_tenant_isolation_registries', 'test_user_models'
+        'test_customer_surface', 'test_tenant_isolation_registries', 'test_user_models',
+        'test_mission_control_flow'
     }:
         return
     real = socket.getaddrinfo
