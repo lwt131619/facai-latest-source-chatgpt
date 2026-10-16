@@ -117,3 +117,18 @@ validate_handoff.py --render makes the in-package handoff check fail (it
 should — the traceability doc was stale); the render step is now part of the
 flow. PKG-001 keeps PARTIAL: Windows is exercised constantly (start chain,
 smokes, package QA), macOS and cross-device/VPS acceptance remain open.
+
+## CI green restored on 79954b5 (takeover agent, 2026-10-16)
+
+The "FACAI development package" workflow had been failing on GitHub since
+Codex's 6c9ab35 — the suite runs on ubuntu-latest where the deploy-config
+validator's real `nginx -t` step cannot bind 80/443 as a non-root runner
+(Windows runs skip it, so local runs stayed green while CI was red). Two root
+causes fixed in sequence on d28e996's successors: (1) the -t validation copies
+now listen on 18080/18443 while the real port contract stays asserted
+textually (486fed8); (2) the TLS copy's sed mixed one -E expression with a
+bare second expression, which GNU sed read as a filename — both expressions
+now ride explicit -e flags (79954b5). Verified: workflow run on 79954b5
+completed with conclusion=success (full ubuntu pytest + packaging). Discipline
+note: local green never implies remote green — check the Actions API, not the
+local skip path.
