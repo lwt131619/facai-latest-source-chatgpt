@@ -64,3 +64,24 @@ wiring (concurrency=4 + ceiling=2 claims exactly 2), and a two-worker drain
 that only asserts deterministic outcomes (all complete, per-worker peak <= own
 concurrency). The earlier thread-interleaving tests were rewritten; the full
 suite passes twice consecutively (1351 passed, 7 skipped).
+
+## Local product smoke acceptance: real CLI end to end (takeover agent, 2026-10-16)
+
+scripts/smoke_local.py (new, follows the smoke_* convention) starts the real
+uvicorn server on loopback with an isolated data dir and random throwaway
+credentials, then walks the real customer surface: health, session, web
+console (178 KB HTML) and mobile PWA (68 KB), member self-registration,
+funding-pool top-up (the 0-balance 402 budget gate fires first and honestly),
+mission creation, registry discovery, opencode/deepseek-flash binding, job
+dispatch, and the job's terminal state. Two consecutive runs: 11/11 and 20/20
+checks (the second was a longer inline driver; the committed script is the
+reproducible one). The in-app scheduler claimed the job, the REAL OpenCode CLI
+executed it, and the evidence chain shows the full honest arc — MISSION_CREATED
+-> BINDING_CHANGED -> JOB_QUEUED -> JOB_STARTED -> SESSION_PREPARED ->
+OPENCODE_STARTED -> 6x OUTPUT -> ARTIFACT_CREATED -> COST_RECORDED ->
+COST_PRICED -> GIT_CHECKPOINT -> SESSION_COMPLETED -> OPENCODE_COMPLETED ->
+JOB_COMPLETED (19 events) — and the mission workspace contains the real
+hello.txt with the requested content. The unbound-dispatch gate also verified:
+without a binding the API refuses with 409 instead of faking progress.
+RUNTIME-001 keeps status PARTIAL: real-CLI 20+ concurrent execution/recovery
+acceptance still needs real provider quota.

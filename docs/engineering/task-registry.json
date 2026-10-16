@@ -331,7 +331,7 @@
     "线程/CLI进程/模型并发分别计量，OpenCode默认串行不默默移除",
     "同任务分支隔离/超时/失败/取消/结果幂等有证据"
    ],
-   "next_action": "受控适配器实测已入库(tests/test_runtime_capacity.py):24独立任务/4worker共享store全完成、零双重认领、容量峰值≤每worker并发、租约续期1.5s任务不被0.4s租约盗取、崩溃worker租约过期后peer恰好恢复一次(无预算则诚实FAILED)。2026-10-16接管代理修复车队级默认节流并入库: FACAI_MAX_RUNNING_JOBS 全局认领上限(facai/scheduler.py:_fleet_ceiling,None=不设限,不再默认为首认领者自身并发),三层确定性测试钉死(store契约:ceiling-a填满后ceiling-b被拒/无上限可越他人认领;调度器接线:concurrency=4+ceiling=2恰认领2余2排队;双worker drain全完成且每worker峰值≤自身并发),原线程交错竞争测试已重写,全量1351绿。剩余:真实OpenCode CLI/真实模型的20+执行与恢复验收;调度并发2/上限8/同任务3不变。"
+   "next_action": "受控适配器实测+车队上限修复已入库(tests/test_runtime_capacity.py, d28e996):24独立任务/4worker零双重认领;FACAI_MAX_RUNNING_JOBS全局认领上限三层确定性测试钉死。2026-10-16本地实弹验收通过(scripts/smoke_local.py, 11/11两连跑):真实uvicorn+真实客户流(注册会员→资金池充值→建任务→绑定opencode/deepseek-flash→派发),应用内调度器认领作业,真实OpenCode CLI执行OPENCODE_STARTED→6×OUTPUT→ARTIFACT_CREATED→COST_RECORDED/COST_PRICED→GIT_CHECKPOINT→JOB_COMPLETED共19事件,任务工作区真实生成hello.txt(内容冒烟测试)。剩余:真实CLI的20+并发执行与恢复验收(需真实配额支撑);调度并发2/上限8/同任务3不变。"
   },
   {
    "id": "OPS-001",
