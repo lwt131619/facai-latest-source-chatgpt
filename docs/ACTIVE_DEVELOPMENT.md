@@ -1,3 +1,10 @@
+## Desktop increment WIP
+
+Fresh fetch:4381ef9 equals origin/main; clean baseline. Electron navigation now
+compares parsed origins and restricts external opening to HTTP(S), avoiding
+same-prefix lookalike hosts. Node navigation checks:2 passed. Local service
+lifecycle is the next incremental step; packaged native installers remain untested.
+
 ## Latest full regression:1363 passed /6 skipped /0 failures
 
 2026-10-16 recovery increment, real Chromium enabled,221.55 seconds.

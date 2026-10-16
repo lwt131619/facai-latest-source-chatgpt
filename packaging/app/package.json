@@ -17,7 +17,7 @@
     "appId": "com.facai.workstation",
     "productName": "FACAI",
     "directories": { "output": "dist" },
-    "files": ["main.js", "icon.png"],
+    "files": ["main.js", "navigation.js", "icon.png"],
     "win": {
       "target": [{ "target": "nsis", "arch": ["x64"] }],
       "icon": "icon.png"

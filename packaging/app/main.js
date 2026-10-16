@@ -2,6 +2,7 @@
 // 打包：cd packaging/app && npm install && npm run dist
 const { app, BrowserWindow, shell, Menu } = require("electron");
 const path = require("path");
+const { isInternal, mayOpenExternal } = require("./navigation");
 
 const HOME = "https://whstapp.lol";
 
@@ -26,13 +27,13 @@ function createWindow() {
 
   // 外链一律走系统浏览器，客户端永远留在工作台内
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (!url.startsWith(HOME)) shell.openExternal(url);
+    if (!isInternal(url, HOME) && mayOpenExternal(url)) shell.openExternal(url);
     return { action: "deny" };
   });
   win.webContents.on("will-navigate", (event, url) => {
-    if (!url.startsWith(HOME)) {
+    if (!isInternal(url, HOME)) {
       event.preventDefault();
-      shell.openExternal(url);
+      if (mayOpenExternal(url)) shell.openExternal(url);
     }
   });
 }
