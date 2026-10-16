@@ -1,3 +1,9 @@
+Electron integration wiring checks added after backend test: mocked Electron
+window verified local Owner setup URL and stop-on-quit; remote window verified
+same-origin boundaries. Node total8 passed /0 failed. First test run exposed a
+test harness asynchronous environment-reset race; harness fixed, product code
+unchanged. Native Electron binary/browser window remains untested on this host.
+
 Package metadata correction: tracked dist/ archives change while a new ZIP
 is produced. source_tree_dirty now excludes dist/ from git status but still
 reports any source change. A temporary-repository test covers both cases.

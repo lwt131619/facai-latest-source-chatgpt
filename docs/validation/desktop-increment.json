@@ -3,13 +3,14 @@
   "source_commit": "55f43c4f81c0d75de703ccd7390c2114816da9bb",
   "verified_on": "Linux source checkout",
   "node_runtime_tests": {
-    "passed": 6,
+    "passed": 8,
     "failed": 0,
     "modes": [
       "default .venv",
       "explicit installed Python"
     ],
-    "real_fastapi_process": true
+    "real_fastapi_process": true,
+    "electron_wiring_stub_verified": true
   },
   "python_launcher_and_setup_browser_tests": {
     "passed": 5,
@@ -22,7 +23,8 @@
     "port conflict rejection",
     "missing Python failure",
     "service exit and port release",
-    "exact-origin Electron navigation rule"
+    "exact-origin Electron navigation rule",
+    "Electron local/remote window wiring through an isolated Electron stub"
   ],
   "not_verified": [
     "actual Electron window or installed native package",
