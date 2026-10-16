@@ -421,15 +421,39 @@ class BoundaryGovernor:
             self._save()
             return report
 
+    # --- lifecycle journal (SKILL-001 ③) -------------------------------------
+
+    def journal_lifecycle_event(self, decision: str, skill: str, *,
+                                actor: str = "", note: str = "",
+                                extra: dict | None = None) -> dict:
+        """Record a skill lifecycle decision (SKILL_DISABLED / SKILL_REMOVED /
+        SKILL_ENABLED / SKILL_RESTORED) in the same durable journal every
+        intake decision lands in — evidence discipline: disabling or removing
+        a capability is a decision, and decisions stay on the record."""
+        with self._lock:
+            entry = {"decision": decision, "skill": skill,
+                     "violations": [], "severed": [], "quarantine_id": None}
+            if actor:
+                entry["actor"] = actor
+            if note:
+                entry["note"] = note
+            if extra:
+                entry.update(extra)
+            core = {k: entry.pop(k) for k in ("decision", "skill", "violations",
+                                              "severed", "quarantine_id")}
+            return self._journal(**core, **entry)
+
     # --- state -----------------------------------------------------------------
     def _journal(self, decision, skill, violations, severed, quarantine_id,
-                 note="") -> dict:
+                 note="", **extra) -> dict:
         self._seq += 1
         entry = {"id": f"j-{self._seq}", "at": _now(), "decision": decision,
                  "skill": skill, "violations": list(violations),
                  "severed": list(severed), "quarantine_id": quarantine_id}
         if note:
             entry["note"] = note
+        if extra:
+            entry.update(extra)
         self.journal.append(entry)
         if len(self.journal) > JOURNAL_LIMIT:
             del self.journal[:len(self.journal) - JOURNAL_LIMIT]

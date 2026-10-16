@@ -610,6 +610,31 @@ def test_my_channels_panel_binds_and_unbinds_through_the_real_backend(
     assert not unexpected, f"console errors: {unexpected}"
 
 
+def test_model_matrix_renders_real_stats_columns_and_watermark_note():
+    """MODEL-001 ④：模型矩阵面板必须展示真实统计列（延迟/错误率/调用次数，
+    全部来自 /api/v1/modelmatrix 快照字段）、提供走真实 API 的水位线编辑入口，
+    并对代码内置的冷却常量做诚实只读说明——不做假编辑框、不放演示数据。"""
+    html = (Path(__file__).resolve().parents[1] / "facai" / "static" /
+            "command-center.html").read_text(encoding="utf-8")
+    # 统计列：字段名必须钉在 matrix 快照的真实字段上
+    for field in ("latency_recent_avg_ms", "latency_avg_ms", "error_rate",
+                  "reserved_count", "reported_count", "ok_count", "fail_count"):
+        assert field in html, f"missing real matrix field: {field}"
+    for label in ("延迟", "错误率", "调用"):
+        assert label in html
+    # 无样本诚实显示 —，不编造
+    assert 'latency == null ? "—"' in html
+    # 水位线编辑：入口按钮 + 真实端点（写回注册表的 PUT limits）
+    assert 'data-act="limits"' in html
+    assert "水位线" in html
+    assert "/api/v1/modelmatrix/${m}/limits" in html
+    assert "rate_limit_per_min" in html and "max_concurrency" in html
+    # 内置常量的诚实只读说明（值来自 matrix API constants，非前端硬编码）
+    assert "代码内置常量" in html
+    assert "matrix.constants" in html
+    assert "cooldown_base_s" in html and "cooldown_max_s" in html
+
+
 def test_mobile_me_tab_keeps_channel_binding_form_an_honest_static_demo():
     """mobile.html「我的」区绑定入口：与总控台同名的表单必须存在、凭据框
     type=password、真实 API 以注释位标注；整个页面保持零 fetch 的静态演示

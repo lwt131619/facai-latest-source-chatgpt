@@ -27,7 +27,11 @@ def test_missions_are_isolated_and_progress_is_real(tmp_path):
     assert client.post(f"/api/v1/missions/{second['id']}/events", json={'type': 'OUTPUT', 'step_id': first_step}).status_code == 409
     first_events = client.get(f"/api/v1/missions/{first['id']}/events").json()
     second_events = client.get(f"/api/v1/missions/{second['id']}/events").json()
-    assert len(first_events) == 3
+    # TRUST auto-collection may append TRUST_EVIDENCE_COLLECTED after
+    # STEP_COMPLETED; count only the mission-lifecycle events it guards.
+    first_types = [event['type'] for event in first_events
+                   if event['type'] != 'TRUST_EVIDENCE_COLLECTED']
+    assert len(first_types) == 3
     assert len(second_events) == 1
     assert all(event['mission_id'] == first['id'] for event in first_events)
     assert all(event['mission_id'] == second['id'] for event in second_events)

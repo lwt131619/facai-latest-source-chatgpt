@@ -1,5 +1,6 @@
 """SQLite mission record. Every mutable item is keyed by mission ID."""
 
+import hashlib
 import json
 import math
 import sqlite3
@@ -24,6 +25,12 @@ def now():
 # Background threads (scheduler, notify) run outside the request context and
 # stay unstamped -- their events are the mission's own work, not the visit.
 assist_context = ContextVar("facai_assist_context", default=None)
+
+
+def _trust_runtime_types():
+    """RUNTIME_TYPES from the trust layer, imported lazily (trust imports us)."""
+    from .trust import RUNTIME_TYPES
+    return RUNTIME_TYPES
 
 
 # Hosted-channel binding states (docs/CHANNEL_HOST_DESIGN.md §2). The order is
@@ -368,6 +375,13 @@ class Store:
             db.execute("INSERT INTO registries (kind, id, value, updated_at, owner_id) "
                        "SELECT kind, id, value, updated_at, 'admin' FROM registries_old")
             db.execute("DROP TABLE registries_old")
+        # SKILL-001 ③: soft delete for registries. ``deleted_at`` marks the
+        # tombstone (lists exclude it, the row stays for audit); a re-register
+        # of the same key resurrects the entry and clears the tombstone.
+        if "deleted_at" not in registry_columns:
+            db.execute("ALTER TABLE registries ADD COLUMN deleted_at TEXT")
+        if "deleted_by" not in registry_columns:
+            db.execute("ALTER TABLE registries ADD COLUMN deleted_by TEXT")
         db.execute("UPDATE registries SET owner_id=? WHERE owner_id='admin'", (legacy_owner,))
         message_columns = {row[1] for row in db.execute("PRAGMA table_info(channel_messages)")}
         if "owner_id" not in message_columns:
@@ -431,22 +445,107 @@ class Store:
             print(f"store: recharges.txid unique index not created "
                   f"(duplicate txids need manual dedupe): {exc}", flush=True)
 
-    def registry_list(self, kind, owner_id=None):
+    def registry_list(self, kind, owner_id=None, include_deleted=False):
+        """Live registry entries; soft-deleted tombstones are excluded unless
+        ``include_deleted`` is explicitly requested."""
         with self.connect() as db:
             if owner_id is None:
                 rows = db.execute("SELECT id, value FROM registries WHERE kind=? ORDER BY id", (kind,))
             else:
                 rows = db.execute("SELECT id, value FROM registries WHERE kind=? AND owner_id=? ORDER BY id", (kind, owner_id))
-            return {row["id"]: json.loads(row["value"]) for row in rows}
+            if include_deleted:
+                return {row["id"]: json.loads(row["value"]) for row in rows}
+            return {row["id"]: json.loads(row["value"]) for row in rows
+                    if not self._registry_row_deleted(row)}
+
+    @staticmethod
+    def _registry_row_deleted(row):
+        keys = set(row.keys())
+        if "deleted_at" in keys and row["deleted_at"] is not None:
+            return True
+        value = row["value"]
+        value = json.loads(value) if isinstance(value, str) else value
+        return isinstance(value, dict) and bool(value.get("_deleted_at"))
 
     def registry_register(self, kind, key, value, owner_id="admin"):
+        """Insert or update one registry row; a re-register of a soft-deleted
+        key resurrects the entry (the tombstone columns are cleared)."""
         with self.connect() as db:
-            db.execute("""INSERT INTO registries (kind, id, value, updated_at, owner_id) VALUES (?, ?, ?, ?, ?)
-                       ON CONFLICT(kind, id, owner_id) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at""",
+            db.execute("""INSERT INTO registries (kind, id, value, updated_at, owner_id, deleted_at, deleted_by) VALUES (?, ?, ?, ?, ?, NULL, NULL)
+                       ON CONFLICT(kind, id, owner_id) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at, deleted_at=NULL, deleted_by=NULL""",
                        (kind, key, json.dumps(value, ensure_ascii=False), now(), owner_id))
 
-    def registry_delete(self, kind, key, owner_id="admin"):
-        """Remove one owner-scoped registry row; returns True when it existed."""
+    def registry_delete(self, kind, key, owner_id="admin", deleted_by=None):
+        """Soft-delete one owner-scoped registry row (SKILL-001 ③).
+
+        The row stays on disk as a tombstone (value JSON gains
+        ``_deleted_at``/``_deleted_by``/``_snapshot_sha256``; the columns
+        ``deleted_at``/``deleted_by`` mirror them for SQL filtering), so the
+        deletion itself stays auditable — evidence discipline, not erasure.
+        Lists exclude tombstones; ``registry_tombstone`` retrieves one; the
+        actual SQL hard delete survives only as ``_registry_hard_delete``,
+        an internal maintenance path no API surface reaches.
+
+        Returns the tombstone dict when a live row was removed, ``None``
+        when nothing live existed (idempotent: an already-deleted key, or a
+        key that never existed, both delete to nothing). The dict carries
+        ``snapshot`` (the pre-delete metadata), ``deleted_at``,
+        ``deleted_by`` and ``snapshot_sha256``.
+        """
+        at = now()
+        with self.connect() as db:
+            row = db.execute(
+                "SELECT value, deleted_at FROM registries WHERE kind=? AND id=? AND owner_id=?",
+                (kind, key, owner_id)).fetchone()
+            if row is None or row["deleted_at"] is not None:
+                return None
+            try:
+                value = json.loads(row["value"])
+            except (TypeError, ValueError):
+                value = {}
+            if not isinstance(value, dict):
+                value = {"_value": value}
+            snapshot_sha = hashlib.sha256(
+                row["value"].encode("utf-8")).hexdigest()
+            # Keep the full pre-delete metadata snapshot under ``_snapshot``
+            # (tombstone evidence), then mark the row deleted.
+            tombstone = {**value,
+                         "_deleted_at": at,
+                         "_deleted_by": deleted_by,
+                         "_snapshot_sha256": snapshot_sha,
+                         "_snapshot": dict(value)}
+            db.execute("UPDATE registries SET value=?, deleted_at=?, deleted_by=? "
+                       "WHERE kind=? AND id=? AND owner_id=?",
+                       (json.dumps(tombstone, ensure_ascii=False), at,
+                        deleted_by, kind, key, owner_id))
+        return {"snapshot": dict(value), "deleted_at": at,
+                "deleted_by": deleted_by, "snapshot_sha256": snapshot_sha}
+
+    def registry_tombstone(self, kind, key, owner_id="admin"):
+        """Return one soft-deleted entry's tombstone (or None when the key is
+        live or absent): the pre-delete snapshot plus deletion metadata."""
+        with self.connect() as db:
+            row = db.execute(
+                "SELECT value, deleted_at, deleted_by FROM registries "
+                "WHERE kind=? AND id=? AND owner_id=?",
+                (kind, key, owner_id)).fetchone()
+            if row is None or row["deleted_at"] is None:
+                return None
+            try:
+                value = json.loads(row["value"])
+            except (TypeError, ValueError):
+                value = {}
+            snapshot = (value.get("_snapshot") if isinstance(value, dict) else None) or {}
+            return {"kind": kind, "id": key, "owner_id": owner_id,
+                    "deleted_at": row["deleted_at"],
+                    "deleted_by": row["deleted_by"],
+                    "snapshot_sha256": (value.get("_snapshot_sha256")
+                                        if isinstance(value, dict) else None),
+                    "snapshot": snapshot}
+
+    def _registry_hard_delete(self, kind, key, owner_id="admin"):
+        """Internal maintenance-only SQL hard delete; no API surface reaches
+        this. Returns True when a row (live or tombstoned) was removed."""
         with self.connect() as db:
             removed = db.execute("DELETE FROM registries WHERE kind=? AND id=? AND owner_id=?",
                                  (kind, key, owner_id)).rowcount
@@ -676,6 +775,17 @@ class Store:
         db.execute("INSERT INTO events (id, mission_id, step_id, session_id, agent_id, type, payload, occurred_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                    (event_id, mission_id, step_id, session_id, agent_id, event_type,
                     json.dumps(payload, ensure_ascii=False), now()))
+        # 事件侧自动采集（TRUST-001 ③）：RUNTIME_TYPES 内的运行时事件落库时，
+        # 同事务生成 RUNTIME_EVENT evidence。幂等（重复事件静默跳过）、诚实标注
+        # system:auto-collect、任何失败都在 trust 侧保存点内回滚并静默吞掉——
+        # 采集失败绝不阻断事件发布或任务执行。TRUST_* 审计事件不在采集名单
+        # 内，因此这里的调用不会递归。
+        if event_type in _trust_runtime_types():
+            try:
+                from .trust import auto_collect_runtime_event
+                auto_collect_runtime_event(self, db, mission_id, event_id)
+            except Exception:
+                pass
         return event_id
 
     def append(self, mission_id, event_type, payload, step_id=None, session_id=None, agent_id=None):
@@ -772,11 +882,15 @@ class Store:
                         {"status": "WAITING", "dependency_retry": step_id})
 
     def bind(self, mission_id, agent_id=None, model_id=None, skill_id=None, runtime_id=None,
-             changed=None):
+             changed=None, reason=None):
         """Bind any subset of the four capability registries to one mission.
 
         `changed` restricts which fields are written so agent, model, skill and
         runtime can be bound independently without clearing the others.
+        `reason` rides the BINDING_CHANGED payload so the audit trail says WHO
+        changed the binding and WHY (owner-manual / auto-default /
+        conversion-primary). Events written before the field existed simply
+        lack the key — readers must treat a missing reason as None.
         """
         values = {"agent_id": agent_id, "model_id": model_id,
                   "skill_id": skill_id, "runtime_id": runtime_id}
@@ -795,7 +909,7 @@ class Store:
             self._event(db, mission_id, None, None, row["agent_id"], "BINDING_CHANGED",
                         {"agent_id": row["agent_id"], "model_id": row["model_id"],
                          "skill_id": row["skill_id"], "runtime_id": row["runtime_id"],
-                         "changed": sorted(updates)})
+                         "changed": sorted(updates), "reason": reason})
         return self.get(mission_id)
 
     def set_prompt(self, mission_id, professional_prompt):

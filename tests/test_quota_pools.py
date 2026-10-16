@@ -138,6 +138,55 @@ class TestMatrixApi:
                           json={"weight": 1}).status_code == 403
         assert client.put("/api/v1/modelmatrix/x/pause",
                           json={"paused": True}).status_code == 403
+        assert client.put("/api/v1/modelmatrix/x/limits",
+                          json={"rate_limit_per_min": 10,
+                                "max_concurrency": 2}).status_code == 403
+
+
+class TestMatrixWatermarkEditing:
+    """MODEL-001（2026-10-16）④：水位线编辑——分钟窗/并发上限写回注册表
+    条目并立即同步池；内置常量随 matrix 快照诚实带出（UI 只读展示）。"""
+
+    def _client(self, tmp_path, monkeypatch):
+        from fastapi.testclient import TestClient
+        from facai.api import create_app
+        monkeypatch.setenv("FACAI_ADMIN_PASSWORD", "matrix-pass-2")
+        monkeypatch.delenv("FACAI_COOKIE_SECURE", raising=False)
+        client = TestClient(create_app(tmp_path))
+        login = client.post("/api/v1/auth/login",
+                            json={"username": "admin", "password": "matrix-pass-2"}).json()
+        client.headers.update({"X-CSRF-Token": login["csrf_token"]})
+        return client
+
+    def test_limits_edit_writes_back_to_registry_and_syncs_pool(self, tmp_path, monkeypatch):
+        client = self._client(tmp_path, monkeypatch)
+        some_model = next(iter(client.get("/api/v1/registries/models").json()))
+        edited = client.put(f"/api/v1/modelmatrix/{some_model}/limits",
+                            json={"rate_limit_per_min": 7, "max_concurrency": 3})
+        assert edited.status_code == 200, edited.text
+        assert edited.json() == {"model_id": some_model, "rate_limit_per_min": 7,
+                                 "max_concurrency": 3}
+        entry = client.get("/api/v1/registries/models").json()[some_model]
+        assert entry["rate_limit_per_min"] == 7 and entry["max_concurrency"] == 3
+        row = client.get("/api/v1/modelmatrix").json()["pools"][some_model]
+        assert row["minute_limit"] == 7 and row["concurrency_limit"] == 3
+
+    def test_limits_rejects_unknown_pool_and_nonpositive_values(self, tmp_path, monkeypatch):
+        client = self._client(tmp_path, monkeypatch)
+        assert client.put("/api/v1/modelmatrix/ghost/limits",
+                          json={"rate_limit_per_min": 5,
+                                "max_concurrency": 2}).status_code == 404
+        for bad in ({"rate_limit_per_min": 0, "max_concurrency": 2},
+                    {"rate_limit_per_min": 5, "max_concurrency": -1}):
+            assert client.put("/api/v1/modelmatrix/x/limits", json=bad).status_code == 422
+
+    def test_matrix_snapshot_carries_builtin_constants(self, tmp_path, monkeypatch):
+        from facai.quota import COOLDOWN_BASE, COOLDOWN_MAX, UNPENALIZED_WINDOW
+        client = self._client(tmp_path, monkeypatch)
+        constants = client.get("/api/v1/modelmatrix").json()["constants"]
+        assert constants["cooldown_base_s"] == COOLDOWN_BASE
+        assert constants["cooldown_max_s"] == COOLDOWN_MAX
+        assert constants["unpenalized_window_s"] == UNPENALIZED_WINDOW
 
 
 class TestPoolStateStats:

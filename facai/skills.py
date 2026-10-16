@@ -201,4 +201,45 @@ def build_skill_metadata(parsed: dict) -> dict:
         "imported_at": datetime.now(timezone.utc).isoformat(),
         "warnings": list(parsed.get("warnings", [])),
     }
+    # SKILL-001 ①: version is registry data, not a pass-through field. A
+    # re-registration carries the NEW version verbatim (the registry row is
+    # replaced whole); pre-existing rows without a version simply keep having
+    # no version key — nothing is backfilled or fabricated.
+    version = parsed.get("version")
+    if version:
+        metadata["version"] = version
     return metadata
+
+
+def enabled_only(skills: dict) -> dict:
+    """Routing/dispatch view of a skills registry mapping.
+
+    A disabled entry (``enabled is False``) never reaches conversion scoring
+    or mission dispatch. Absent ``enabled`` means enabled — legacy rows and
+    distilled skills predate the flag and stay routable.
+    """
+    return {key: value for key, value in (skills or {}).items()
+            if (value or {}).get("enabled") is not False}
+
+
+def dispatchable_skill(entry):
+    """One resolved registry entry as dispatch sees it: ``None`` when the
+    entry is missing or disabled.
+
+    Scheduler-side integration point (main-session wiring, scheduler.py is
+    owned by another agent): ``facai/scheduler.py:219`` currently reads
+
+        skill = self.registries.resolve("skills", mission["skill_id"], owner_id=owner)
+
+    and should become
+
+        from facai.skills import dispatchable_skill
+        skill = dispatchable_skill(self.registries.resolve(
+            "skills", mission["skill_id"], owner_id=owner))
+
+    so a disabled skill resolves away at dispatch exactly as it already does
+    in conversion scoring (conversion.assign_stage) and the API run paths.
+    """
+    if entry is None or entry.get("enabled") is False:
+        return None
+    return entry

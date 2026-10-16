@@ -12,7 +12,7 @@ from facai.api import create_app
 from facai.intent_workspace import IntentWorkspace
 from facai.mission_spec import MissionSpecifications, digest
 from facai.store import Store, now
-from facai.trust import TrustError, TrustStore, classify_conflict
+from facai.trust import TrustError, TrustStore, auto_collect_runtime_event, classify_conflict
 
 
 def mission(tmp_path, owner='alice'):
@@ -47,7 +47,11 @@ def complete_fixture(store, service, id):
         store.step_status(id, step['id'], 'COMPLETED')
         event_id = store.append(id, 'OPENCODE_COMPLETED', {'outcome_state': 'COMPLETED'}, step_id=step['id'])
         revision = service.get('alice', id)['revision']
-        service.add_evidence('alice', id, revision, event_id=event_id)
+        try:
+            service.add_evidence('alice', id, revision, event_id=event_id)
+        except TrustError as error:
+            # 事件侧自动采集已把该事件导入为 RUNTIME_EVENT evidence，幂等闸返回 409。
+            assert error.status == 409 and 'already collected' in str(error)
 
 
 def test_specification_exact_intent_atomic_persistent_and_no_execution(tmp_path):
@@ -185,7 +189,8 @@ def test_artifact_bytes_change_invalidates_proof_and_outside_paths_are_not_read(
 def test_export_hashes_and_snapshot_integrity_no_paths_or_event_payloads(tmp_path):
     store, service, id = mission(tmp_path)
     store.append(id, 'OPENCODE_COMPLETED', {'path': '/private/server/path', 'api_key': 'synthetic-private-value'})
-    proof = service.snapshot('alice', id, 0)
+    revision = service.get('alice', id)['revision']
+    proof = service.snapshot('alice', id, revision)
     raw = service.export('alice', id, proof['id'])
     with zipfile.ZipFile(io.BytesIO(raw)) as archive:
         assert {'report.md','evidence.json','verification.json','trace.json','metadata.json','manifest.json'} <= set(archive.namelist())
@@ -373,3 +378,117 @@ def test_api_machine_session_cannot_write_source_verification(tmp_path, monkeypa
     assert state['evidence'][0]['source_trust_tier'] == 'EXTERNALLY_VERIFIED'
     assert state['source_trust']['tiers']['EXTERNALLY_VERIFIED'] == 1
     assert state['claims'] == []  # tier annotation never created or judged a claim
+
+
+def _auto_evidence(state):
+    return [e for e in state['evidence'] if e['collected_by'] == 'system:auto-collect']
+
+
+def test_runtime_events_auto_collected_idempotent_and_honest(tmp_path):
+    store, service, id = mission(tmp_path)
+    step = store.get(id)['steps'][0]
+    store.step_status(id, step['id'], 'RUNNING')
+    event_id = store.append(id, 'STEP_COMPLETED', {'status': 'COMPLETED'}, step_id=step['id'])
+    state = service.get('alice', id)
+    auto = _auto_evidence(state)
+    assert len(auto) == 1
+    item = auto[0]
+    assert item['kind'] == 'RUNTIME_EVENT' and item['event_id'] == event_id
+    assert item['collected_by'] == 'system:auto-collect'
+    assert item['source_verification'] == 'PERSISTED_EVENT_REFERENCE'
+    assert item['source'] == 'mission_event:' + event_id
+    # 幂等：同一事件重复采集不重复入库（静默跳过，而非 409 中断派发）。
+    with store.connect() as db:
+        db.execute('BEGIN IMMEDIATE')
+        assert auto_collect_runtime_event(store, db, id, event_id) is None
+        db.execute('ROLLBACK')
+    # Owner 手动导入同一事件撞上幂等闸，仍是显式 409。
+    with pytest.raises(TrustError, match='already collected'):
+        service.add_evidence('alice', id, service.get('alice', id)['revision'], event_id=event_id)
+    assert len(_auto_evidence(service.get('alice', id))) == 1
+    with store.connect() as db:
+        kinds = [row['type'] for row in db.execute('SELECT type FROM events WHERE mission_id=?', (id,))]
+    assert kinds.count('TRUST_EVIDENCE_COLLECTED') == 1  # 自动采集自身也留痕一次
+
+
+def test_auto_collect_failure_never_blocks_dispatch(tmp_path, monkeypatch):
+    store, service, id = mission(tmp_path)
+    import facai.trust as trust_module
+    def boom(*args, **kwargs):
+        raise RuntimeError('injected auto-collect failure')
+    monkeypatch.setattr(trust_module, 'auto_collect_runtime_event', boom)
+    event_id = store.append(id, 'OPENCODE_COMPLETED', {'outcome_state': 'COMPLETED'})
+    assert event_id  # 采集失败未阻断事件发布
+    state = service.get('alice', id)
+    assert _auto_evidence(state) == []  # 失败的采集没有留下半条记录
+    monkeypatch.undo()
+    revision = state['revision']
+    service.add_evidence('alice', id, revision, event_id=event_id)  # Owner 仍可手动补采
+
+
+def test_auto_collect_switch_off_skips_collection(tmp_path, monkeypatch):
+    store, service, id = mission(tmp_path)
+    monkeypatch.setenv('FACAI_TRUST_AUTO_COLLECT', '0')
+    store.append(id, 'OPENCODE_COMPLETED', {'outcome_state': 'COMPLETED'})
+    assert _auto_evidence(service.get('alice', id)) == []
+    monkeypatch.setenv('FACAI_TRUST_AUTO_COLLECT', '1')
+    second = store.append(id, 'OPENCODE_FAILED', {'outcome_state': 'FAILED'})
+    state = service.get('alice', id)
+    auto = _auto_evidence(state)
+    assert len(auto) == 1 and auto[0]['event_id'] == second
+
+
+def test_artifact_drift_annotated_recorded_and_deduplicated(tmp_path):
+    store, service, id = mission(tmp_path)
+    reviewed(service, id)
+    complete_fixture(store, service, id)
+    file = tmp_path/'workspaces'/id/'result.txt'
+    file.write_text('output 1')
+    with store.connect() as db:
+        db.execute('INSERT INTO artifacts VALUES (?,?,?,?,?)', ('output', id, 'result.txt', str(file), now()))
+    state = service.get('alice', id)
+    assert state['proofs'] == []  # 尚无快照：不标注、不留痕
+    revision = state['revision']
+    proof = service.snapshot('alice', id, revision)
+    file.write_text('output 2')  # 验收之外的读路径上发现字节漂移
+    state = service.get('alice', id)
+    assert state['proofs'][0]['artifact_drift_detected'] is True
+    drift = state['proofs'][0]['artifact_drift'][0]
+    assert drift['artifact_id'] == 'output' and drift['name'] == 'result.txt'
+    assert drift['snapshot_sha256'] == hashlib.sha256(b'output 1').hexdigest()
+    assert drift['observed_sha256'] == hashlib.sha256(b'output 2').hexdigest()
+    # 快照状态只标注：current/acceptance_current 语义不变，blockers 不新增。
+    assert state['proofs'][0]['current'] is False  # 既有语义：快照已过期
+    assert 'ARTIFACT_INTEGRITY_UNAVAILABLE' not in state['verification']['acceptance_blockers']
+    with store.connect() as db:
+        rows = db.execute("SELECT payload FROM events WHERE mission_id=? AND type='TRUST_ARTIFACT_DRIFT'",
+                          (id,)).fetchall()
+    assert len(rows) == 1
+    payload = json.loads(rows[0]['payload'])
+    assert payload['marker'] == digest(drift)
+    # 漂移未消除时重复读路径不重复留痕（幂等留痕）。
+    service.get('alice', id)
+    with store.connect() as db:
+        count = db.execute("SELECT count(*) FROM events WHERE mission_id=? AND type='TRUST_ARTIFACT_DRIFT'",
+                           (id,)).fetchone()[0]
+    assert count == 1
+
+
+def test_auto_and_manual_collection_coexist(tmp_path):
+    store, service, id = mission(tmp_path)
+    auto_id = store.append(id, 'EXECUTION_STARTED', {'outcome_state': 'STARTED'})
+    manual = service.add_evidence('alice', id, service.get('alice', id)['revision'],
+                                  content='Owner note about the run', source='Owner observation')['evidence']
+    state = service.get('alice', id)
+    assert [e['kind'] for e in state['evidence']] == ['RUNTIME_EVENT', 'OWNER_NOTE']
+    assert state['evidence'][0]['collected_by'] == 'system:auto-collect'
+    assert state['evidence'][1]['collected_by'] == 'alice'
+    assert state['evidence'][0]['id'] != manual['id']
+    # 自动采集不会吃掉 Owner 手记，也不会把自动记录算成人工来源。
+    assert state['evidence'][0]['source_trust_tier'] == 'UNVERIFIED'
+    assert state['evidence'][1]['source_trust_tier'] == 'UNVERIFIED'
+    # Owner 手动导入已被自动采集的事件：显式 409，互不覆盖。
+    with pytest.raises(TrustError, match='already collected'):
+        service.add_evidence('alice', id, state['revision'], event_id=auto_id)
+    final = service.get('alice', id)
+    assert len(final['evidence']) == 2 and final['revision'] == state['revision']

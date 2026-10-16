@@ -129,6 +129,16 @@ def _validate_skill_metadata(key, value):
     if not license_val or not isinstance(license_val, str) or not license_val.strip():
         raise ValueError("Skill license must be specified")
 
+    # SKILL-001 ①: version is optional (legacy rows carry none and stay
+    # version-less), but when present it must be a non-empty bounded string —
+    # never an int, never whitespace, never a smuggled payload.
+    version = value.get("version")
+    if version is not None:
+        if not isinstance(version, str) or not version.strip():
+            raise ValueError("Skill version must be a non-empty string when present")
+        if len(version) > 64:
+            raise ValueError("Skill version must be <= 64 characters")
+
     review_status = value.get("review_status", "approved")
     if not isinstance(review_status, str):
         raise ValueError(f"Skill review_status must be a string, got {type(review_status).__name__}")
@@ -200,12 +210,18 @@ class Registries:
             return None
         return self.list(kind, owner_id=owner_id).get(key)
 
-    def delete(self, kind, key, owner_id="admin"):
-        """Remove one owner-scoped entry, including the admin in-memory catalog."""
+    def delete(self, kind, key, owner_id="admin", deleted_by=None):
+        """Soft-delete one owner-scoped entry (tombstone kept by the store).
+
+        Returns the tombstone dict when a live row was removed, ``None``
+        when nothing live existed. With no store (pure in-memory mode) the
+        old boolean contract degrades to a pop-and-report.
+        """
         if owner_id == self.legacy_owner:
             self.catalogs.get(kind, {}).pop(key, None)
         if self.store:
-            return self.store.registry_delete(kind, key, owner_id=owner_id)
+            return self.store.registry_delete(kind, key, owner_id=owner_id,
+                                              deleted_by=deleted_by)
         return False
 
     def register(self, kind, key, value, owner_id="admin"):

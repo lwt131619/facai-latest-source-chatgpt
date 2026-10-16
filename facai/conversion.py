@@ -43,6 +43,7 @@ import uuid
 from datetime import datetime, timezone
 
 from .prompting import MissionPlan
+from .skills import enabled_only
 
 GATE_KINDS = ("direction", "info_gap", "approval")
 GATE_KIND_LABELS = {"direction": "方向选择", "info_gap": "补充情报",
@@ -152,14 +153,19 @@ def assign_stage(label: str, professional: str, agents: dict,
     Registry agents without a profile still rank (base 0.5) so an operator's
     custom agent never silently disappears from the tree; ties break on the
     agent id, keeping the assignment deterministic.
+
+    SKILL-001 ②: a disabled skill (``enabled is False``, absent means
+    enabled for legacy rows) never participates in scoring — the operator's
+    disable switch takes effect at routing time, not just in bookkeeping.
     """
+    routable = enabled_only(skills)
     ranked = []
     for agent_id, entry in sorted((agents or {}).items()):
         adapter = str(entry.get("adapter", agent_id))
         base, keywords = _AGENT_PROFILES.get(adapter, (0.5, ()))
         keyword_hits = [k for k in keywords if k in (label or "").lower()]
         best_skill, best_skill_id = 0.0, ""
-        for skill_id, skill in (skills or {}).items():
+        for skill_id, skill in routable.items():
             score = _skill_score(label, professional, skill or {})
             if score > best_skill:
                 best_skill, best_skill_id = score, skill_id
@@ -176,8 +182,67 @@ def assign_stage(label: str, professional: str, agents: dict,
     primary = ranked[0] if ranked else None
     fallbacks = ranked[1:3]
     return {"primary": primary, "fallbacks": fallbacks,
+            # 全量候选（含各自分数与 reasons）：展示层仍只读 primary/fallbacks，
+            # 这份完整名单供 ASSIGNMENT_RECORDED 事件做事实源（ROUTER-001）。
+            "candidates": ranked,
             "reviewer": {"agent_id": "facai-native", "name": "平台核（T0）",
                          "role": "阶段产物复核：越权/偏差行为由平台核拦下"}}
+
+
+# --- ROUTER-001: assignment decisions become durable events -------------------
+# 评分分配快照曾经只活在 ConversionConsole._pipelines（进程内存 dict，重启即
+# 失）。ASSIGNMENT_RECORDED 事件才是事实源；内存 pipeline 降级为展示加速。
+ASSIGNMENT_EVENT = "ASSIGNMENT_RECORDED"
+# ROUTER-001 ③: 分配树首选（如 goose）与实际派发（opencode）不一致时的解释
+# 事件——展示与实际的分歧从此有留痕，不再静默。
+AGENT_OVERRIDDEN_EVENT = "AGENT_OVERRIDDEN"
+# 紧凑性上限：单事件里每阶段最多保留这么多候选，超出截断并以 truncated 标注。
+ASSIGNMENT_EVENT_AGENT_CAP = 8
+
+
+def _compact_candidate(row: dict) -> dict:
+    """One ranked candidate as a lean event entry: 分数两位小数，reasons 原文。"""
+    return {"agent_id": row.get("agent_id"), "adapter": row.get("adapter"),
+            "score": round(float(row.get("score") or 0.0), 2),
+            "reasons": list(row.get("reasons") or [])}
+
+
+def assignment_event_payload(assignment_tree, mission_id: str = "") -> dict:
+    """Compact durable snapshot of the per-stage scoring decision.
+
+    每阶段给出 chosen（选中者）、candidates（候选列表：分数 + 评分理由）、
+    fallbacks / excluded（排除者及排除原因）与 truncated 截断标注——这正是
+    next_action 要的"记录候选/排除原因"，且事件表可跨重启审计。
+    """
+    stages = []
+    for row in assignment_tree or []:
+        assignment = row.get("assignment") or {}
+        ranked = list(assignment.get("candidates") or [])
+        primary = assignment.get("primary") or {}
+        chosen_id = primary.get("agent_id")
+        fallbacks = []
+        for item in assignment.get("fallbacks") or []:
+            entry = _compact_candidate(item)
+            entry["reason"] = "评分次于首选，列为后备（不执行本阶段）"
+            fallbacks.append(entry)
+        fallback_ids = [entry["agent_id"] for entry in fallbacks]
+        kept = ranked[:ASSIGNMENT_EVENT_AGENT_CAP]
+        excluded = []
+        for cand in kept:
+            if cand.get("agent_id") in (chosen_id, *fallback_ids):
+                continue
+            entry = _compact_candidate(cand)
+            entry["reason"] = "评分未进首选与后备，本阶段落选"
+            excluded.append(entry)
+        stages.append({
+            "stage": row.get("stage"),
+            "chosen": chosen_id,
+            "candidates": [_compact_candidate(cand) for cand in kept],
+            "fallbacks": fallbacks,
+            "excluded": excluded,
+            "truncated": len(ranked) > ASSIGNMENT_EVENT_AGENT_CAP,
+        })
+    return {"mission_id": mission_id, "stages": stages}
 
 
 def _sub_tasks(families: list[str]) -> list[dict]:

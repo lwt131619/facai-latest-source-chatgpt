@@ -32,7 +32,9 @@ from .channels.whatsapp import (WhatsAppBridgeError, WhatsAppHostBridge,
 from . import authority_gate
 from .boundary import BoundaryError, BoundaryGovernor
 from .checkpoint import diff as git_diff
-from .conversion import (ConsoleError, ConversionConsole, analyze_environment,
+from .conversion import (AGENT_OVERRIDDEN_EVENT, ASSIGNMENT_EVENT,
+                         ConsoleError, ConversionConsole,
+                         analyze_environment, assignment_event_payload,
                          build_assignment)
 from .execution import execute_mission_task, mission_attribution, opencode_model_ref
 from .evidence import build_proof
@@ -47,7 +49,8 @@ from .prompting import (complete_with_bound_model, convert_message,
                         deterministic_plan, plan_with_bound_model)
 from .registries import Registries, public_registry_value
 from .scheduler import Scheduler
-from .skills import build_skill_metadata, parse_skill_md
+from .skills import (build_skill_metadata, dispatchable_skill, enabled_only,
+                     parse_skill_md)
 from .store import Store, assist_context, DEFAULT_APPROVAL_TTL_SECONDS
 
 logger = logging.getLogger(__name__)
@@ -93,6 +96,12 @@ class SkillImport(BaseModel):
     source_url: str | None = Field(default=None, max_length=500)
 
 
+class SkillEnabledToggle(BaseModel):
+    """SKILL-001 ②③: 禁用/启用开关的请求体。"""
+    enabled: bool
+    note: str = Field(default="", max_length=500)
+
+
 class BoundaryIntake(BaseModel):
     content: str = Field(min_length=1, max_length=100_000)
     source_url: str | None = Field(default=None, max_length=500)
@@ -108,6 +117,12 @@ class ModelRouteWeight(BaseModel):
 
 class ModelRoutePause(BaseModel):
     paused: bool
+
+
+class ModelRouteLimits(BaseModel):
+    """水位线编辑（MODEL-001 ④）：分钟窗与并发水位写回 models 注册表条目。"""
+    rate_limit_per_min: int = Field(ge=1, le=100000)
+    max_concurrency: int = Field(ge=1, le=1000)
 
 
 class BoundaryNote(BaseModel):
@@ -1423,7 +1438,8 @@ def create_app(data_dir=None, opencode_adapter=None, goose_adapter=None):
                 return {"status": "DEFERRED", "reason": "NO_VALID_BINDING"}
             agent_id, model_id, runtime_id = binding
             store.bind(mission_id, agent_id=agent_id, model_id=model_id,
-                       runtime_id=runtime_id, changed={"agent_id", "model_id", "runtime_id"})
+                       runtime_id=runtime_id, changed={"agent_id", "model_id", "runtime_id"},
+                       reason="auto-default")
             mission = store.get(mission_id)
         agent = registries.resolve("agents", mission["agent_id"], owner_id=owner)
         model = registries.resolve("models", mission["model_id"], owner_id=owner)
@@ -2483,6 +2499,74 @@ def create_app(data_dir=None, opencode_adapter=None, goose_adapter=None):
                 "review_status": metadata.get("review_status", "approved"),
                 "warnings": metadata.get("warnings", [])}
 
+    # --- skill lifecycle: enable / disable / soft remove (SKILL-001 ②③) --------
+    # 禁用与移除是站长级的治理动作：走管理员会话闸（require_admin_owner，
+    # 客户端 API key 的 scope 也不含 /api/v1/registries，天然进不来）。
+    # 每次动作都在 boundary journal 留下 SKILL_DISABLED / SKILL_ENABLED /
+    # SKILL_REMOVED 事件——证据纪律：治理决策永远可追溯。
+
+    def _live_skill_or_404(key: str) -> dict:
+        entry = registries.resolve("skills", key, owner_id=current_owner())
+        if entry is None:
+            raise HTTPException(404, "Skill not found")
+        return entry
+
+    @app.post("/api/v1/registries/skills/{key}/enabled")
+    def set_skill_enabled(key: str, body: SkillEnabledToggle):
+        """Flip one skill's enabled bit; disabled skills never participate in
+        conversion scoring, and (once the scheduler wiring lands) dispatch."""
+        require_admin_owner()
+        entry = _live_skill_or_404(key)
+        updated = dict(entry)
+        updated["enabled"] = body.enabled
+        try:
+            registries.register("skills", key, updated, owner_id=current_owner())
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
+        boundary_governor.journal_lifecycle_event(
+            "SKILL_ENABLED" if body.enabled else "SKILL_DISABLED", key,
+            actor=auth.username, note=body.note,
+            extra={"enabled": body.enabled})
+        return {"id": key, "enabled": body.enabled}
+
+    @app.delete("/api/v1/registries/skills/{key}")
+    def delete_skill(key: str):
+        """Soft-remove one skill: the registry row stays as a tombstone
+        (pre-delete snapshot + snapshot sha256 + deleter + timestamp), lists
+        exclude it, and the deletion lands in the boundary journal as
+        SKILL_REMOVED. Re-deleting an already-removed skill is idempotent
+        (200 with already_deleted:true and the existing tombstone); a live
+        row's deletion returns 200 with the tombstone summary. Restoring the
+        same key is simply re-registering it (import/PUT)."""
+        require_admin_owner()
+        _live_skill_or_404(key)
+        tombstone = registries.delete("skills", key, owner_id=current_owner(),
+                                      deleted_by=auth.username)
+        if tombstone is None:
+            raise HTTPException(404, "Skill not found")
+        boundary_governor.journal_lifecycle_event(
+            "SKILL_REMOVED", key, actor=auth.username,
+            extra={"deleted_at": tombstone["deleted_at"],
+                   "snapshot_sha256": tombstone["snapshot_sha256"]})
+        return {"id": key, "deleted": True,
+                "deleted_at": tombstone["deleted_at"],
+                "deleted_by": tombstone["deleted_by"],
+                "snapshot_sha256": tombstone["snapshot_sha256"]}
+
+    @app.get("/api/v1/registries/skills/{key}/tombstone")
+    def skill_tombstone(key: str):
+        """The audit view of one removed skill: deletion metadata plus the
+        pre-delete snapshot. Operator-only — tombstones are evidence."""
+        require_admin_owner()
+        tombstone = store.registry_tombstone("skills", key,
+                                             owner_id=current_owner())
+        if tombstone is None:
+            raise HTTPException(404, "Skill not deleted or not found")
+        return tombstone
+
+    # 任务详情上的技能解析走 enabled 闸：禁用技能在详情/执行面解析为未绑定
+    # （与 conversion 打分口径一致；scheduler 派发点由主会话接入）。
+
     # --- 边界治理：自进化收录闸门 + 远程权限切断（2026-10-12 操作员指令） ------
     # 每一件收入进来的技能/产品都穿过四限制类（道德/宪章/法律/授权）闸门；
     # 收录即切断其远程端 API 权限——远程永远小于本地 /owner，恢复只能由
@@ -2601,7 +2685,7 @@ def create_app(data_dir=None, opencode_adapter=None, goose_adapter=None):
         owner = current_owner()
         plan = deterministic_plan(body.text, channel="console")
         agents = registries.list("agents", owner_id=owner)
-        skills = registries.list("skills", owner_id=owner)
+        skills = enabled_only(registries.list("skills", owner_id=owner))
         return {"title": plan.title, "professional_prompt": plan.professional,
                 "basis": list(plan.basis), "plan_source": plan.source,
                 "steps": [step["label"] for step in plan.steps],
@@ -2632,10 +2716,15 @@ def create_app(data_dir=None, opencode_adapter=None, goose_adapter=None):
                            for step in plan.steps]})
         mission = store.get(mission_id)
         agents = registries.list("agents", owner_id=owner)
-        skills = registries.list("skills", owner_id=owner)
+        skills = enabled_only(registries.list("skills", owner_id=owner))
         pipeline = console.open_pipeline(plan, mission_id, owner,
                                          mission["steps"], agents, skills,
                                          original_input=body.text)
+        # ROUTER-001 ①: 评分分配决策持久化。事件是事实源（可跨重启审计），
+        # ConversionConsole._pipelines 仅保留作展示加速。载荷新鲜出炉，不依赖
+        # pipeline 里那份（管道打开时的树就是本次决策）。
+        store.append(mission_id, ASSIGNMENT_EVENT,
+                     assignment_event_payload(pipeline["assignment_tree"], mission_id))
         # 任务指令到达前定人：首阶段最强的 Agent 领走整个任务。绑定总是整套
         # （agent+model+runtime 用默认绑定补齐），否则只绑 agent 会让
         # dispatch_mission_jobs 跳过默认绑定分支、带着空 model 落 DEFERRED。
@@ -2646,13 +2735,27 @@ def create_app(data_dir=None, opencode_adapter=None, goose_adapter=None):
             tree = pipeline["assignment_tree"]
             primary = (tree[0]["assignment"]["primary"]
                        if tree and tree[0]["assignment"] else None)
+            bind_reason = "auto-default"
             if primary and primary["agent_id"] != agent_id:
                 entry = registries.resolve("agents", primary["agent_id"], owner_id=owner)
                 if entry and entry.get("adapter") == "opencode":
                     agent_id = primary["agent_id"]
+                    bind_reason = "conversion-primary"
+                else:
+                    # ROUTER-001 ③: 展示与实际不一致必须留痕——goose（或任何
+                    # 非 opencode 适配器）评为首选时，派发保持默认绑定的
+                    # opencode。行为是有意设计，这里只补事件，不改派发。
+                    store.append(mission_id, AGENT_OVERRIDDEN_EVENT, {
+                        "displayed_primary": primary["agent_id"],
+                        "displayed_adapter": entry.get("adapter") if entry else None,
+                        "actual_agent": agent_id,
+                        "reason": f"仅 opencode 适配器可执行该阶段"
+                                  f"（{primary['agent_id']} 适配器不可执行，保持默认绑定）",
+                    })
             store.bind(mission_id, agent_id=agent_id, model_id=model_id,
                        runtime_id=runtime_id,
-                       changed={"agent_id", "model_id", "runtime_id"})
+                       changed={"agent_id", "model_id", "runtime_id"},
+                       reason=bind_reason)
         dispatch = dispatch_mission_jobs(mission_id)
         return {**pipeline, "mission": public_mission(store.get(mission_id)),
                 "dispatch": dispatch}
@@ -2676,7 +2779,12 @@ def create_app(data_dir=None, opencode_adapter=None, goose_adapter=None):
         stages = {}
         for label, stage in pipeline["stages"].items():
             stages[label] = {**stage, "status": status_by_id.get(stage["step_id"])}
+        # ROUTER-001 ③: 事实源是 AGENT_OVERRIDDEN 事件（跨重启可查），快照只做
+        # 透传，UI 借此如实标注"实际执行者与展示不同"。
+        overrides = [event["payload"] for event in store.events(pipeline["mission_id"])
+                     if event["type"] == AGENT_OVERRIDDEN_EVENT]
         return {**pipeline, "stages": stages,
+                "assignment_override": overrides[-1] if overrides else None,
                 "mission_status": mission["status"]}
 
     @app.get("/api/v1/conversion/console/{pipeline_id}/stream")
@@ -2859,7 +2967,8 @@ def create_app(data_dir=None, opencode_adapter=None, goose_adapter=None):
             if field in provided and values[field] is not None:
                 if values[field] not in registries.list(kind, owner_id=current_owner()):
                     raise HTTPException(422, f"Unknown {kind[:-1]}: {values[field]}")
-        bound = store.bind(mission_id, **values, changed=set(values))
+        bound = store.bind(mission_id, **values, changed=set(values),
+                           reason="owner-manual")
         if store.messages_for_mission(mission_id):
             ensure_channel_dispatch(mission_id)
         return bound
@@ -2894,7 +3003,8 @@ def create_app(data_dir=None, opencode_adapter=None, goose_adapter=None):
         owner = current_owner()
         model = registries.resolve("models", mission["model_id"], owner_id=owner)
         runtime = registries.resolve("runtimes", mission["runtime_id"], owner_id=owner)
-        skill = registries.resolve("skills", mission["skill_id"], owner_id=owner)
+        skill = dispatchable_skill(
+            registries.resolve("skills", mission["skill_id"], owner_id=owner))
         try:
             result = await run_in_threadpool(
                 execute_mission_task, store, adapter, mission, model, root, body.prompt,
@@ -2977,10 +3087,21 @@ def create_app(data_dir=None, opencode_adapter=None, goose_adapter=None):
     @app.get("/api/v1/modelmatrix")
     def model_matrix():
         require_admin_owner()
+        from .quota import (COOLDOWN_BASE, COOLDOWN_MAX, DEFAULT_CONCURRENCY,
+                            DEFAULT_MINUTE_LIMIT, UNPENALIZED_WINDOW)
         quota_pools = app.state.quota_pools
         quota_pools.replace_models(registries.list("models", owner_id=current_owner()))
         return {"pools": quota_pools.matrix(),
-                "route_order": quota_pools.ranked()}
+                "route_order": quota_pools.ranked(),
+                # 冷却阶梯等内置常量随快照带出：UI 只展示、不编辑（MODEL-001 ④
+                # 的诚实只读说明），编辑面只开放注册表承载的两条水位线。
+                "constants": {
+                    "cooldown_base_s": COOLDOWN_BASE,
+                    "cooldown_max_s": COOLDOWN_MAX,
+                    "unpenalized_window_s": UNPENALIZED_WINDOW,
+                    "default_minute_limit": DEFAULT_MINUTE_LIMIT,
+                    "default_concurrency": DEFAULT_CONCURRENCY,
+                }}
 
     @app.put("/api/v1/modelmatrix/{model_id}/weight")
     def model_matrix_weight(model_id: str, body: ModelRouteWeight):
@@ -3004,6 +3125,28 @@ def create_app(data_dir=None, opencode_adapter=None, goose_adapter=None):
         except KeyError:
             raise HTTPException(404, "Unknown model pool") from None
         return {"model_id": model_id, "paused": body.paused}
+
+    @app.put("/api/v1/modelmatrix/{model_id}/limits")
+    def model_matrix_limits(model_id: str, body: ModelRouteLimits):
+        """水位线编辑：分钟窗/并发上限写回注册表条目（与 weight 同款回写纪律，
+        重启与矩阵刷新不丢），并同步池配置。冷却阶梯是代码内置常量，不在此面。"""
+        require_admin_owner()
+        models = registries.list("models", owner_id=current_owner())
+        if model_id not in models:
+            raise HTTPException(404, "Unknown model pool") from None
+        entry = dict(models[model_id])
+        entry["rate_limit_per_min"] = body.rate_limit_per_min
+        entry["max_concurrency"] = body.max_concurrency
+        try:
+            registries.register("models", model_id, entry, owner_id=current_owner())
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
+        # 立即生效：replace_models 幂等且保住实时计数（与启动接线同语义）。
+        app.state.quota_pools.replace_models(
+            registries.list("models", owner_id=current_owner()))
+        return {"model_id": model_id,
+                "rate_limit_per_min": body.rate_limit_per_min,
+                "max_concurrency": body.max_concurrency}
 
     @app.post("/api/v1/scheduler/run")
     async def scheduler_run():
@@ -3090,7 +3233,8 @@ def create_app(data_dir=None, opencode_adapter=None, goose_adapter=None):
         except (ValueError, KeyError) as exc:
             raise HTTPException(422, str(exc)) from None
         runtime = registries.resolve("runtimes", mission["runtime_id"], owner_id=owner)
-        skill = registries.resolve("skills", mission["skill_id"], owner_id=owner)
+        skill = dispatchable_skill(
+            registries.resolve("skills", mission["skill_id"], owner_id=owner))
         attribution = mission_attribution(mission, model, runtime, skill)
         # Only the counts the gateway actually reported are kept; the split goes
         # into its own cost columns so a total-only report stays visibly total-only.
@@ -3465,7 +3609,8 @@ def create_app(data_dir=None, opencode_adapter=None, goose_adapter=None):
                 return {"status": "DEFERRED", "reason": "NO_VALID_BINDING"}
             agent_id, model_id, runtime_id = binding
             store.bind(mission_id, agent_id=agent_id, model_id=model_id, runtime_id=runtime_id,
-                       changed={"agent_id", "model_id", "runtime_id"})
+                       changed={"agent_id", "model_id", "runtime_id"},
+                       reason="auto-default")
             mission = store.get(mission_id)
         agent = registries.resolve("agents", mission["agent_id"], owner_id=owner)
         model = registries.resolve("models", mission["model_id"], owner_id=owner)

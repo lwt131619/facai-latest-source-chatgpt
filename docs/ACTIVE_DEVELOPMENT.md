@@ -339,3 +339,31 @@ Full suite: 1376 passed / 8 skipped / 0 failed. Registry next_actions for
 both tasks updated and rendered; next in queue — matrix UI columns +
 watermark editing, a live-probe marker for real-connection tests, event-side
 auto-collection of runtime evidence, multi-key pools (separate item).
+
+## Four-agent round: pools UI, auto-collection, skill lifecycle, routing audit trail (2026-10-16)
+
+Four parallel implementation agents (disjoint file scopes) integrated on one
+tree, plus two integration stitches by the coordinator:
+- MODEL-001 ④⑤: matrix UI latency/error-rate/call-count columns and
+  watermark editing (PUT /modelmatrix/{id}/limits, admin-gated); @pytest.mark.live
+  separates real-upstream probes (FACAI_LIVE_API_KEY, honest skip without it)
+  from the default suite.
+- TRUST-001 ③④: RUNTIME_TYPES events auto-collect as RUNTIME_EVENT evidence
+  in the same transaction (idempotent, failure never blocks dispatch,
+  FACAI_TRUST_AUTO_COLLECT default on, system:auto-collect attribution);
+  artifact drift outside snapshots annotated + TRUST_ARTIFACT_DRIFT audit
+  events, acceptance-blocker semantics untouched.
+- SKILL-001 ①②③: version persisted (no fake backfill), disabled skills
+  filtered from scoring/execution/dispatch (scheduler stitch by coordinator),
+  soft-delete tombstones with enable/remove/audit endpoints + boundary journal.
+- ROUTER-001 ①②③: ASSIGNMENT_RECORDED persists the candidate/score/exclusion
+  snapshot (survives restarts), BINDING_CHANGED carries reason (legacy None
+  compatible), AGENT_OVERRIDDEN + gold banner closes the goose-displayed/
+  opencode-executed silent gap.
+- Coordinator stitches: test tail assertions now tolerate the auto-collect
+  event (test_opencode_execution, test_phase1); scheduler dispatch applies
+  dispatchable_skill.
+
+Full suite: 1421 passed / 9 skipped / 0 failed. Handoff back to Codex from
+here; next queue — skill usage aggregation, version-aware updates, DISPUTED
+adjudication exit, conversion fallback events, multi-key pools.

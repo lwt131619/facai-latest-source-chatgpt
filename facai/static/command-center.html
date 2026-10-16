@@ -111,6 +111,10 @@
   .pool.empty .pbar i{background:var(--err);}
   .pool .ptag{font-size:var(--fs-2xs);color:var(--mut);white-space:nowrap;}
   .pool .ptag.cold{color:var(--err);}
+  .pool .pstats{font-size:var(--fs-2xs);color:var(--mut);margin-top:4px;
+                display:flex;gap:8px;flex-wrap:wrap;}
+  .pool .pstats b{color:var(--txt-strong);font-weight:600;}
+  .pool .pnote{font-size:var(--fs-2xs);color:var(--mut);margin:4px 0 6px;}
   .pool .ctl{display:flex;gap:4px;margin-top:5px;}
   .pool .ctl .facai-btn{padding:2px 8px;font-size:var(--fs-2xs);}
 </style>
@@ -356,13 +360,24 @@ function poolRow(id, p){
   const cls = p.paused ? "empty" : (p.cooling || pct <= 10 ? "low" : (pct <= 30 ? "low" : ""));
   const tag = p.paused ? "已暂停" : p.cooling ? `冷却 ${p.cooldown_remaining}s` :
               `分钟 ${used}/${limit} · 并发 ${p.inflight}/${p.concurrency_limit}`;
+  // MODEL-001 ④：延迟/错误率/调用次数全部来自 /api/v1/modelmatrix 真实快照
+  //（PoolState 由派发 reserve/report 驱动），无样本时诚实显示 —，不编造。
+  const latency = p.latency_recent_avg_ms != null ? p.latency_recent_avg_ms : p.latency_avg_ms;
+  const errPct = Math.round((p.error_rate || 0) * 100);
   return `<div class="pool ${cls}">` +
     `<div class="prow"><span class="pname">${esc(id)}</span>` +
     `<span class="ptag ${p.paused || p.cooling ? (p.paused ? "" : "cold") : ""}">${esc(tag)}</span></div>` +
     `<div class="pbar"><i style="width:${pct}%"></i></div>` +
+    `<div class="pstats">` +
+    `<span>延迟 <b>${latency == null ? "—" : latency + "ms"}</b></span>` +
+    `<span>错误率 <b>${errPct}%</b></span>` +
+    `<span>调用 <b>${p.reserved_count ?? 0}/${p.reported_count ?? 0}</b>` +
+    `（成功 ${p.ok_count ?? 0} · 失败 ${p.fail_count ?? 0}）</span>` +
+    `</div>` +
     `<div class="ctl">` +
     `<button class="facai-btn" data-act="pause" data-m="${esc(id)}" data-v="${p.paused ? "false" : "true"}">${p.paused ? "恢复" : "暂停"}</button>` +
     `<button class="facai-btn" data-act="boost" data-m="${esc(id)}">权重+1</button>` +
+    `<button class="facai-btn" data-act="limits" data-m="${esc(id)}">水位线</button>` +
     `</div></div>`;
 }
 async function openRegistry(){
@@ -385,7 +400,15 @@ async function openRegistry(){
   let matrixHtml = "";
   if (matrix && matrix.pools) {
     const order = matrix.route_order || Object.keys(matrix.pools);
-    matrixHtml = `<h3>模型矩阵 · ${order.length} 池（路由顺序自上而下）</h3>` +
+    const c = matrix.constants || {};
+    // 诚实只读说明：冷却阶梯是代码内置常量（随 matrix API 带出），只有
+    // 注册表承载的两条水位线（分钟窗/并发上限）提供编辑入口。
+    const note = c.cooldown_base_s != null
+      ? `<div class="pnote">水位线经「水位线」编辑并写回注册表；冷却为代码内置常量：` +
+        `首冷 ${c.cooldown_base_s}s → 封顶 ${c.cooldown_max_s}s，` +
+        `${c.unpenalized_window_s}s 无失败自动重置（默认 ${c.default_minute_limit} 次/分 · 并发 ${c.default_concurrency}）</div>`
+      : "";
+    matrixHtml = `<h3>模型矩阵 · ${order.length} 池（路由顺序自上而下）</h3>` + note +
       order.map(id => matrix.pools[id] ? poolRow(id, matrix.pools[id]) : "").join("");
   }
   box.innerHTML =
@@ -400,6 +423,16 @@ async function openRegistry(){
         if (btn.dataset.act === "pause") {
           await api(`/api/v1/modelmatrix/${m}/pause`,
                     {method:"PUT", body: JSON.stringify({paused: btn.dataset.v === "true"})});
+        } else if (btn.dataset.act === "limits") {
+          // 水位线编辑：走真实 PUT /modelmatrix/{id}/limits（写回注册表）。
+          const cur = matrix.pools[m];
+          const rpm = prompt(`每分钟请求上限（当前 ${cur.minute_limit}）`, cur.minute_limit);
+          if (rpm === null) return;
+          const conc = prompt(`并发上限（当前 ${cur.concurrency_limit}）`, cur.concurrency_limit);
+          if (conc === null) return;
+          await api(`/api/v1/modelmatrix/${m}/limits`,
+                    {method:"PUT", body: JSON.stringify(
+                        {rate_limit_per_min: Number(rpm), max_concurrency: Number(conc)})});
         } else {
           const cur = matrix.pools[m].weight || 1;
           await api(`/api/v1/modelmatrix/${m}/weight`,

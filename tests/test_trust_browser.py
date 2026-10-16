@@ -87,7 +87,8 @@ def test_intent_to_evidence_review_and_download(protected_server, playwright_api
             assert event.ok,event.text()
             revision=page.request.get(endpoint+'/trust').json()['revision']
             response=page.request.post(endpoint+'/trust/evidence',data={'expected_revision':revision,'event_id':event.json()['id']},headers=headers)
-            assert response.ok,response.text()
+            # 事件侧自动采集可能已把该事件导入（幂等 409），两种结果都算采集成功。
+            assert response.ok or response.status == 409,response.text()
         page.reload();page.wait_for_selector('#proofs a.download')
         page.click('#snapshot')
         page.get_by_label('验收理由',exact=True).fill('Owner accepts synthetic fixture; not a live-provider result')

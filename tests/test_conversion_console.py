@@ -433,3 +433,127 @@ class TestBoundaryApi:
         bad = client.put("/api/v1/boundary/config",
                          json={"modes": {"ethics": "wildcard"}})
         assert bad.status_code == 422
+
+
+class TestRoutingAuditEvents:
+    """ROUTER-001 ①②③：能力路由的解释必须落持久事件。
+
+    ① ASSIGNMENT_RECORDED：候选/分数/排除原因跨重启可查（事件是事实源，
+      ConversionConsole._pipelines 只是展示加速）；
+    ② BINDING_CHANGED 带 reason（owner-manual / auto-default /
+      conversion-primary），无 reason 的旧事件读取为 None；
+    ③ 分配树首选与实际派发不一致时 AGENT_OVERRIDDEN 留痕，派发行为不变。
+    """
+
+    def _events(self, client, mission_id, event_type):
+        events = client.get(f"/api/v1/missions/{mission_id}/events").json()
+        return [event for event in events if event["type"] == event_type]
+
+    def test_assignment_event_persists_candidates_and_survives_restart(
+            self, tmp_path, monkeypatch):
+        client = _client(tmp_path, monkeypatch)
+        # 两个额外 Agent，让事件里既有 chosen/fallbacks 也有 excluded 落选者。
+        for key in ("custom-a", "custom-b"):
+            registered = client.put(f"/api/v1/registries/agents/{key}",
+                                    json={"name": key, "adapter": "custom"})
+            assert registered.status_code == 200, registered.text
+        created = client.post("/api/v1/conversion/console",
+                              json={"text": TEXT}).json()
+        mission_id = created["mission"]["id"]
+
+        recorded = self._events(client, mission_id, "ASSIGNMENT_RECORDED")
+        assert len(recorded) == 1
+        payload = recorded[0]["payload"]
+        assert payload["mission_id"] == mission_id
+        stages = payload["stages"]
+        assert [stage["stage"] for stage in stages] == created["stage_order"]
+        first = stages[0]
+        assert first["chosen"] == "opencode"
+        ids = [row["agent_id"] for row in first["candidates"]]
+        assert set(ids) == {"opencode", "goose", "custom-a", "custom-b"}
+        goose = next(row for row in first["candidates"] if row["agent_id"] == "goose")
+        assert goose["score"] == round(goose["score"], 2)   # 分数保持两位小数
+        assert any("适配器基准" in reason for reason in goose["reasons"])
+        assert first["truncated"] is False
+        # 排除者必须带原因；后备也带原因。
+        assert first["excluded"], "custom-b 应作为落选者出现在 excluded"
+        assert all(row["reason"] for row in first["excluded"])
+        assert all(row["reason"] for row in first["fallbacks"])
+
+        # 重启 store（新 Store 实例读同一 tmp_path）后事件仍可查——事实源在
+        # 事件表，不在进程内存的 _pipelines。
+        from facai.store import Store
+        reopened = Store(tmp_path)
+        replay = [event for event in reopened.events(mission_id)
+                  if event["type"] == "ASSIGNMENT_RECORDED"]
+        assert len(replay) == 1
+        assert replay[0]["payload"] == payload
+
+    def test_binding_changed_carries_reason_and_legacy_events_stay_compatible(
+            self, tmp_path, monkeypatch):
+        client = _client(tmp_path, monkeypatch)
+        created = client.post("/api/v1/conversion/console",
+                              json={"text": TEXT}).json()
+        mission_id = created["mission"]["id"]
+        # 转换操作台默认补齐绑定 → auto-default。
+        bindings = self._events(client, mission_id, "BINDING_CHANGED")
+        assert bindings and bindings[0]["payload"]["reason"] == "auto-default"
+
+        # owner 手动改绑 → owner-manual。
+        rebound = client.put(f"/api/v1/missions/{mission_id}/binding",
+                             json={"model_id": "deepseek-flash"})
+        assert rebound.status_code == 200, rebound.text
+        bindings = self._events(client, mission_id, "BINDING_CHANGED")
+        assert bindings[-1]["payload"]["reason"] == "owner-manual"
+
+        # 另一个 opencode 适配器 Agent 评分并列第一（agent_id 序在前的胜出）时，
+        # 创建走 conversion-primary 换人，且不产生 override。
+        extra = client.put("/api/v1/registries/agents/a-oc",
+                           json={"name": "Second OpenCode", "adapter": "opencode"})
+        assert extra.status_code == 200, extra.text
+        second = client.post("/api/v1/conversion/console",
+                             json={"text": TEXT}).json()
+        assert second["mission"]["agent_id"] == "a-oc"
+        assert self._events(client, second["mission"]["id"],
+                            "AGENT_OVERRIDDEN") == []
+        bindings = self._events(client, second["mission"]["id"], "BINDING_CHANGED")
+        assert bindings[0]["payload"]["reason"] == "conversion-primary"
+
+        # 旧调用（不带 reason）写入的事件读出来 reason 为 None——兼容不改语义。
+        from facai.store import Store
+        store = Store(tmp_path)
+        mission = store.create("legacy", "原话 legacy", ["开发"])
+        store.bind(mission["id"], "opencode", "deepseek-flash")
+        legacy = [event for event in store.events(mission["id"])
+                  if event["type"] == "BINDING_CHANGED"]
+        assert legacy and legacy[0]["payload"]["reason"] is None
+
+    def test_goose_primary_records_agent_overridden_with_actual_opencode(
+            self, tmp_path, monkeypatch):
+        # 让 goose 在评分上压过 opencode：分配树首选变成 goose，而派发保持
+        # 默认绑定的 opencode（仅 opencode 适配器可执行）——不一致必须留痕。
+        monkeypatch.setattr("facai.conversion._AGENT_PROFILES",
+                            {"opencode": (1.0, ()), "goose": (1.5, ())})
+        client = _client(tmp_path, monkeypatch)
+        created = client.post("/api/v1/conversion/console",
+                              json={"text": TEXT}).json()
+        mission_id = created["mission"]["id"]
+        # 派发行为不变：仍由默认绑定的 opencode 执行。
+        assert created["mission"]["agent_id"] == "opencode"
+        assert created["dispatch"]["status"] in {"QUEUED", "DEFERRED"}
+
+        overrides = self._events(client, mission_id, "AGENT_OVERRIDDEN")
+        assert len(overrides) == 1
+        payload = overrides[0]["payload"]
+        assert payload["displayed_primary"] == "goose"
+        assert payload["displayed_adapter"] == "goose"
+        assert payload["actual_agent"] == "opencode"
+        assert "仅 opencode 适配器可执行" in payload["reason"]
+
+        # 快照把 override 透传给 UI，页面壳带有如实标注的文案。
+        snapshot = client.get(f"/api/v1/conversion/console/{created['id']}").json()
+        assert snapshot["assignment_override"]["displayed_primary"] == "goose"
+        assert snapshot["assignment_override"]["actual_agent"] == "opencode"
+        page = client.get("/conversion")
+        assert page.status_code == 200
+        assert "实际执行者与展示不同" in page.text

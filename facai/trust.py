@@ -7,7 +7,9 @@ from contextlib import contextmanager
 import io
 import hashlib
 import json
+import logging
 import os
+import sqlite3
 from pathlib import Path
 import stat
 import zipfile
@@ -26,6 +28,124 @@ RUNTIME_TYPES = frozenset({'OPENCODE_COMPLETED', 'OPENCODE_FAILED', 'OPENCODE_TI
 VERIFICATION_METHODS = frozenset({'OWNER_RECHECK', 'EXTERNAL_DOC_REFERENCE', 'OPERATOR_REPLY'})
 VERIFICATION_RESULTS = frozenset({'CORROBORATED', 'NOT_CORROBORATED', 'CONTRADICTED'})
 SOURCE_TIERS = ('EXTERNALLY_VERIFIED', 'OWNER_ATTESTED', 'UNVERIFIED')
+
+# 事件侧自动采集开关。默认开启：自动采集只是把运行时事件转成带诚实标注的
+# RUNTIME_EVENT evidence（collected_by=system:auto-collect），幂等、失败静默、
+# 永不参与 verdict/accept blockers 判定，风险面与 Owner 手动导入相同；
+# 只有显式设为 0/false/off/no 才关闭。
+AUTO_COLLECT_ENV = 'FACAI_TRUST_AUTO_COLLECT'
+AUTO_COLLECTED_BY = 'system:auto-collect'
+
+
+def auto_collect_enabled():
+    value = os.environ.get(AUTO_COLLECT_ENV, '1').strip().lower()
+    return value not in {'0', 'false', 'off', 'no'}
+
+
+# DDL kept as individual statements (never executescript, which would commit
+# the caller's open transaction) so the auto-collect hook can ensure the tables
+# exist inside a publisher's live transaction.
+TRUST_SCHEMA_STATEMENTS = (
+    '''CREATE TABLE IF NOT EXISTS trust_versions (
+         mission_id TEXT PRIMARY KEY REFERENCES missions(id), revision INTEGER NOT NULL)''',
+    '''CREATE TABLE IF NOT EXISTS trust_evidence (
+         id TEXT PRIMARY KEY, mission_id TEXT NOT NULL REFERENCES missions(id),
+         document TEXT NOT NULL, sha256 TEXT NOT NULL, created_at TEXT NOT NULL)''',
+    'CREATE INDEX IF NOT EXISTS trust_evidence_mission ON trust_evidence(mission_id)',
+    '''CREATE TABLE IF NOT EXISTS trust_source_verifications (
+         id TEXT PRIMARY KEY, mission_id TEXT NOT NULL REFERENCES missions(id),
+         evidence_id TEXT NOT NULL REFERENCES trust_evidence(id),
+         source_key TEXT NOT NULL, document TEXT NOT NULL, sha256 TEXT NOT NULL,
+         created_at TEXT NOT NULL)''',
+    'CREATE INDEX IF NOT EXISTS trust_source_verifications_mission ON trust_source_verifications(mission_id)',
+    'CREATE INDEX IF NOT EXISTS trust_source_verifications_source ON trust_source_verifications(source_key)',
+    '''CREATE TABLE IF NOT EXISTS trust_sources (
+         owner_id TEXT NOT NULL, source_key TEXT NOT NULL, tier TEXT NOT NULL,
+         verification_id TEXT, mission_id TEXT, updated_at TEXT NOT NULL,
+         PRIMARY KEY(owner_id, source_key))''',
+    '''CREATE TABLE IF NOT EXISTS trust_claims (
+         id TEXT PRIMARY KEY, mission_id TEXT NOT NULL REFERENCES missions(id),
+         document TEXT NOT NULL, created_at TEXT NOT NULL)''',
+    'CREATE INDEX IF NOT EXISTS trust_claims_mission ON trust_claims(mission_id)',
+    '''CREATE TABLE IF NOT EXISTS trust_reviews (
+         id TEXT PRIMARY KEY, mission_id TEXT NOT NULL REFERENCES missions(id),
+         claim_id TEXT NOT NULL REFERENCES trust_claims(id),
+         document TEXT NOT NULL, created_at TEXT NOT NULL)''',
+    'CREATE INDEX IF NOT EXISTS trust_reviews_mission ON trust_reviews(mission_id)',
+    '''CREATE TABLE IF NOT EXISTS trust_retractions (
+         claim_id TEXT PRIMARY KEY REFERENCES trust_claims(id),
+         mission_id TEXT NOT NULL REFERENCES missions(id), document TEXT NOT NULL)''',
+    '''CREATE TABLE IF NOT EXISTS trust_proofs (
+         id TEXT PRIMARY KEY, mission_id TEXT NOT NULL REFERENCES missions(id),
+         document TEXT NOT NULL, sha256 TEXT NOT NULL, created_at TEXT NOT NULL)''',
+    '''CREATE TABLE IF NOT EXISTS trust_acceptances (
+         proof_id TEXT PRIMARY KEY REFERENCES trust_proofs(id),
+         document TEXT NOT NULL, created_at TEXT NOT NULL)''',
+    '''CREATE TABLE IF NOT EXISTS knowledge_assets (
+         id TEXT PRIMARY KEY, owner_id TEXT NOT NULL,
+         mission_id TEXT NOT NULL REFERENCES missions(id),
+         proof_id TEXT NOT NULL UNIQUE REFERENCES trust_proofs(id),
+         document TEXT NOT NULL, sha256 TEXT NOT NULL,
+         search_text TEXT NOT NULL, created_at TEXT NOT NULL)''',
+    'CREATE INDEX IF NOT EXISTS knowledge_by_owner ON knowledge_assets(owner_id,created_at)',
+)
+
+
+def ensure_trust_schema(db):
+    for statement in TRUST_SCHEMA_STATEMENTS:
+        db.execute(statement)
+
+
+def auto_collect_runtime_event(store, db, mission_id, event_id):
+    """System-side RUNTIME_EVENT collection at the publish point.
+
+    Called from Store._event inside the publisher's own transaction, so the
+    evidence and the event it references commit or roll back together. Purely
+    additive: idempotent per event_id (repeats silently skip), honestly labelled
+    as system collection, never raises past the savepoint and never touches
+    verdicts, UNKNOWN/DISPUTED states or acceptance blockers.
+    """
+    if not auto_collect_enabled():
+        return None
+    db.execute('SAVEPOINT trust_auto_collect')
+    try:
+        event = db.execute('SELECT id,type,sequence,occurred_at,step_id,agent_id FROM events '
+                           'WHERE mission_id=? AND id=?', (mission_id, event_id)).fetchone()
+        if event is None or event['type'] not in RUNTIME_TYPES:
+            db.execute('RELEASE trust_auto_collect')
+            return None
+        if db.execute("SELECT 1 FROM trust_evidence WHERE mission_id=? AND json_extract(document,'$.event_id')=?",
+                      (mission_id, event_id)).fetchone():
+            db.execute('RELEASE trust_auto_collect')
+            return None  # 重复采集静默跳过（幂等闸与 add_evidence 的 409 同源）
+        try:
+            db.execute('SELECT 1 FROM trust_evidence LIMIT 1')
+        except sqlite3.OperationalError:
+            ensure_trust_schema(db)
+        record = {'id': uuid4().hex, 'mission_id': mission_id, 'kind': 'RUNTIME_EVENT',
+                  'source': 'mission_event:' + event_id, 'content': canonical(dict(event)),
+                  'event_id': event_id, 'collected_by': AUTO_COLLECTED_BY, 'collected_at': now(),
+                  'source_verification': 'PERSISTED_EVENT_REFERENCE'}
+        sha = digest(record)
+        db.execute('INSERT INTO trust_evidence VALUES (?,?,?,?,?)',
+                   (record['id'], mission_id, canonical(record), sha, now()))
+        revision = db.execute('SELECT revision FROM trust_versions WHERE mission_id=?',
+                              (mission_id,)).fetchone()
+        db.execute('INSERT INTO trust_versions VALUES (?,?) ON CONFLICT(mission_id) '
+                   'DO UPDATE SET revision=excluded.revision',
+                   (mission_id, (revision['revision'] if revision else 0) + 1))
+        store._event(db, mission_id, None, None, None, 'TRUST_EVIDENCE_COLLECTED',
+                     {'actor': AUTO_COLLECTED_BY, 'evidence_id': record['id'], 'sha256': sha,
+                      'collected_by': AUTO_COLLECTED_BY})
+        db.execute('RELEASE trust_auto_collect')
+        return record['id']
+    except Exception:
+        # 采集失败绝不阻断事件发布/任务执行：回滚到保存点后静默吞掉。
+        db.execute('ROLLBACK TO trust_auto_collect')
+        db.execute('RELEASE trust_auto_collect')
+        logging.getLogger(__name__).debug('trust auto-collect skipped for event %s', event_id,
+                                          exc_info=True)
+        return None
 
 
 def source_key(value):
@@ -81,50 +201,7 @@ class TrustStore:
         self.store = store
         MissionSpecifications(store)
         with store.connect() as db:
-            db.executescript('''
-              CREATE TABLE IF NOT EXISTS trust_versions (
-                mission_id TEXT PRIMARY KEY REFERENCES missions(id), revision INTEGER NOT NULL);
-              CREATE TABLE IF NOT EXISTS trust_evidence (
-                id TEXT PRIMARY KEY, mission_id TEXT NOT NULL REFERENCES missions(id),
-                document TEXT NOT NULL, sha256 TEXT NOT NULL, created_at TEXT NOT NULL);
-              CREATE INDEX IF NOT EXISTS trust_evidence_mission ON trust_evidence(mission_id);
-              CREATE TABLE IF NOT EXISTS trust_source_verifications (
-                id TEXT PRIMARY KEY, mission_id TEXT NOT NULL REFERENCES missions(id),
-                evidence_id TEXT NOT NULL REFERENCES trust_evidence(id),
-                source_key TEXT NOT NULL, document TEXT NOT NULL, sha256 TEXT NOT NULL,
-                created_at TEXT NOT NULL);
-              CREATE INDEX IF NOT EXISTS trust_source_verifications_mission ON trust_source_verifications(mission_id);
-              CREATE INDEX IF NOT EXISTS trust_source_verifications_source ON trust_source_verifications(source_key);
-              CREATE TABLE IF NOT EXISTS trust_sources (
-                owner_id TEXT NOT NULL, source_key TEXT NOT NULL, tier TEXT NOT NULL,
-                verification_id TEXT, mission_id TEXT, updated_at TEXT NOT NULL,
-                PRIMARY KEY(owner_id, source_key));
-              CREATE TABLE IF NOT EXISTS trust_claims (
-                id TEXT PRIMARY KEY, mission_id TEXT NOT NULL REFERENCES missions(id),
-                document TEXT NOT NULL, created_at TEXT NOT NULL);
-              CREATE INDEX IF NOT EXISTS trust_claims_mission ON trust_claims(mission_id);
-              CREATE TABLE IF NOT EXISTS trust_reviews (
-                id TEXT PRIMARY KEY, mission_id TEXT NOT NULL REFERENCES missions(id),
-                claim_id TEXT NOT NULL REFERENCES trust_claims(id),
-                document TEXT NOT NULL, created_at TEXT NOT NULL);
-              CREATE INDEX IF NOT EXISTS trust_reviews_mission ON trust_reviews(mission_id);
-              CREATE TABLE IF NOT EXISTS trust_retractions (
-                claim_id TEXT PRIMARY KEY REFERENCES trust_claims(id),
-                mission_id TEXT NOT NULL REFERENCES missions(id), document TEXT NOT NULL);
-              CREATE TABLE IF NOT EXISTS trust_proofs (
-                id TEXT PRIMARY KEY, mission_id TEXT NOT NULL REFERENCES missions(id),
-                document TEXT NOT NULL, sha256 TEXT NOT NULL, created_at TEXT NOT NULL);
-              CREATE TABLE IF NOT EXISTS trust_acceptances (
-                proof_id TEXT PRIMARY KEY REFERENCES trust_proofs(id),
-                document TEXT NOT NULL, created_at TEXT NOT NULL);
-              CREATE TABLE IF NOT EXISTS knowledge_assets (
-                id TEXT PRIMARY KEY, owner_id TEXT NOT NULL,
-                mission_id TEXT NOT NULL REFERENCES missions(id),
-                proof_id TEXT NOT NULL UNIQUE REFERENCES trust_proofs(id),
-                document TEXT NOT NULL, sha256 TEXT NOT NULL,
-                search_text TEXT NOT NULL, created_at TEXT NOT NULL);
-              CREATE INDEX IF NOT EXISTS knowledge_by_owner ON knowledge_assets(owner_id,created_at);
-            ''')
+            ensure_trust_schema(db)
 
     def _owned(self, db, owner, mission_id):
         mission = db.execute('SELECT * FROM missions WHERE id=? AND owner_id=?', (mission_id, owner)).fetchone()
@@ -429,10 +506,57 @@ class TrustStore:
                 'execution': {**execution, 'mission': {k: v for k, v in execution['mission'].items() if k != 'professional_prompt'}},
                 'trace': trace}
 
+    def _artifact_drift(self, proof_document, current_by_id):
+        """Compare a proof snapshot's artifact hashes with the live read.
+
+        Returns drift annotations only: a mismatch (or a mid-read mutation,
+        CHANGED_DURING_READ) is recorded and surfaced, never used to void a
+        proof, change a verdict or add an acceptance blocker.
+        """
+        drifts = []
+        for item in (proof_document.get('execution') or {}).get('artifacts') or []:
+            live = current_by_id.get(item.get('id'))
+            if live is None:
+                continue
+            if live.get('integrity') == 'CHANGED_DURING_READ':
+                drifts.append({'artifact_id': item.get('id'), 'name': live.get('name'),
+                               'snapshot_sha256': item.get('sha256'), 'observed_sha256': None,
+                               'observed_integrity': 'CHANGED_DURING_READ'})
+            elif item.get('sha256') and live.get('sha256') and item['sha256'] != live['sha256']:
+                drifts.append({'artifact_id': item.get('id'), 'name': live.get('name'),
+                               'snapshot_sha256': item['sha256'], 'observed_sha256': live['sha256'],
+                               'observed_integrity': live.get('integrity')})
+        return drifts
+
+    def _record_drift(self, db, owner, mission_id, drifts):
+        """Append one TRUST_ARTIFACT_DRIFT audit event per distinct drift.
+
+        Deduplicated by content marker so repeated reads while a file stays
+        drifted do not spam the trace. Purely additive bookkeeping: failures are
+        swallowed, and the event type is excluded from the execution fingerprint,
+        so proof snapshot tokens and acceptance blockers never change because of
+        drift annotation.
+        """
+        try:
+            for drift in drifts:
+                marker = digest(drift)
+                if db.execute("SELECT 1 FROM events WHERE mission_id=? AND type='TRUST_ARTIFACT_DRIFT' "
+                              "AND json_extract(payload,'$.marker')=?", (mission_id, marker)).fetchone():
+                    continue
+                self._event(db, mission_id, 'TRUST_ARTIFACT_DRIFT', owner, marker=marker, **drift)
+        except Exception:
+            logging.getLogger(__name__).debug('drift annotation skipped', exc_info=True)
+
     def get(self, owner, mission_id):
         with self.store.connect() as db:
             db.execute('BEGIN')
             state = self._state(db, owner, mission_id)
+            current_by_id = {item.get('id'): item for item in state['execution']['artifacts']}
+            drifts = [drift for item in state['execution']['artifacts']
+                      if item.get('integrity') == 'CHANGED_DURING_READ'
+                      for drift in [{'artifact_id': item.get('id'), 'name': item.get('name'),
+                                     'snapshot_sha256': None, 'observed_sha256': None,
+                                     'observed_integrity': 'CHANGED_DURING_READ'}]]
             proofs = []
             for row in db.execute('SELECT id,sha256,created_at,document FROM trust_proofs WHERE mission_id=? ORDER BY rowid DESC', (mission_id,)):
                 document = json.loads(row['document'])
@@ -440,9 +564,15 @@ class TrustStore:
                     raise TrustError(409, 'Proof integrity check failed')
                 accepted = db.execute('SELECT document FROM trust_acceptances WHERE proof_id=?', (row['id'],)).fetchone()
                 current = document['snapshot_token'] == state['snapshot_token']
+                proof_drift = self._artifact_drift(document, current_by_id)
+                drifts += proof_drift
                 proofs.append({'id': row['id'], 'sha256': row['sha256'], 'created_at': row['created_at'],
                                'current': current, 'acceptance': json.loads(accepted['document']) if accepted else None,
-                               'acceptance_current': bool(accepted) and current})
+                               'acceptance_current': bool(accepted) and current,
+                               # 漂移标注（新增独立字段）：只标注+留痕，不自动作废。
+                               'artifact_drift': proof_drift,
+                               'artifact_drift_detected': bool(proof_drift)})
+            self._record_drift(db, owner, mission_id, drifts)
             state['proofs'] = proofs
             return state
 

@@ -261,7 +261,7 @@
         "保留已有有效行为，相关回归及失败路径测试通过",
         "验证命令/结果/提交与外部局限写入交接记录"
       ],
-      "next_action": "QuotaPools已接入生产派发路径(scheduler reserve/report、router reroute吃池健康序、api共享实例),PoolState增延迟/错误率/调用数统计,无池模型行为不变;下一步:矩阵UI展示新统计列与水位线编辑、pytest live marker分开真实连接验证、单模型多key池与key级轮换单独立项。"
+      "next_action": "池接线(①②③)与矩阵UI统计列/水位线编辑(④)与live marker(⑤)已入库：调度器reserve/report、reroute吃健康序、PoolState延迟/错误率/调用数、PUT /modelmatrix/{id}/limits管理员闸、@pytest.mark.live真实探测(FACAI_LIVE_API_KEY缺失诚实skip)。下一步:单模型多key池与key级轮换(依赖③已备,建议单独立项)、被拒率与失败原因细分列。"
     },
     {
       "id": "SKILL-001",
@@ -284,7 +284,7 @@
         "保留已有有效行为，相关回归及失败路径测试通过",
         "验证命令/结果/提交与外部局限写入交接记录"
       ],
-      "next_action": "补manifest与版本/usage/performance记录，保留现有导入蒸馏能力和历史证据"
+      "next_action": "版本落库/禁用生效(conversion打分+API执行+scheduler派发三路同口径dispatchable_skill)/软删tombstone+三端点(启用/软删/审计)已入库,boundary journal记SKILL_DISABLED/ENABLED/REMOVED。下一步:skill_usage聚合(④)、版本感知更新previous_version/sha(⑤)、依赖字段(⑥)。"
     },
     {
       "id": "ROUTER-001",
@@ -307,7 +307,7 @@
         "保留已有有效行为，相关回归及失败路径测试通过",
         "验证命令/结果/提交与外部局限写入交接记录"
       ],
-      "next_action": "记录候选/排除/切换原因，不能静默改变原目标和约束"
+      "next_action": "ASSIGNMENT_RECORDED持久事件(候选/分数/排除原因,跨重启可查)、BINDING_CHANGED带reason(旧事件兼容)、AGENT_OVERRIDDEN堵展示与实际不一致缺口+conversion.html金色标注卡已入库。下一步:转换回退事件化(convert_channel_text fallback_from_model)、JOB_REPROMPTED自足化、Skill自动路由(依赖SKILL-001④)。"
     },
     {
       "id": "RUNTIME-001",
@@ -377,7 +377,7 @@
         "采集时间/来源/环境/哈希真实，无执行证据不标语义验证",
         "legacy verified不偷换，新完整性/语义验证字段独立"
       ],
-      "next_action": "来源验证记录(trust_source_verifications,人工零fetch,human_writer闸)与来源注册表信任图v0(trust_sources,owner隔离,只标注不裁决)已入库;下一步:事件侧自动采集(复用RUNTIME_EVENT幂等闸)、产物侧漂移钩子、DISPUTED人工裁决出口、跨mission冲突检测;confidence保持null直到有带验证状态的校准数据源。"
+      "next_action": "来源验证记录+信任图v0(①②)与事件侧自动采集/产物漂移钩子(③④)已入库：trust_source_verifications、trust_sources(owner隔离)、RUNTIME_TYPES同事务自动采集(FACAI_TRUST_AUTO_COLLECT默认开,幂等,失败不阻断)、TRUST_ARTIFACT_DRIFT留痕。下一步:DISPUTED人工裁决出口、跨mission冲突检测、独立来源验证的外部凭证面。confidence保持null。"
     },
     {
       "id": "CONFLICT-001",

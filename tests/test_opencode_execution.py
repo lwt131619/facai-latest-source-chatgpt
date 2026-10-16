@@ -188,7 +188,12 @@ def test_run_endpoint_marks_step_failed_on_nonzero_exit(tmp_path):
     assert detail['steps'][0]['status'] == 'FAILED'
     assert detail['status'] == 'FAILED'
     events = client.get(f"/api/v1/missions/{mission['id']}/events").json()
-    assert events[-1]['type'] == 'OPENCODE_FAILED'
+    # TRUST auto-collection may append TRUST_EVIDENCE_COLLECTED after the
+    # failure event (same transaction); the failure itself must still be in
+    # the stream, with only trust-audit events allowed after it.
+    types = [event['type'] for event in events]
+    assert 'OPENCODE_FAILED' in types
+    assert not set(types[types.index('OPENCODE_FAILED') + 1:]) - {'TRUST_EVIDENCE_COLLECTED'}
     assert any(event['type'] == 'ERROR' for event in events)
 
 

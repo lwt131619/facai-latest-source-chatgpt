@@ -154,6 +154,21 @@ function poll(){
 function render(view){
   $("empty").style.display = "none";
   const pipe = $("pipe"); pipe.textContent = "";
+  // ROUTER-001: 分配树首选与实际派发不一致时，如实标注（事实源是
+  // AGENT_OVERRIDDEN 事件，快照透传 assignment_override）。
+  const ov = view.assignment_override;
+  if (ov) {
+    const note = document.createElement("div");
+    note.className = "stage";
+    note.style.borderColor = "var(--gold)";
+    note.innerHTML = `<div class="head"><div class="label" style="color:var(--gold)">` +
+      `实际执行者与展示不同</div></div>` +
+      `<div class="agents">分配树首选 <b>${esc(ov.displayed_primary)}</b>` +
+      `（适配器 ${esc(ov.displayed_adapter || "未知")} 不可执行），` +
+      `本任务实际由 <b>${esc(ov.actual_agent)}</b> 执行。` +
+      `${esc(ov.reason || "")}</div>`;
+    pipe.appendChild(note);
+  }
   (view.stage_order || []).forEach((label) => {
     const stage = (view.stages || {})[label] || {};
     const asg = stage.assignment || {};

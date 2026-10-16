@@ -18,6 +18,7 @@ from pathlib import Path
 from . import checkpoint
 from . import router
 from .execution import execute_mission_task, opencode_model_ref
+from .skills import dispatchable_skill
 
 # Documented default and upper bound for scheduler concurrency.
 DEFAULT_CONCURRENCY = 2
@@ -216,7 +217,10 @@ class Scheduler:
         model = self._model_with_key(
             self.registries.resolve("models", mission["model_id"], owner_id=owner), owner)
         runtime = self.registries.resolve("runtimes", mission["runtime_id"], owner_id=owner)
-        skill = self.registries.resolve("skills", mission["skill_id"], owner_id=owner)
+        # Disabled skills resolve to None here — same gate as the conversion
+        # scoring and the API execution paths (facai.skills.dispatchable_skill).
+        skill = dispatchable_skill(
+            self.registries.resolve("skills", mission["skill_id"], owner_id=owner))
         # A step-level model binding, when present and still resolvable, names the
         # model that actually runs this job: it drives the OpenCode --model flag
         # and the provider/cost attribution (the job's model_ref, set at dispatch
