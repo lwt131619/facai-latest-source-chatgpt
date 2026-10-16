@@ -285,3 +285,27 @@ lease timing, CJK-font-dependent pixel assertions + three launches missing
 Both reports plus a prioritized not-yet-wired list live in
 docs/handoff-20261016/ (additive only — no source files touched) and ship as
 the update package for the Codex-side merge.
+
+## Takeover round 2: Codex increment reviewed, CI races fixed, package refreshed (2026-10-16)
+
+Codex's 21-commit run (03434f4..c307493) was reviewed read-only by an agent:
+all four themes are real implementations (mobile files tab wired to
+GET /api/v1/artifacts with auth-gated preview, independent mobile.webmanifest,
+v2 SW shell, agent assignments off the real /missions/{id}/jobs queue,
+billing summary, DNS/port CI races, O_EXCL backup chain, Electron
+source-mode) with honest PARTIAL declarations where native/real-device
+acceptance is still open. No high-severity findings; the medium one —
+dist ZIP one commit behind HEAD — is what this checkpoint fixes.
+
+Takeover fixes on top:
+- 511fb54: the c307493 CI red was test_runtime_capacity's "every worker
+  actually shared the work" assertion starving a thread on slow runners —
+  seed one synchronous claim per worker before the concurrent free-for-all;
+  and test_backup's 'data?# space' fixture is illegal on Windows filenames
+  (WinError 123), so the URI-stress characters degrade to space+unicode on
+  win32. Full local suite 1362 passed / 0 failed after both; CI green.
+- 06ed4f9: A-7 literal assertions pinning the files tab, independent
+  manifest, secure-context SW registration and the v2 shell; store sqlite
+  busy timeout 10s->30s for the 8-thread fleet (review item B-5).
+- Package rebuilt at a clean 06ed4f9 (430 files, manifest verified
+  independently), closing the ZIP-behind-HEAD gap.
