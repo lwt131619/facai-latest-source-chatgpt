@@ -49,3 +49,18 @@ by touch_job_lease and never stolen by a hunting peer. Crash recovery: an expire
 lease with attempts left requeues exactly once (no budget -> honest FAILED), and
 the peer runs it once after the not-before buffer clears. Status stays PARTIAL:
 real OpenCode CLI / real model 20+ acceptance is still outstanding.
+
+## Fleet-wide claim ceiling fixed (takeover agent, 2026-10-16)
+
+RUNTIME-001 runtime bug found by the fleet tests and fixed in
+facai/scheduler.py: the scheduler passed its OWN concurrency as the store's
+GLOBAL running ceiling, so a fleet was throttled to whichever worker claimed
+first (a 2x2 fleet ran 2 jobs while 2 stayed queued). The optional
+FACAI_MAX_RUNNING_JOBS is now parsed by _fleet_ceiling (None = unlimited) and
+passed to every claim; each worker's own concurrency still binds locally.
+tests/test_runtime_capacity.py pins the contract deterministically at three
+layers — store claim semantics across two worker ids, scheduler env->claim
+wiring (concurrency=4 + ceiling=2 claims exactly 2), and a two-worker drain
+that only asserts deterministic outcomes (all complete, per-worker peak <= own
+concurrency). The earlier thread-interleaving tests were rewritten; the full
+suite passes twice consecutively (1351 passed, 7 skipped).

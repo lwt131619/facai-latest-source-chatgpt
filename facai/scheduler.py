@@ -56,6 +56,25 @@ def _worker_limit(value):
     return max(1, min(CONCURRENCY_LIMIT, parsed))
 
 
+def _fleet_ceiling(value):
+    """Parse the optional fleet-wide running ceiling; ``None`` = unlimited.
+
+    ``FACAI_MAX_RUNNING_JOBS`` bounds RUNNING jobs across ALL workers at
+    claim time. It must never default to one worker's own concurrency: the
+    store's ceiling is global, so a fleet of N workers would be throttled to
+    whichever worker claimed first. Unset or blank means no global ceiling —
+    each worker's own concurrency still binds locally.
+    """
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        parsed = int(text)
+    except ValueError:
+        return None
+    return max(1, parsed)
+
+
 class Scheduler:
     def __init__(self, store, adapter, registries, root, concurrency=None,
                  lease_seconds=600, worker_id=None, adapter_resolver=None):
@@ -70,6 +89,11 @@ class Scheduler:
         configured = (concurrency if concurrency is not None
                       else os.getenv("FACAI_MAX_WORKERS", str(DEFAULT_CONCURRENCY)))
         self.concurrency = _worker_limit(configured)
+        # Optional fleet-wide claim ceiling (RUNTIME-001 capacity): see
+        # _fleet_ceiling. Never defaults to this worker's own concurrency —
+        # the store's ceiling is global, and a fleet must not be throttled to
+        # whichever worker claimed first.
+        self.max_running_jobs = _fleet_ceiling(os.getenv("FACAI_MAX_RUNNING_JOBS"))
         # Floor for every claim's lease: the store extends it to cover the
         # job's own timeout, so a long-running job is never recovered while its
         # worker is still executing it.
@@ -290,7 +314,7 @@ class Scheduler:
                                            parallel_mission_jobs=min(self.concurrency,
                                                                      MAX_PARALLEL_PER_MISSION),
                                            isolation_ready=self._isolation_ready,
-                                           max_running_jobs=self.concurrency)
+                                           max_running_jobs=self.max_running_jobs)
                 if job is None:
                     break
                 jobs.append(job)
