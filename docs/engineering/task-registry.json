@@ -307,7 +307,7 @@
         "保留已有有效行为，相关回归及失败路径测试通过",
         "验证命令/结果/提交与外部局限写入交接记录"
       ],
-      "next_action": "ASSIGNMENT_RECORDED持久事件、BINDING_CHANGED带reason、AGENT_OVERRIDDEN与CONVERSION_FALLBACK同事务留痕已入库；转换回退只存模型ID/异常类别/确定性来源，不泄漏上游文本。下一步:JOB_REPROMPTED自足化、Skill自动路由(依赖SKILL-001④)。"
+      "next_action": "ASSIGNMENT_RECORDED、BINDING_CHANGED、AGENT_OVERRIDDEN与CONVERSION_FALLBACK已留痕。JOB_REPROMPTED现包含同Mission FEEDBACK_RESOLVED事件引用、gate ID、新旧prompt SHA256；不重复存敏感全文。下一步:Skill自动路由(依赖SKILL-001④)、跨重启恢复链路验收。"
     },
     {
       "id": "RUNTIME-001",

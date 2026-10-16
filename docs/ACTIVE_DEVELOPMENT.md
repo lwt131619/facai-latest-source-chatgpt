@@ -1,3 +1,12 @@
+## Reprompt audit provenance
+
+JOB_REPROMPTED now links the exact FEEDBACK_RESOLVED event and gate while
+recording previous/new prompt SHA-256 values in the same update transaction.
+The job row remains the prompt text source; the event does not repeat it.
+Cross-mission feedback-event references are rejected. Focused console/model/
+router regression: 55 passed /0 failed. Previous full Python regression
+1423/7 predates this change; full post-change run not yet recorded.
+
 ## 582f3d8 takeover and conversion fallback audit
 
 Fast-forwarded c307493 to origin/main 582f3d8; no divergent commits. External

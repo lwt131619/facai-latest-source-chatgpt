@@ -1098,13 +1098,17 @@ class Store:
         with self.connect() as db:
             return db.execute("SELECT COUNT(*) FROM jobs WHERE status='RUNNING'").fetchone()[0]
 
-    def update_job_prompt(self, job_id, prompt, owner_id=None):
+    def update_job_prompt(self, job_id, prompt, owner_id=None, *,
+                          source_event_id=None, gate_id=None):
         """Rewrite one QUEUED job's prompt, keeping its identity.
 
         The conversion console's feedback resume uses this: the user's answer
         must ride the stage prompt, and keeping the same job row preserves
         dispatch attribution, priority and lease bookkeeping — superseding a
         not-yet-run stage never forks a second job for the same step.
+        The event records both prompt digests and its feedback source; prompt
+        text remains in the owner-scoped job row rather than being duplicated
+        into a broadly consumed event stream.
         """
         with self.connect() as db:
             row = self._job_row(db, job_id, owner_id)
@@ -1112,10 +1116,22 @@ class Store:
                 raise KeyError(job_id)
             if row["status"] != "QUEUED":
                 raise ValueError(f"Only QUEUED jobs can be reprompted: {row['status']}")
+            if source_event_id:
+                source = db.execute("SELECT mission_id, type FROM events WHERE id=?",
+                                    (source_event_id,)).fetchone()
+                if source is None or source["mission_id"] != row["mission_id"] \
+                        or source["type"] != "FEEDBACK_RESOLVED":
+                    raise ValueError("Reprompt source must be this mission's feedback event")
+            previous_hash = hashlib.sha256(row["prompt"].encode("utf-8")).hexdigest()
+            new_hash = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
             db.execute("UPDATE jobs SET prompt=?, updated_at=? WHERE id=?",
                        (prompt, now(), job_id))
             self._event(db, row["mission_id"], row["step_id"], None, None,
-                        "JOB_REPROMPTED", {"job_id": job_id})
+                        "JOB_REPROMPTED", {"job_id": job_id,
+                                           "previous_prompt_sha256": previous_hash,
+                                           "prompt_sha256": new_hash,
+                                           "source_event_id": source_event_id,
+                                           "gate_id": gate_id})
         return self.get_job(job_id, owner_id=owner_id)
 
     def _refresh_blocked_jobs(self, db, mission_id):

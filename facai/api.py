@@ -2852,10 +2852,11 @@ def create_app(data_dir=None, opencode_adapter=None, goose_adapter=None):
             raise HTTPException(404, "Pipeline not found")
         step = next((s for s in mission["steps"] if s["label"] == resolved["stage"]),
                     None)
-        store.append(mission["id"], "FEEDBACK_RESOLVED",
-                     {"gate_id": gate_id, "stage": resolved["stage"],
-                      "choice": resolved["choice_label"], "answer": resolved["answer"]},
-                     step_id=step["id"] if step else None)
+        feedback_event_id = store.append(
+            mission["id"], "FEEDBACK_RESOLVED",
+            {"gate_id": gate_id, "stage": resolved["stage"],
+             "choice": resolved["choice_label"], "answer": resolved["answer"]},
+            step_id=step["id"] if step else None)
         resolved["resume"] = "NO_STAGE"
         if step is not None and resolved["pipeline_status"] == "RUNNING" \
                 and step["status"] != "DONE":
@@ -2874,7 +2875,9 @@ def create_app(data_dir=None, opencode_adapter=None, goose_adapter=None):
                 if queued is not None:
                     # Supersede the not-yet-run job in place: same identity,
                     # prompt now carries the user's answer — never a fork.
-                    store.update_job_prompt(queued["id"], prompt, owner_id=owner)
+                    store.update_job_prompt(
+                        queued["id"], prompt, owner_id=owner,
+                        source_event_id=feedback_event_id, gate_id=gate_id)
                     resolved["resume"] = "RESUMED"
                     resolved["job_id"] = queued["id"]
                     resolved["resume_kind"] = "REPROMPTED"

@@ -7,6 +7,7 @@ Agent 反馈上来的问题变成大白话多选方案 + 自填充答案 → 回
 """
 
 import concurrent.futures
+import hashlib
 
 import pytest
 
@@ -227,6 +228,10 @@ class TestConversionApi:
         assert gate.status_code == 201, gate.text
         gate = gate.json()
         assert gate["options"][0]["label"] == "我来补充（填在下面）"
+        gate_stage_step_id = created["stages"]["理解需求"]["step_id"]
+        before_jobs = client.get(f"/api/v1/missions/{mission_id}/jobs").json()
+        old_prompt = next(job["prompt"] for job in before_jobs
+                          if job.get("step_id") == gate_stage_step_id)
 
         resolved = client.post(
             f"/api/v1/conversion/console/{pipeline_id}/gates/{gate['id']}/resolve",
@@ -240,11 +245,27 @@ class TestConversionApi:
         # The not-yet-run stage job was superseded in place — same job id, the
         # answer now rides its prompt, and no forked second job exists.
         assert resolved["resume_kind"] == "REPROMPTED"
-        gate_stage_step_id = created["stages"]["理解需求"]["step_id"]
         jobs = client.get(f"/api/v1/missions/{mission_id}/jobs").json()
         step_jobs = [job for job in jobs if job.get("step_id") == gate_stage_step_id]
         assert len(step_jobs) == 1
         assert "目标 example.com" in step_jobs[0]["prompt"]
+        events = client.get(f"/api/v1/missions/{mission_id}/events").json()
+        feedback = next(event for event in events if event["type"] == "FEEDBACK_RESOLVED")
+        reprompt = next(event for event in events if event["type"] == "JOB_REPROMPTED")
+        assert reprompt["step_id"] == gate_stage_step_id
+        assert reprompt["payload"] == {
+            "job_id": step_jobs[0]["id"],
+            "previous_prompt_sha256": hashlib.sha256(old_prompt.encode()).hexdigest(),
+            "prompt_sha256": hashlib.sha256(step_jobs[0]["prompt"].encode()).hexdigest(),
+            "source_event_id": feedback["id"], "gate_id": gate["id"]}
+        assert "目标 example.com" not in str(reprompt["payload"])
+        with pytest.raises(ValueError, match="Reprompt source"):
+            client.app.state.store.update_job_prompt(
+                step_jobs[0]["id"], "tampered", owner_id="admin",
+                source_event_id="missing-event")
+        unchanged = client.get(f"/api/v1/missions/{mission_id}/jobs").json()
+        assert next(job for job in unchanged if job["id"] == step_jobs[0]["id"])["prompt"] \
+            == step_jobs[0]["prompt"]
 
     def test_gate_requires_membership_and_known_stage(self, tmp_path, monkeypatch):
         client = _client(tmp_path, monkeypatch)
