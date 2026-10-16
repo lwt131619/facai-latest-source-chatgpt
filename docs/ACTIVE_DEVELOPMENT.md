@@ -1,3 +1,12 @@
+## Latest complete regression: 1355 passed / 6 skipped / 0 failures
+
+2026-10-16: real Chromium enabled; full suite completed in 184.22 seconds on
+source e32fd39. Source hashes and counts: docs/validation/mobile-increment.json.
+The earlier Runtime assertion failure was resolved by the integrated upstream
+changes; it does not describe this tested source. Previous reports remain
+historical snapshots. Mobile remains PARTIAL pending physical-device HTTPS,
+real notification delivery and complete Production acceptance. No VPS deployment.
+
 ## Mobile execution/resource increment validated locally
 
 Real Chromium + static mobile suite: 15 passed, 0 failed at 390x844.

@@ -23,5 +23,20 @@
     "paid model 20+ concurrency",
     "VPS deployment"
   ],
-  "full_regression": "RUNNING"
+  "full_regression": {
+    "tests": "1361",
+    "failures": "0",
+    "errors": "0",
+    "skipped": "6",
+    "time": "184.192",
+    "passed": 1355
+  },
+  "tested_source_commit": "e32fd39a127771bcdc8fe3561f5323c54f040542",
+  "source_sha256": {
+    "facai/static/mobile.html": "330430da78e28d095bc2da68e4bf9712c4fba98e3d5a73ba175ffa0e2dccd597",
+    "facai/static/mobile.webmanifest": "9d9d989189c0d40dc830f98d8ee496e32a5add851bfb664aa107132da423d998",
+    "facai/static/sw.js": "b06bdfa7d80bbefa9ef0de21e46c151a707924a87652bff8d7451952e3d1e25d",
+    "tests/test_mobile_ui.py": "87327133f82268818111594e1a4eda0c6fc9661b6109a4f3d5ba41975f98aee2",
+    "tests/conftest.py": "793dc33272b7d8ac116180ffdb87a4bef2aee25af2ec369b3c03a61ba263eaf1"
+  }
 }

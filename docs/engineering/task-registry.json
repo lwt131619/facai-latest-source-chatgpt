@@ -487,7 +487,7 @@
     "保留已有有效行为，相关回归及失败路径测试通过",
     "验证命令/结果/提交与外部局限写入交接记录"
    ],
-   "next_action": "已接真实Owner产物列表、受鉴权文本预览/文本副本下载、Agent绑定/执行Job分配、账户额度摘要；独立Mobile manifest及逐资源SW离线缓存已实现。真实Chromium验证中；保持PARTIAL，继续真机HTTPS、通知真实上游及完整任务闭环验收，不将Job数当Agent并发数。"
+   "next_action": "已接真实Owner产物列表、受鉴权文本预览/文本副本下载、Agent绑定/执行Job分配、账户额度摘要；独立Mobile manifest及逐资源SW离线缓存已实现。真实Chromium手机专项15通过，全量1355通过/6跳过/0失败；保持PARTIAL，继续真机HTTPS、通知真实上游及完整任务闭环验收，不将Job数当Agent并发数。"
   },
   {
    "id": "DESKTOP-001",
