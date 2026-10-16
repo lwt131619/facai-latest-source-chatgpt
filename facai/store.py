@@ -2733,6 +2733,14 @@ class Store:
                             {"title": title, "channel": channel, "message_id": message_id})
                 self._event(db, mission_id, None, None, None, "PROMPT_CONVERTED",
                             conversion_payload)
+                if conversion_payload.get("fallback_from_model"):
+                    # Persist alongside the mission and prompt conversion so
+                    # a crash cannot leave a model fallback only in logs.
+                    self._event(db, mission_id, None, None, None, "CONVERSION_FALLBACK",
+                                {"message_id": message_id, "channel": channel,
+                                 "model_id": conversion_payload["fallback_from_model"],
+                                 "reason_class": conversion_payload["fallback_reason_class"],
+                                 "fallback_source": conversion_payload["fallback_source"]})
                 db.execute(
                     "UPDATE channel_messages SET mission_id=?, status='DISPATCHED',"
                     " conversion_owner=NULL, conversion_expires_at=NULL WHERE id=?",

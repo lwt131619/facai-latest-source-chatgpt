@@ -3692,17 +3692,21 @@ def create_app(data_dir=None, opencode_adapter=None, goose_adapter=None):
         return model_id, _model_with_key(model, owner_id)
 
     def convert_channel_text(channel, text, owner_id="admin"):
-        """Prefer the bound model, then fall back without exposing upstream errors."""
+        """Prefer the bound model; return sanitized fallback provenance too."""
         fallback = convert_message(text, channel)
         model_id, model = bound_conversion_model(owner_id=owner_id)
         if model is None:
-            return fallback
+            return fallback, None
         try:
-            return complete_with_bound_model(text, channel, model_id, model, complete)
+            return complete_with_bound_model(text, channel, model_id, model, complete), None
         except Exception as exc:
             logger.warning("channel prompt conversion for %s fell back: %s",
                            model_id, type(exc).__name__)
-            return fallback
+            # Never persist the exception string or upstream response: both
+            # can carry credentials or provider-private request content.
+            return fallback, {"model_id": model_id,
+                              "reason_class": type(exc).__name__,
+                              "fallback_source": "deterministic"}
 
     def conversion_payload_for(channel, message_id, conversion):
         payload = {
@@ -3765,7 +3769,8 @@ def create_app(data_dir=None, opencode_adapter=None, goose_adapter=None):
                     "detail": gate["reason"], "message_id": message_id,
                     "durable": True, "duplicate": duplicate}
         try:
-            conversion = convert_channel_text(channel, text, owner_id=owner_id)
+            conversion, fallback_provenance = convert_channel_text(
+                channel, text, owner_id=owner_id)
         except ValueError as exc:
             store.release_channel_conversion(message_id, owner, status="CONVERSION_FAILED")
             if recorded:
@@ -3774,6 +3779,10 @@ def create_app(data_dir=None, opencode_adapter=None, goose_adapter=None):
             return {"status": "CONVERSION_FAILED", "message_id": message_id, "durable": True,
                     "duplicate": duplicate, "error": str(exc)}
         conversion_payload = conversion_payload_for(channel, message_id, conversion)
+        if fallback_provenance:
+            conversion_payload["fallback_from_model"] = fallback_provenance["model_id"]
+            conversion_payload["fallback_reason_class"] = fallback_provenance["reason_class"]
+            conversion_payload["fallback_source"] = fallback_provenance["fallback_source"]
         try:
             mission_id, _created = store.create_mission_from_message(
                 message_id, channel, title=conversion.title,

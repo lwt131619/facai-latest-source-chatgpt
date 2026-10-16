@@ -1,0 +1,21 @@
+{
+  "status": "PARTIAL_NOT_PRODUCTION",
+  "source_commit": "c307493caea394d803dcc2ea74ff96f462ce1276",
+  "date_utc": "2026-10-16",
+  "node_tests": {
+    "passed": 12,
+    "failed": 0,
+    "command": "node --test --test-concurrency=1 packaging/app/test/*.test.js",
+    "real_fastapi_from_simulated_packaged_resources": true,
+    "owner_data_separated_from_versioned_runtime": true,
+    "installed_electron_window_wiring_mocked": true
+  },
+  "development_archive": "Rebuild after this report commit; record resulting SHA in dist/package-validation.json.",
+  "previous_python_regression": "1364 passed, 6 skipped, 0 failed; predates this Node/package-only increment",
+  "not_verified": [
+    "actual Electron binary or native installer resources layout",
+    "Windows and macOS install, startup, update, and uninstall",
+    "bundled Python interpreter or offline dependency installation",
+    "complete FACAI Production v1.0 acceptance"
+  ]
+}

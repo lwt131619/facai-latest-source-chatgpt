@@ -121,6 +121,8 @@ def test_bound_model_success_keeps_original_and_sanitized_usage(tmp_path, monkey
     assert payload["model_id"] == next(iter(DEFAULTS["models"]))
     assert payload["usage"] == {"input_tokens": 11, "output_tokens": 7, "total_tokens": 18}
     assert payload["original_input"] == ORIGINAL
+    assert not any(event["type"] == "CONVERSION_FALLBACK"
+                   for event in app.state.store.events(mission["id"]))
     blob = json.dumps(payload, ensure_ascii=False)
     assert "sk-secret" not in blob
     assert "raw" not in payload["usage"]
@@ -139,9 +141,19 @@ def test_provider_failure_falls_back_without_raw_upstream_error(tmp_path, monkey
                if event["type"] == "PROMPT_CONVERTED"][0]["payload"]
     assert payload["conversion_source"] == "deterministic"
     assert "model_id" not in payload
+    assert payload["fallback_from_model"] == next(iter(DEFAULTS["models"]))
+    assert payload["fallback_reason_class"] == "ValueError"
+    fallbacks = [event for event in app.state.store.events(mission["id"])
+                 if event["type"] == "CONVERSION_FALLBACK"]
+    assert len(fallbacks) == 1
+    assert fallbacks[0]["payload"] == {
+        "message_id": message_id, "channel": "telegram",
+        "model_id": payload["fallback_from_model"],
+        "reason_class": "ValueError", "fallback_source": "deterministic"}
     blob = json.dumps(payload, ensure_ascii=False)
     assert "sk-secret" not in blob
     assert "Bearer" not in blob
+    assert "Bearer" not in json.dumps(fallbacks, ensure_ascii=False)
 
 
 def test_malformed_model_result_falls_back(tmp_path, monkeypatch):
@@ -155,6 +167,8 @@ def test_malformed_model_result_falls_back(tmp_path, monkeypatch):
     payload = [event for event in app.state.store.events(mission["id"])
                if event["type"] == "PROMPT_CONVERTED"][0]["payload"]
     assert payload["conversion_source"] == "deterministic"
+    assert len([event for event in app.state.store.events(mission["id"])
+                if event["type"] == "CONVERSION_FALLBACK"]) == 1
     assert "not-json" not in json.dumps(payload, ensure_ascii=False)
 
 
@@ -167,6 +181,8 @@ def test_duplicate_dispatch_does_not_call_the_model_again(tmp_path, monkeypatch)
     assert first["id"] == second["id"]
     assert len(recorder.calls) == 1
     assert len(app.state.store.list()) == 1
+    assert not any(event["type"] == "CONVERSION_FALLBACK"
+                   for event in app.state.store.events(first["id"]))
 
 
 def test_missing_model_uses_deterministic_conversion_without_a_call(tmp_path, monkeypatch):

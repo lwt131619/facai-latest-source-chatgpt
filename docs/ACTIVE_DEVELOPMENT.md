@@ -1,3 +1,15 @@
+## 582f3d8 takeover and conversion fallback audit
+
+Fast-forwarded c307493 to origin/main 582f3d8; no divergent commits. External
+MODEL/TRUST/SKILL/ROUTER work already present, so no duplicate implementation.
+Focused new-module regression: 83 passed /1 skipped; 27 task directions valid.
+Channel model-conversion fallback now records a CONVERSION_FALLBACK mission
+event in the same transaction as mission creation, with only model id, error
+class and deterministic fallback source. PROMPT_CONVERTED also carries these
+provenance fields. No-model conversion creates no false fallback event.
+Focused conversion/router tests: 55 passed /0 failed. Full regression after
+this change: NOT_RUN. Native package remains NOT_VERIFIED.
+
 ## Bundled desktop source WIP
 
 2026-10-16: Electron installed-mode wiring now chooses bundled local FACAI

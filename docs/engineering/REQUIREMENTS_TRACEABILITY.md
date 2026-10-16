@@ -212,7 +212,7 @@ Users/Owner/Agents/Skills/Missions/Executions/Events/Evidence/Claims/Artifacts/K
 - 保留已有有效行为，相关回归及失败路径测试通过
 - 验证命令/结果/提交与外部局限写入交接记录
 
-**下一步**：ASSIGNMENT_RECORDED持久事件(候选/分数/排除原因,跨重启可查)、BINDING_CHANGED带reason(旧事件兼容)、AGENT_OVERRIDDEN堵展示与实际不一致缺口+conversion.html金色标注卡已入库。下一步:转换回退事件化(convert_channel_text fallback_from_model)、JOB_REPROMPTED自足化、Skill自动路由(依赖SKILL-001④)。
+**下一步**：ASSIGNMENT_RECORDED持久事件、BINDING_CHANGED带reason、AGENT_OVERRIDDEN与CONVERSION_FALLBACK同事务留痕已入库；转换回退只存模型ID/异常类别/确定性来源，不泄漏上游文本。下一步:JOB_REPROMPTED自足化、Skill自动路由(依赖SKILL-001④)。
 
 ## RUNTIME-001 — 20+Agent并发与恢复
 
