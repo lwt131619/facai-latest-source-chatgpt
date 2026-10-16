@@ -895,6 +895,9 @@ def create_app(data_dir=None, opencode_adapter=None, goose_adapter=None):
     # this ordering).
     quota_pools = QuotaPools(store.registry_list("models", owner_id=auth.username))
     app.state.quota_pools = quota_pools
+    # MODEL-001（2026-10-16）接线：调度器持有同一份池——派发前 reserve、
+    # 终态后 report。池未注册的模型行为完全不变（可选增强，不是新闸门）。
+    scheduler.quota_pools = quota_pools
     app.state.channels = channels
     app.state.n8n = n8n
     app.state.n8n_relay = n8n_relay

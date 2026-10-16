@@ -37,6 +37,12 @@ class RetractBody(Revision):
     reason: str = Field(min_length=1, max_length=2000)
 
 
+class VerificationBody(Revision):
+    method: str = Field(min_length=1, max_length=50)
+    result: str = Field(min_length=1, max_length=50)
+    note: str = Field(default='', max_length=2000)
+
+
 class AcceptBody(BaseModel):
     sha256: str = Field(pattern=r'^[0-9a-f]{64}$')
     reason: str = Field(min_length=1, max_length=2000)
@@ -53,9 +59,9 @@ def router_for(store, owner, require_mission, human_writer):
     service = TrustStore(store)
     router = APIRouter()
 
-    def call(method, *args, **kwargs):
+    def call(fn, *args, **kwargs):
         try:
-            return method(*args, **kwargs)
+            return fn(*args, **kwargs)
         except TrustError as exc:
             raise HTTPException(exc.status, str(exc)) from None
 
@@ -100,6 +106,14 @@ def router_for(store, owner, require_mission, human_writer):
     def claim(mission_id: str, body: ClaimBody):
         return call(service.add_claim, owner(), mission_id, body.expected_revision,
                     **body.model_dump(exclude={'expected_revision'}))
+
+    # Only a live human Owner session may attest a source: automation keys are
+    # rejected by the human_writer gate, and nothing here fetches any URL.
+    @router.post('/api/v1/missions/{mission_id}/trust/evidence/{evidence_id}/verification', status_code=201)
+    def verify(mission_id: str, evidence_id: str, body: VerificationBody, request: Request):
+        human_writer(request)
+        return call(service.verify_evidence, owner(), mission_id, body.expected_revision, evidence_id,
+                    method=body.method, result=body.result, note=body.note)
 
     @router.post('/api/v1/missions/{mission_id}/trust/claims/{claim_id}/reviews', status_code=201)
     def review(mission_id: str, claim_id: str, body: ReviewBody, request: Request):

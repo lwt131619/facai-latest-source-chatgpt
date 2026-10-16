@@ -182,7 +182,8 @@ def reroute_count(store, mission_id, job_id):
                and (event.get("payload") or {}).get("job_id") == job_id)
 
 
-def reroute(store, registries, job, mission, state, failed_backend, error=""):
+def reroute(store, registries, job, mission, state, failed_backend, error="",
+            quota_pools=None):
     """Move a failed job onto the next registered backend, or decline.
 
     Returns the refreshed (requeued) job, or None when the caller must fail
@@ -192,6 +193,10 @@ def reroute(store, registries, job, mission, state, failed_backend, error=""):
     requeued with its model_ref repointed (attempts untouched -- a reroute
     is not a retry), and MISSION_REROUTED with from/to/reason plus the
     stable Chinese copy.
+
+    ``quota_pools``（MODEL-001, 2026-10-16）透传给 pick_backend：响应式
+    故障转移也吃池健康序——冷却中/水量枯竭的池沉到队尾，不再被选为
+    reroute 目标。None 保持既有挑选序（可选增强，不改变无池行为）。
     """
     if state not in ROUTABLE_STATES:
         return None
@@ -200,7 +205,8 @@ def reroute(store, registries, job, mission, state, failed_backend, error=""):
     if reroute_count(store, mission_id, job["id"]) >= MAX_REROUTES_PER_JOB:
         return None
     models = registries.list("models", owner_id=owner)
-    target = pick_backend(mission, failed_backend=failed_backend, registry_models=models)
+    target = pick_backend(mission, failed_backend=failed_backend,
+                          registry_models=models, quota_pools=quota_pools)
     if target is None:
         return None
     model_ref = opencode_model_ref(models.get(target) or {})

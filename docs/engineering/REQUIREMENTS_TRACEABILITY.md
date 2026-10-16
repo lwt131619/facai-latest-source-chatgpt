@@ -184,7 +184,7 @@ Users/Owner/Agents/Skills/Missions/Executions/Events/Evidence/Claims/Artifacts/K
 - 保留已有有效行为，相关回归及失败路径测试通过
 - 验证命令/结果/提交与外部局限写入交接记录
 
-**下一步**：审已有quota pools能力，补Key级统计与配置UI，真实连接和模拟失败分开验证
+**下一步**：QuotaPools已接入生产派发路径(scheduler reserve/report、router reroute吃池健康序、api共享实例),PoolState增延迟/错误率/调用数统计,无池模型行为不变;下一步:矩阵UI展示新统计列与水位线编辑、pytest live marker分开真实连接验证、单模型多key池与key级轮换单独立项。
 
 ## SKILL-001 — Skill全生命周期
 
@@ -254,7 +254,7 @@ Evidence Collector→Claim Normalizer→Source Trust→Conflict→Confidence
 - 采集时间/来源/环境/哈希真实，无执行证据不标语义验证
 - legacy verified不偷换，新完整性/语义验证字段独立
 
-**下一步**：Trust v1已持久化来源/证据/规范化Claim/人工审查；默认UNKNOWN，未校准confidence=null。后续补独立来源验证、来源信任图和自动采集；事件记录不构成外部执行认证。
+**下一步**：来源验证记录(trust_source_verifications,人工零fetch,human_writer闸)与来源注册表信任图v0(trust_sources,owner隔离,只标注不裁决)已入库;下一步:事件侧自动采集(复用RUNTIME_EVENT幂等闸)、产物侧漂移钩子、DISPUTED人工裁决出口、跨mission冲突检测;confidence保持null直到有带验证状态的校准数据源。
 
 ## CONFLICT-001 — 上下文冲突语义
 

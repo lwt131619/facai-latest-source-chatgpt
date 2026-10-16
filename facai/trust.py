@@ -20,6 +20,29 @@ CONTEXT_KEYS = ('time', 'scope', 'environment', 'definition')
 RUNTIME_TYPES = frozenset({'OPENCODE_COMPLETED', 'OPENCODE_FAILED', 'OPENCODE_TIMEOUT',
                           'GOOSE_COMPLETED', 'GOOSE_FAILED', 'BACKEND_ATTEMPT',
                           'EXECUTION_STARTED', 'STEP_COMPLETED', 'STEP_FAILED'})
+# Human verification methods are honest about what happened: the Owner either
+# re-checked the source themselves, claims they consulted an external document,
+# or received a reply from an operator. Nothing here ever fetches a URL.
+VERIFICATION_METHODS = frozenset({'OWNER_RECHECK', 'EXTERNAL_DOC_REFERENCE', 'OPERATOR_REPLY'})
+VERIFICATION_RESULTS = frozenset({'CORROBORATED', 'NOT_CORROBORATED', 'CONTRADICTED'})
+SOURCE_TIERS = ('EXTERNALLY_VERIFIED', 'OWNER_ATTESTED', 'UNVERIFIED')
+
+
+def source_key(value):
+    """Normalized registry key for a free-text source label."""
+    return ' '.join(value.split()).casefold()
+
+
+def source_tier(records):
+    """Latest human verification record decides the annotation tier.
+
+    This is a label for display only: it never feeds verdicts, UNKNOWN/DISPUTED
+    states or acceptance blockers, and never assigns confidence.
+    """
+    latest = records[-1] if records else None
+    if latest and latest['result'] == 'CORROBORATED':
+        return 'EXTERNALLY_VERIFIED' if latest['method'] in {'EXTERNAL_DOC_REFERENCE', 'OPERATOR_REPLY'} else 'OWNER_ATTESTED'
+    return 'UNVERIFIED'
 
 
 class TrustError(ValueError):
@@ -65,6 +88,17 @@ class TrustStore:
                 id TEXT PRIMARY KEY, mission_id TEXT NOT NULL REFERENCES missions(id),
                 document TEXT NOT NULL, sha256 TEXT NOT NULL, created_at TEXT NOT NULL);
               CREATE INDEX IF NOT EXISTS trust_evidence_mission ON trust_evidence(mission_id);
+              CREATE TABLE IF NOT EXISTS trust_source_verifications (
+                id TEXT PRIMARY KEY, mission_id TEXT NOT NULL REFERENCES missions(id),
+                evidence_id TEXT NOT NULL REFERENCES trust_evidence(id),
+                source_key TEXT NOT NULL, document TEXT NOT NULL, sha256 TEXT NOT NULL,
+                created_at TEXT NOT NULL);
+              CREATE INDEX IF NOT EXISTS trust_source_verifications_mission ON trust_source_verifications(mission_id);
+              CREATE INDEX IF NOT EXISTS trust_source_verifications_source ON trust_source_verifications(source_key);
+              CREATE TABLE IF NOT EXISTS trust_sources (
+                owner_id TEXT NOT NULL, source_key TEXT NOT NULL, tier TEXT NOT NULL,
+                verification_id TEXT, mission_id TEXT, updated_at TEXT NOT NULL,
+                PRIMARY KEY(owner_id, source_key));
               CREATE TABLE IF NOT EXISTS trust_claims (
                 id TEXT PRIMARY KEY, mission_id TEXT NOT NULL REFERENCES missions(id),
                 document TEXT NOT NULL, created_at TEXT NOT NULL);
@@ -143,6 +177,51 @@ class TrustStore:
                        (record['id'], mission_id, canonical(record), sha, now()))
             self._event(db, mission_id, 'TRUST_EVIDENCE_COLLECTED', owner, evidence_id=record['id'], sha256=sha)
         return {'evidence': {**record, 'sha256': sha}, 'revision': revision + 1}
+
+    def verify_evidence(self, owner, mission_id, revision, evidence_id, *, method, result, note=''):
+        """Record a human verification of an evidence source.
+
+        Records who verified, when, how and with what outcome. It never fetches
+        anything, never assigns confidence and never changes claim verdicts;
+        the result only annotates the source's tier in the trust graph.
+        """
+        if method not in VERIFICATION_METHODS:
+            raise TrustError(422, 'Unsupported verification method')
+        if result not in VERIFICATION_RESULTS:
+            raise TrustError(422, 'Unsupported verification result')
+        text(note, 'note', 2000, required=False)
+        with self._change(owner, mission_id, revision) as db:
+            self._capacity(db, 'trust_source_verifications', mission_id, 2000)
+            row = db.execute('SELECT document,sha256 FROM trust_evidence WHERE id=? AND mission_id=?',
+                             (evidence_id, mission_id)).fetchone()
+            if row is None:
+                raise TrustError(404, 'Evidence not found')
+            evidence = json.loads(row['document'])
+            if digest(evidence) != row['sha256']:
+                raise TrustError(409, 'Stored evidence integrity check failed')
+            record = {'id': uuid4().hex, 'mission_id': mission_id, 'evidence_id': evidence_id,
+                      'source': evidence['source'], 'source_key': source_key(evidence['source']),
+                      'verified_by': owner, 'verified_at': now(), 'method': method, 'result': result,
+                      'note': note}
+            sha = digest(record)
+            db.execute('INSERT INTO trust_source_verifications VALUES (?,?,?,?,?,?,?)',
+                       (record['id'], mission_id, evidence_id, record['source_key'], canonical(record), sha, now()))
+            self._event(db, mission_id, 'TRUST_EVIDENCE_VERIFIED', owner, evidence_id=evidence_id,
+                        verification_id=record['id'], method=method, result=result, sha256=sha)
+            self._refresh_source(db, owner, record['source_key'])
+        return {'verification': {**record, 'sha256': sha}, 'revision': revision + 1}
+
+    def _refresh_source(self, db, owner, key):
+        """Recompute the owner-scoped registry tier from every verification record."""
+        rows = db.execute('SELECT v.document FROM trust_source_verifications v '
+                          'JOIN missions m ON m.id=v.mission_id WHERE m.owner_id=? AND v.source_key=? '
+                          'ORDER BY v.rowid', (owner, key)).fetchall()
+        records = [json.loads(row['document']) for row in rows]
+        latest = records[-1]
+        db.execute('INSERT INTO trust_sources VALUES (?,?,?,?,?,?) ON CONFLICT(owner_id,source_key) DO UPDATE SET '
+                   'tier=excluded.tier, verification_id=excluded.verification_id, mission_id=excluded.mission_id, '
+                   'updated_at=excluded.updated_at',
+                   (owner, key, source_tier(records), latest['id'], latest['mission_id'], now()))
 
     def add_claim(self, owner, mission_id, revision, *, statement, subject, predicate, value,
                   context=None, evidence_ids=()):
@@ -248,11 +327,20 @@ class TrustStore:
     def _state(self, db, owner, mission_id):
         mission = self._owned(db, owner, mission_id)
         evidence = []
+        verified = {}
+        for row in db.execute('SELECT document,sha256 FROM trust_source_verifications WHERE mission_id=? ORDER BY rowid',
+                              (mission_id,)):
+            document = json.loads(row['document'])
+            if digest(document) != row['sha256']:
+                raise TrustError(409, 'Stored verification integrity check failed')
+            verified.setdefault(document['evidence_id'], []).append(document)
         for row in db.execute('SELECT * FROM trust_evidence WHERE mission_id=? ORDER BY rowid', (mission_id,)):
             document = json.loads(row['document'])
             if digest(document) != row['sha256']:
                 raise TrustError(409, 'Stored evidence integrity check failed')
-            evidence.append({**document, 'sha256': row['sha256']})
+            # Annotation only: tiers never affect verdicts, conflicts or blockers.
+            evidence.append({**document, 'sha256': row['sha256'], 'source_trust_tier': source_tier(verified.get(document['id'], ())),
+                             'verifications': verified.get(document['id'], [])})
         claims = [json.loads(row['document']) for row in db.execute(
             'SELECT document FROM trust_claims WHERE mission_id=? ORDER BY rowid', (mission_id,))]
         reviews = [json.loads(row['document']) for row in db.execute(
@@ -271,9 +359,17 @@ class TrustStore:
                     for id in (c['left'], c['right'])}
         for claim in claims:
             review = last_review.get(claim['id'])
+            # Source trust distribution is display-only labelling per claim.
+            distribution = dict.fromkeys(SOURCE_TIERS, 0)
+            for evidence_id in claim['evidence_ids']:
+                item = next((e for e in evidence if e['id'] == evidence_id), None)
+                if item:
+                    distribution[item['source_trust_tier']] += 1
             claim.update(status='DISPUTED' if claim['id'] in disputed else review['verdict'] if review else 'UNKNOWN',
                          review=review, lifecycle='RETRACTED' if claim['id'] in retractions else 'ACTIVE',
                          retraction=retractions.get(claim['id']),
+                         source_trust={'distribution': distribution,
+                                       'notice': 'Annotation only; never affects verdict or acceptance'},
                          confidence=None, confidence_basis='No calibrated probability model')
         active_claims = [claim for claim in claims if claim['lifecycle'] == 'ACTIVE']
         steps = [dict(row) for row in db.execute(
@@ -312,9 +408,19 @@ class TrustStore:
             blockers.append('MISSING_STEP_EXECUTION_EVIDENCE')
         if not active_claims or any(claim['status'] not in {'FACT', 'INFERENCE'} for claim in active_claims):
             blockers.append('CLAIMS_REQUIRE_REVIEW')
+        tiers = dict.fromkeys(SOURCE_TIERS, 0)
+        for item in evidence:
+            tiers[item['source_trust_tier']] += 1
+        registry = [dict(row) for row in db.execute(
+            'SELECT source_key,tier,verification_id,mission_id,updated_at FROM trust_sources '
+            'WHERE owner_id=? ORDER BY source_key', (owner,))]
         return {'schema_version': 1, 'mission_id': mission_id, 'trace_id': mission_id,
                 'revision': revision, 'snapshot_token': token, 'evidence': evidence,
                 'claims': claims, 'reviews': reviews, 'conflicts': conflicts,
+                'source_trust': {'schema_version': 1, 'tiers': tiers, 'registry': registry,
+                                 'notice': 'Annotation only; source tiers derive from the latest human verification '
+                                           'record, never from automated fetching, and never affect verdicts, '
+                                           'UNKNOWN/DISPUTED states, acceptance blockers or confidence'},
                 'specification': json.loads(spec['specification']) if spec else None,
                 'verification': {'integrity_verified': True, 'semantic_verification': 'OWNER_REVIEWED' if active_claims and all(c['review'] for c in active_claims) else 'PENDING',
                                  'execution_verification': 'PERSISTED_RECORDS_ONLY_NOT_EXTERNAL_ATTESTATION',

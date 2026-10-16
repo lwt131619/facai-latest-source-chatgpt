@@ -9,6 +9,7 @@ real outcome. Concurrency is bounded per scheduler instance.
 import os
 import re
 import threading
+import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
@@ -35,6 +36,17 @@ _CRASH_PATH_SHAPE = re.compile(
 def mask_filesystem_paths(text):
     """Crash-path text for customer-visible storage: layout shapes become [路径]."""
     return _CRASH_PATH_SHAPE.sub("[路径]", str(text))
+
+
+def _is_rate_limited(text):
+    """True when failure evidence names an upstream 429 / rate limit.
+
+    Drives the pool's exponential cooldown ladder (quota.report) — same
+    evidence the router/gateway classifiers already read, kept as a cheap
+    marker check so the scheduler never re-parses full classification here.
+    """
+    blob = (text or "").lower()
+    return "429" in blob or "rate_limit" in blob or "rate limited" in blob
 # Hard ceiling on parallel RUNNING jobs per mission: same-mission branches run
 # in isolated git worktrees, so beyond this they simply queue.
 MAX_PARALLEL_PER_MISSION = 3
@@ -77,13 +89,18 @@ def _fleet_ceiling(value):
 
 class Scheduler:
     def __init__(self, store, adapter, registries, root, concurrency=None,
-                 lease_seconds=600, worker_id=None, adapter_resolver=None):
+                 lease_seconds=600, worker_id=None, adapter_resolver=None,
+                 quota_pools=None):
         self.store = store
         self.adapter = adapter
         # Optional callable (mission -> adapter) for per-mission agent selection
         # via the agent registry ("opencode", "goose", ...). None keeps the
         # single-adapter behavior.
         self.adapter_resolver = adapter_resolver
+        # MODEL-001（2026-10-16）：可选的配额池（facai.quota.QuotaPools）。
+        # None 或模型未注册池 = 零改动直发（池是可选增强，不是新闸门）；
+        # 注册了池的模型派发前 reserve、终态后 report（_execute）。
+        self.quota_pools = quota_pools
         self.registries = registries
         self.root = root
         configured = (concurrency if concurrency is not None
@@ -156,6 +173,40 @@ class Scheduler:
         except Exception:
             return model
 
+    def _report_pool(self, backend, ok, text="", latency_ms=None):
+        """Terminal-state report to the dispatched model's quota pool.
+
+        No-op unless a pool exists for this backend — unregistered models
+        keep exactly the pre-MODEL-001 behavior. rate_limited is read from
+        the same failure evidence the router classifies.
+        """
+        if self.quota_pools is None:
+            return
+        self.quota_pools.report(backend, ok, rate_limited=_is_rate_limited(text),
+                                latency_ms=latency_ms)
+
+    def _pool_unavailable(self, job, mission, backend):
+        """The model's pool declined (paused/cooldown/watermark) pre-dispatch.
+
+        绝不假成功：先走既有响应式故障转移（router.reroute，传入
+        quota_pools 让 pick_backend 按池健康序选目标——冷却池沉底），
+        并按既有语义留痕（BACKEND_ATTEMPT + MISSION_REROUTED）。没有
+        可路由替代时诚实退避重排队——冷却的池会自愈，直接 FAILED 与
+        假成功一样不诚实。既有故障转移上限（每作业 2 次）原样生效。
+        """
+        rerouted = router.reroute(
+            self.store, self.registries, job, mission,
+            state="BACKEND_UNAVAILABLE", failed_backend=backend,
+            error=f"model quota pool unavailable (paused/cooldown/watermark): {backend}",
+            quota_pools=self.quota_pools)
+        if rerouted is not None:
+            return rerouted
+        delay = min(300 * (2 ** max(0, job["attempts"] - 1)),
+                    int(os.getenv("FACAI_RETRY_BACKOFF_CAP", "1800")))
+        reason = f"quota pool unavailable, auto-retry in {delay}s: {backend}"[:500]
+        self.store.requeue_job_backoff(job["id"], delay, reason)
+        return self.store.get_job(job["id"])
+
     def _execute(self, job, batch_counts=None):
         mission = self.store.get(job["mission_id"])
         if mission is None:
@@ -213,6 +264,14 @@ class Scheduler:
         # scheduler's recovery pass cannot requeue a live job that already
         # spent part of its claim lease queued (serial lock, backoff, batch).
         self.store.touch_job_lease(job["id"], job["timeout"])
+        # MODEL-001（2026-10-16）预防式配额池接线：派发前向绑定模型的池
+        # 申请容量。池未注册的模型在这里零改动（has_pool 门）；池拒绝
+        # （暂停/冷却/水位满）不假成功——走既有故障转移（健康序）或诚实
+        # 退避重排队（_pool_unavailable）。
+        if self.quota_pools is not None and self.quota_pools.has_pool(failed_backend) \
+                and not self.quota_pools.reserve(failed_backend):
+            return self._pool_unavailable(job, mission, failed_backend)
+        dispatch_started = time.monotonic()
         try:
             result = execute_mission_task(self.store, adapter, mission, model, self.root,
                                           job["prompt"], job["step_id"], model_ref, job["timeout"],
@@ -221,13 +280,17 @@ class Scheduler:
                                           agent_id=mission.get("agent_id"),
                                           workspace_override=worktree["path"] if worktree else None,
                                           worktree=worktree)
+            latency_ms = (time.monotonic() - dispatch_started) * 1000
             merge = result.get("merge")
             if result["status"] == "OPENCODE_COMPLETED" and merge is not None \
                     and not merge.get("merged"):
+                self._report_pool(failed_backend, False, text="merge conflict",
+                                  latency_ms=latency_ms)
                 self._finish_or_requeue(
                     job, f"merge conflict: {(worktree or {}).get('branch', '')}",
                     mission=mission, failed_backend=failed_backend)
             elif result["status"] == "OPENCODE_COMPLETED" and (merge is None or merge.get("merged")):
+                self._report_pool(failed_backend, True, latency_ms=latency_ms)
                 self.store.finish_job(job["id"], "COMPLETED")
             else:
                 detail = result["status"]
@@ -235,12 +298,15 @@ class Scheduler:
                     # The stderr tail carries the real transient markers
                     # (e.g. SQLite "database is locked" from the CLI).
                     detail = f"{detail}: {result['stderr'][-400:]}"
+                self._report_pool(failed_backend, False, text=detail,
+                                  latency_ms=latency_ms)
                 self._finish_or_requeue(
                     job, detail, mission=mission, failed_backend=failed_backend,
                     state=router.outcome_state(status=result["status"], text=detail))
         except Exception as exc:
             # Attribute the failure truthfully; never mark a failed run complete.
             # 存储文本打码（见 mask_filesystem_paths），分类仍用原始文本。
+            self._report_pool(failed_backend, False, text=str(exc))
             self._finish_or_requeue(job, mask_filesystem_paths(str(exc))[:500],
                                     mission=mission, failed_backend=failed_backend,
                                     state=router.outcome_state(text=str(exc)))

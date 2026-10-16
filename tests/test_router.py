@@ -15,6 +15,7 @@ from pathlib import Path
 
 from facai import router
 from facai.authority_gate import reset_engine
+from facai.quota import QuotaPools
 from facai.registries import Registries
 from facai.scheduler import Scheduler
 from facai.store import Store
@@ -279,3 +280,132 @@ def test_marker_roundtrip_and_copy():
     copy_text = router.reroute_copy("deepseek-flash", "glm-local", "PROVIDER_REFUSAL")
     assert copy_text.startswith("任务目标没有改变，已切换执行方式")
     assert "deepseek-flash" in copy_text and "glm-local" in copy_text
+
+
+# ---------------------------------------------------------------------------
+# MODEL-001 配额池接线（2026-10-16）：reserve/report 进真实派发路径，
+# reroute 吃池健康序。全部用 BackendStubAdapter 模拟，零真实网络调用。
+
+POOL_MODELS = {"deepseek-flash": {}, "glm-local": {}, "kimi": {}}
+
+
+def build_with_pools(tmp_path, adapter, pools):
+    store = Store(tmp_path)
+    registries = Registries(store)
+    scheduler = Scheduler(store, adapter, registries, tmp_path, concurrency=1,
+                          worker_id="router-test", quota_pools=pools)
+    return store, registries, scheduler
+
+
+def test_cooling_pool_dispatch_reroutes_with_trail(tmp_path):
+    """① 池冷却中的模型派发走既有故障转移且留痕：reserve 被拒 →
+    BACKEND_ATTEMPT + MISSION_REROUTED，改由健康池接手，绝不假成功。"""
+    pools = QuotaPools(POOL_MODELS)
+    pools.report("deepseek-flash", ok=False, rate_limited=True)  # 429 → 冷却 10s
+    adapter = BackendStubAdapter()  # 全部成功：证明冷却池从未被真正派发
+    store, registries, scheduler = build_with_pools(tmp_path, adapter, pools)
+    register_alt_models(registries)
+    mission = make_mission(store)
+    job = store.enqueue_job(mission["id"], "task")
+
+    scheduler.run_pending()
+
+    final = store.get_job(job["id"])
+    assert final["status"] == "COMPLETED"
+    assert adapter.calls == [GLM_REF]  # 冷却的 deepseek-flash 从未进适配器
+    assert final["model_ref"] == GLM_REF
+    events = store.events(mission["id"])
+    attempts = [e for e in events if e["type"] == "BACKEND_ATTEMPT"]
+    assert len(attempts) == 1
+    assert attempts[0]["payload"]["backend"] == "deepseek-flash"
+    assert attempts[0]["payload"]["state"] == "BACKEND_UNAVAILABLE"
+    rerouted = [e for e in events if e["type"] == "MISSION_REROUTED"]
+    assert len(rerouted) == 1
+    assert rerouted[0]["payload"]["from"] == "deepseek-flash"
+    assert rerouted[0]["payload"]["to"] == "glm-local"
+    # 池记账：被拒池无 ok 计数，健康池收到真实执行的 report。
+    assert pools.matrix()["deepseek-flash"]["ok_count"] == 0
+    assert pools.matrix()["glm-local"]["ok_count"] == 1
+
+
+def test_pool_denied_without_alternative_requeues_never_fakes(tmp_path):
+    """唯一模型的池冷却且注册表无替代：不假成功也不误判 FAILED——
+    诚实退避重排队（冷却的池会自愈），适配器从未被触碰。"""
+    pools = QuotaPools({"deepseek-flash": {}})
+    pools.report("deepseek-flash", ok=False, rate_limited=True)
+    adapter = BackendStubAdapter()
+    store, registries, scheduler = build_with_pools(tmp_path, adapter, pools)
+    mission = make_mission(store)
+    job = store.enqueue_job(mission["id"], "task")
+
+    scheduler.run_pending()
+
+    final = store.get_job(job["id"])
+    assert final["status"] == "QUEUED"
+    assert adapter.calls == []
+    assert "quota pool unavailable" in final["error"]
+    assert "MISSION_REROUTED" not in event_types(store, mission["id"])
+
+
+def test_healthy_pool_reserve_report_drive_watermarks(tmp_path):
+    """② 池正常时 reserve/report 被真实派发调用：ok 计数、分钟水位、
+    调用次数与延迟统计全部推进，并发水位归零。"""
+    pools = QuotaPools(POOL_MODELS)
+    adapter = BackendStubAdapter()
+    store, registries, scheduler = build_with_pools(tmp_path, adapter, pools)
+    mission = make_mission(store)
+    job = store.enqueue_job(mission["id"], "task")
+
+    scheduler.run_pending()
+
+    assert store.get_job(job["id"])["status"] == "COMPLETED"
+    row = pools.matrix()["deepseek-flash"]
+    assert row["ok_count"] == 1 and row["fail_count"] == 0
+    assert row["minute_used"] == 1 and row["inflight"] == 0
+    assert row["reserved_count"] == 1 and row["reported_count"] == 1
+    assert row["latency_avg_ms"] is not None and row["latency_avg_ms"] >= 0
+    assert row["latency_recent_avg_ms"] is not None
+    assert row["error_rate"] == 0.0
+
+
+def test_rate_limited_failure_puts_pool_into_cooldown(tmp_path):
+    """④ 真实流量的 429 失败驱动池冷却：fail 计数 + 指数冷却入梯，
+    reroute（健康序）照常换到健康池完成任务。"""
+    pools = QuotaPools(POOL_MODELS)
+    adapter = BackendStubAdapter(refuse_refs={DEEPSEEK_REF},
+                                 stderr="upstream 429 rate limited")
+    store, registries, scheduler = build_with_pools(tmp_path, adapter, pools)
+    register_alt_models(registries)
+    mission = make_mission(store)
+    job = store.enqueue_job(mission["id"], "task", max_attempts=1)
+
+    scheduler.run_pending()
+
+    final = store.get_job(job["id"])
+    assert final["status"] == "COMPLETED"
+    row = pools.matrix()["deepseek-flash"]
+    assert row["fail_count"] == 1 and row["ok_count"] == 0
+    assert row["cooldown_remaining"] > 0
+    assert row["error_rate"] == 1.0
+    assert pools.matrix()["glm-local"]["ok_count"] == 1
+
+
+def test_models_without_pools_keep_legacy_behavior(tmp_path):
+    """③ 没有注册池的模型行为与改动前完全一致：拒绝 → 故障转移照旧，
+    池上不产生任何记账（回归保护）。"""
+    pools = QuotaPools({"unrelated-model": {}})
+    adapter = BackendStubAdapter(refuse_refs={DEEPSEEK_REF})
+    store, registries, scheduler = build_with_pools(tmp_path, adapter, pools)
+    register_alt_models(registries)
+    mission = make_mission(store)
+    job = store.enqueue_job(mission["id"], "task")
+
+    scheduler.run_pending()
+
+    final = store.get_job(job["id"])
+    assert final["status"] == "COMPLETED"
+    assert adapter.calls == [DEEPSEEK_REF, GLM_REF]  # 与无池时逐位一致
+    assert len([e for e in store.events(mission["id"])
+                if e["type"] == "MISSION_REROUTED"]) == 1
+    assert pools.matrix()["unrelated-model"]["ok_count"] == 0
+    assert pools.matrix()["unrelated-model"]["reserved_count"] == 0

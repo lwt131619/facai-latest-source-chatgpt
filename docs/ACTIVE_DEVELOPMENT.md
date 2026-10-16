@@ -309,3 +309,33 @@ Takeover fixes on top:
   busy timeout 10s->30s for the 8-thread fleet (review item B-5).
 - Package rebuilt at a clean 06ed4f9 (430 files, manifest verified
   independently), closing the ZIP-behind-HEAD gap.
+
+## MODEL-001 pool wiring + TRUST-001 source verification (takeover agents, 2026-10-16)
+
+Two read-only audits first: MODEL-001 found the quota pools built but never
+wired (QuotaPools.reserve/report had zero production callers — watermarks and
+cooldown only fed the matrix view); TRUST-001 found three of the five goal
+segments real with all three acceptance lines held, the gaps being source
+verification, a trust graph, and auto-collection.
+
+Then two implementation agents landed, disjoint file scopes, integrated here:
+- MODEL-001: scheduler now reserves before dispatch and reports terminal
+  state for models that have a pool (unregistered models keep legacy behavior
+  bit-for-bit, tested); reroute consumes pool health order; PoolState tracks
+  rolling latency, error rate and call counts; create_app shares one pools
+  instance between dispatch and the matrix API. Nine new stub-adapter tests,
+  zero network.
+- TRUST-001: evidence-level human source verification records
+  (trust_source_verifications, canonical+SHA-256, revision optimistic lock,
+  human_writer gate — machine keys 403), TRUST_EVIDENCE_VERIFIED events, and
+  a per-owner source registry (trust_sources) surfaced as read-only
+  source-trust tiers and per-claim distributions. Annotation only: verdicts,
+  acceptance blockers and the three confidence=None sites are untouched, the
+  never-fetches rule is pinned by a socket/urllib-blocking test, and the
+  registry PK is (owner_id, source_key) to keep cross-owner tiers from
+  leaking.
+
+Full suite: 1376 passed / 8 skipped / 0 failed. Registry next_actions for
+both tasks updated and rendered; next in queue — matrix UI columns +
+watermark editing, a live-probe marker for real-connection tests, event-side
+auto-collection of runtime evidence, multi-key pools (separate item).

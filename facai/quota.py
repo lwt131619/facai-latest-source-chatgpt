@@ -34,10 +34,16 @@ DEFAULT_WEIGHT = 1.0
 COOLDOWN_BASE = 10.0               # 首次 429 冷却 10s
 COOLDOWN_MAX = 600.0               # 封顶 10 分钟
 UNPENALIZED_WINDOW = 300.0         # 连续 5 分钟无失败 → 冷却阶梯重置
+LATENCY_WINDOW = 20                # 延迟滚动窗口：只保留最近 N 次样本
 
 
 class PoolState:
-    """One model's live rate budget. Pure counters — no I/O, no clock writes."""
+    """One model's live rate budget. Pure counters — no I/O, no clock writes.
+
+    MODEL-001 扩展（2026-10-16）：在原有水位/冷却计数之上增加延迟
+    （滚动窗口 + 全程平均）、错误率与调用次数——全部由真实派发的
+    reserve/report 驱动（scheduler 接线），纯内存统计，持久化模式不变。
+    """
 
     def __init__(self):
         self.minute_hits: deque[float] = deque()
@@ -47,15 +53,30 @@ class PoolState:
         self.last_failure_at = 0.0
         self.ok_count = 0
         self.fail_count = 0
+        # 延迟统计：滚动窗口（最近 N 次）+ 全程累计平均。
+        self.latency_ms: deque[float] = deque(maxlen=LATENCY_WINDOW)
+        self.latency_total_ms = 0.0
+        self.latency_count = 0
+        # 调用次数：reserve 批准数（真实进入执行的尝试）与 report 数。
+        self.reserved_count = 0
+        self.reported_count = 0
 
     def snapshot(self) -> dict:
         now = time.monotonic()
+        attempts = self.ok_count + self.fail_count
         return {
             "minute_hits": len(self.minute_hits),
             "inflight": self.inflight,
             "cooldown_remaining": max(0.0, round(self.cooldown_until - now, 1)),
             "ok_count": self.ok_count,
             "fail_count": self.fail_count,
+            "latency_avg_ms": (round(self.latency_total_ms / self.latency_count, 1)
+                               if self.latency_count else None),
+            "latency_recent_avg_ms": (round(sum(self.latency_ms) / len(self.latency_ms), 1)
+                                      if self.latency_ms else None),
+            "error_rate": (round(self.fail_count / attempts, 4) if attempts else 0.0),
+            "reserved_count": self.reserved_count,
+            "reported_count": self.reported_count,
         }
 
 
@@ -107,6 +128,15 @@ class QuotaPools:
             (self._paused.add if paused else self._paused.discard)(model_id)
 
     # --- 派发面：预留 / 上报 -------------------------------------------------
+    def has_pool(self, model_id: str) -> bool:
+        """Whether a pool is registered for this model at all.
+
+        Scheduler dispatch 用它区分"池没注册（零改动直发）"与"池拒绝了"：
+        池是可选增强，不是新闸门——没注册的模型必须走原有路径。
+        """
+        with self._lock:
+            return model_id in self._states and model_id in self._limits
+
     def reserve(self, model_id: str) -> bool:
         """Ask before dispatch: is this pool runnable *right now*?
 
@@ -133,16 +163,28 @@ class QuotaPools:
                 return False
             state.minute_hits.append(now)
             state.inflight += 1
+            state.reserved_count += 1
             return True
 
-    def report(self, model_id: str, ok: bool, rate_limited: bool = False) -> None:
+    def report(self, model_id: str, ok: bool, rate_limited: bool = False,
+               latency_ms: float | None = None) -> None:
         """Report one attempt's outcome. rate_limited=True enters the
-        exponential cooldown ladder; ok halves any live cooldown."""
+        exponential cooldown ladder; ok halves any live cooldown.
+
+        ``latency_ms``（MODEL-001）为一次真实派发的端到端耗时：进滚动窗口
+        与全程累计；None（如异常路径拿不到耗时）只跳过延迟记账，不影响
+        ok/fail 与冷却语义。
+        """
         with self._lock:
             state = self._states.get(model_id)
             if state is None:
                 return
             state.inflight = max(0, state.inflight - 1)
+            state.reported_count += 1
+            if latency_ms is not None:
+                state.latency_ms.append(max(0.0, float(latency_ms)))
+                state.latency_total_ms += max(0.0, float(latency_ms))
+                state.latency_count += 1
             now = time.monotonic()
             if ok:
                 state.ok_count += 1

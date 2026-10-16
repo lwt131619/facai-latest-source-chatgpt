@@ -138,3 +138,41 @@ class TestMatrixApi:
                           json={"weight": 1}).status_code == 403
         assert client.put("/api/v1/modelmatrix/x/pause",
                           json={"paused": True}).status_code == 403
+
+
+class TestPoolStateStats:
+    """MODEL-001（2026-10-16）③：PoolState 扩展统计——延迟（滚动窗口 +
+    全程平均）、错误率、调用次数。纯内存计数，由 reserve/report 驱动。"""
+
+    def test_report_tracks_latency_error_rate_and_call_counts(self):
+        pools = QuotaPools({"m": {}})
+        assert pools.matrix()["m"]["latency_avg_ms"] is None  # 无样本无编造
+        for latency, ok in ((100.0, True), (300.0, True), (200.0, False)):
+            assert pools.reserve("m") is True
+            pools.report("m", ok=ok, latency_ms=latency)
+        row = pools.matrix()["m"]
+        assert row["ok_count"] == 2 and row["fail_count"] == 1
+        assert row["reserved_count"] == 3 and row["reported_count"] == 3
+        assert row["latency_avg_ms"] == pytest.approx(200.0)
+        assert row["latency_recent_avg_ms"] == pytest.approx(200.0)
+        assert row["error_rate"] == pytest.approx(1 / 3, abs=1e-4)  # 快照留 4 位
+        assert row["inflight"] == 0
+
+    def test_latency_rolling_window_keeps_recent_n(self):
+        from facai.quota import LATENCY_WINDOW
+        pools = QuotaPools({"m": {"rate_limit_per_min": 1000}})
+        total = LATENCY_WINDOW + 4
+        for i in range(1, total + 1):
+            assert pools.reserve("m") is True
+            pools.report("m", ok=True, latency_ms=float(i))
+        row = pools.matrix()["m"]
+        assert row["latency_avg_ms"] == pytest.approx((1 + total) / 2)
+        first, last = total - LATENCY_WINDOW + 1, total      # 窗口只剩最近 N 个
+        assert row["latency_recent_avg_ms"] == pytest.approx((first + last) / 2)
+
+    def test_has_pool_and_unknown_model_report_noop(self):
+        pools = QuotaPools({"m": {}})
+        assert pools.has_pool("m") is True
+        assert pools.has_pool("ghost") is False
+        pools.report("ghost", ok=True, latency_ms=1.0)       # 不抛错、不建状态
+        assert "ghost" not in pools.matrix()

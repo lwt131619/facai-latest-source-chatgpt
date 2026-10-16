@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from facai.api import create_app
 from facai.opencode import OpenCodeAdapter
+from facai.quota import QuotaPools
 from facai.registries import Registries
 from facai.scheduler import Scheduler
 from facai.store import Store
@@ -431,3 +432,30 @@ def test_background_scheduler_health_records_safe_error_and_recovers(tmp_path):
     assert recovered["last_success_at"] is not None
     assert recovered["last_error"] is None
     assert recovered["consecutive_errors"] == 0
+
+
+def test_quota_pool_stats_driven_by_real_dispatch(tmp_path):
+    """MODEL-001（2026-10-16）④：调度器真实流量驱动池统计——ok 计数、
+    分钟水位、调用次数与延迟字段全部被派发推进，全程零真实网络调用
+    （SequencedRunner 模拟适配器）。无池模型不受影响（未注册即无键）。"""
+    runner = SequencedRunner([(0, '{"type":"text","text":"ok"}\n', '')] * 2)
+    store = Store(tmp_path)
+    registries = Registries(store)
+    pools = QuotaPools({"deepseek-flash": {"rate_limit_per_min": 10}})
+    adapter = OpenCodeAdapter(binary='opencode', runner=runner)
+    scheduler = Scheduler(store, adapter, registries, tmp_path, concurrency=1,
+                          worker_id='pool-worker', quota_pools=pools)
+    mission = make_mission(store)
+    store.enqueue_job(mission['id'], 'task A')
+    store.enqueue_job(mission['id'], 'task B')
+
+    scheduler.run_pending()
+
+    assert all(job['status'] == 'COMPLETED' for job in store.jobs())
+    row = pools.matrix()['deepseek-flash']
+    assert row['ok_count'] == 2 and row['fail_count'] == 0
+    assert row['reserved_count'] == 2 and row['reported_count'] == 2
+    assert row['minute_used'] == 2 and row['inflight'] == 0
+    assert row['error_rate'] == 0.0
+    assert row['latency_avg_ms'] is not None and row['latency_avg_ms'] >= 0
+    assert row['latency_recent_avg_ms'] is not None

@@ -268,3 +268,108 @@ def test_api_auth_csrf_cross_owner_and_machine_cannot_review(tmp_path, monkeypat
     other.post('/api/v1/auth/login',json={'username':'admin','password':'trust-admin-password'})
     assert other.get(base).status_code == 404
     assert other.get('/api/v1/missions/'+id+'/specification').status_code == 404
+
+
+def _forbid_network(monkeypatch):
+    """Any network access attempt during verification must fail loudly."""
+    import socket
+    import urllib.request
+    real_connect = socket.socket.connect
+    def deny(sock, address, *args, **kwargs):
+        # Loopback stays open (asyncio/TestClient self-pipes on Windows);
+        # any other destination is a fetch attempt and must fail loudly.
+        if not (isinstance(address, tuple) and address and address[0] in ('127.0.0.1', '::1', 'localhost')):
+            raise AssertionError('network access attempted to ' + repr(address))
+        return real_connect(sock, address, *args, **kwargs)
+    monkeypatch.setattr(socket.socket, 'connect', deny)
+    monkeypatch.setattr(socket, 'create_connection', deny)
+    monkeypatch.setattr(urllib.request, 'urlopen', deny)
+
+
+def test_source_verification_records_tier_and_never_fetches(tmp_path, monkeypatch):
+    _forbid_network(monkeypatch)
+    store, service, id = mission(tmp_path)
+    e = service.add_evidence('alice', id, 0, content='Upstream changelog says 1.2',
+                             source='https://example.invalid/changelog')['evidence']
+    c = claim(service, id, 1, [e['id']])['claim']
+    state = service.get('alice', id)
+    assert state['claims'][0]['status'] == 'UNKNOWN'
+    assert state['claims'][0]['source_trust']['distribution'] == {'EXTERNALLY_VERIFIED': 0, 'OWNER_ATTESTED': 0, 'UNVERIFIED': 1}
+    v = service.verify_evidence('alice', id, state['revision'], e['id'], method='EXTERNAL_DOC_REFERENCE',
+                                result='CORROBORATED', note='Owner manually compared the referenced changelog text')
+    assert v['verification']['verified_by'] == 'alice'
+    assert v['verification']['verified_at'] and v['verification']['method'] == 'EXTERNAL_DOC_REFERENCE'
+    state = service.get('alice', id)
+    assert state['evidence'][0]['source_trust_tier'] == 'EXTERNALLY_VERIFIED'
+    assert state['evidence'][0]['verifications'][0]['id'] == v['verification']['id']
+    assert state['source_trust']['tiers'] == {'EXTERNALLY_VERIFIED': 1, 'OWNER_ATTESTED': 0, 'UNVERIFIED': 0}
+    assert state['source_trust']['registry'] == [
+        {'source_key': 'https://example.invalid/changelog', 'tier': 'EXTERNALLY_VERIFIED',
+         'verification_id': v['verification']['id'], 'mission_id': id,
+         'updated_at': state['source_trust']['registry'][0]['updated_at']}]
+    assert state['claims'][0]['source_trust']['distribution']['EXTERNALLY_VERIFIED'] == 1
+    assert state['claims'][0]['status'] == 'UNKNOWN'  # annotation only, never a verdict
+    with store.connect() as db:
+        kinds = [row['type'] for row in db.execute('SELECT type FROM events WHERE mission_id=?', (id,))]
+    assert 'TRUST_EVIDENCE_VERIFIED' in kinds
+    # A later OWNER_RECHECK becomes the latest record and re-annotates the tier.
+    service.verify_evidence('alice', id, state['revision'], e['id'], method='OWNER_RECHECK',
+                            result='CORROBORATED', note='Owner re-read the same text')
+    state = service.get('alice', id)
+    assert state['evidence'][0]['source_trust_tier'] == 'OWNER_ATTESTED'
+    assert state['source_trust']['registry'][0]['tier'] == 'OWNER_ATTESTED'
+    assert state['claims'][0]['status'] == 'UNKNOWN'
+
+
+def test_verification_conflict_409_and_result_never_changes_verdict_or_blockers(tmp_path):
+    store, service, id = mission(tmp_path)
+    reviewed(service, id)
+    state = service.get('alice', id)
+    evidence_id = state['evidence'][0]['id']
+    assert state['claims'][0]['status'] == 'FACT'
+    blockers = state['verification']['acceptance_blockers']
+    with pytest.raises(TrustError, match='refresh before writing'):
+        service.verify_evidence('alice', id, state['revision'] - 1, evidence_id,
+                                method='OWNER_RECHECK', result='CORROBORATED', note='stale revision')
+    service.verify_evidence('alice', id, state['revision'], evidence_id,
+                            method='OPERATOR_REPLY', result='CONTRADICTED', note='operator reports otherwise')
+    state = service.get('alice', id)
+    assert state['claims'][0]['status'] == 'FACT'  # verdict still only from human review
+    assert state['verification']['confidence'] is None
+    assert state['verification']['acceptance_blockers'] == blockers
+    assert state['evidence'][0]['source_trust_tier'] == 'UNVERIFIED'
+    with pytest.raises(TrustError, match='method'):
+        service.verify_evidence('alice', id, state['revision'], evidence_id,
+                                method='AUTO_FETCH', result='CORROBORATED', note='no such method')
+    with pytest.raises(TrustError, match='result'):
+        service.verify_evidence('alice', id, state['revision'], evidence_id,
+                                method='OWNER_RECHECK', result='TRUE', note='no such result')
+    with pytest.raises(TrustError, match='Evidence not found'):
+        service.verify_evidence('alice', id, state['revision'], 'missing', method='OWNER_RECHECK',
+                                result='CORROBORATED', note='x')
+
+
+def test_api_machine_session_cannot_write_source_verification(tmp_path, monkeypatch):
+    _forbid_network(monkeypatch)
+    monkeypatch.setenv('FACAI_USERS_JSON', '{"alice":"trust-verify-password"}')
+    monkeypatch.setenv('FACAI_SCHEDULER_ENABLED','0')
+    monkeypatch.setenv('FACAI_CHANNEL_NOTIFY_ENABLED','0')
+    client = TestClient(create_app(tmp_path))
+    session = client.post('/api/v1/auth/login',json={'username':'alice','password':'trust-verify-password'}).json()
+    client.headers['X-CSRF-Token'] = session['csrf_token']
+    intent = client.post('/api/v1/intents',json={'raw_request':'分析项目','interpretation':{'action':'analyze','target':'/repo'}}).json()
+    id = client.post('/api/v1/intents/'+intent['id']+'/confirm',json={'expected_revision':1}).json()['mission_id']
+    base = '/api/v1/missions/'+id+'/trust'
+    e = client.post(base+'/evidence',json={'expected_revision':0,'source':'https://example.invalid/doc','content':'note'}).json()['evidence']
+    key = client.post('/api/v1/my/keys').json()
+    machine = TestClient(client.app); machine.headers['Authorization']='Bearer '+key['api_key']
+    verify_url = base+'/evidence/'+e['id']+'/verification'
+    assert machine.post(verify_url,json={'expected_revision':1,'method':'OWNER_RECHECK','result':'CORROBORATED'}).status_code == 403
+    machine.headers['X-CSRF-Token'] = session['csrf_token']
+    assert machine.post(verify_url,json={'expected_revision':1,'method':'OWNER_RECHECK','result':'CORROBORATED'}).status_code == 403
+    assert client.post(verify_url,json={'expected_revision':1,'method':'OPERATOR_REPLY','result':'CORROBORATED',
+                                        'note':'Operator confirmed by reply'}).status_code == 201
+    state = client.get(base).json()
+    assert state['evidence'][0]['source_trust_tier'] == 'EXTERNALLY_VERIFIED'
+    assert state['source_trust']['tiers']['EXTERNALLY_VERIFIED'] == 1
+    assert state['claims'] == []  # tier annotation never created or judged a claim
