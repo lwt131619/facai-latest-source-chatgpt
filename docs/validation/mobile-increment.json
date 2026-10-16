@@ -1,0 +1,27 @@
+{
+  "status": "PARTIAL_NOT_PRODUCTION",
+  "integrated_remote_commit": "03434f4",
+  "focused_browser_and_static": {
+    "passed": 15,
+    "failed": 0,
+    "chromium": "/usr/bin/chromium",
+    "viewport": "390x844"
+  },
+  "verified": [
+    "owner-scoped artifact list",
+    "inert text preview",
+    "UTF-8 text copy download",
+    "logout clears private artifact content",
+    "Agent/model/runtime bindings and real Job lease assignment",
+    "account execution allowance summary",
+    "offline mobile shell and CSS",
+    "API data excluded from service-worker cache"
+  ],
+  "not_verified": [
+    "physical phone over HTTPS",
+    "real notification provider delivery",
+    "paid model 20+ concurrency",
+    "VPS deployment"
+  ],
+  "full_regression": "RUNNING"
+}

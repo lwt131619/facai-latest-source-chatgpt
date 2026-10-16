@@ -350,6 +350,7 @@
           <div class="topbar"><b>我的</b></div>
           <div class="card" id="me-card">
             <h3><span class="facai-dot" style="--state-color:var(--st-ready)"></span><span id="me-username">未登录</span></h3>
+            <p id="me-resource-summary" class="expect" role="status"></p>
             <p class="expect" id="me-note">未登录：登录后这里显示你的账号与会话状态。</p>
             <div class="btn-row">
               <button class="facai-btn" id="me-login-btn" onclick="facaiGo('screen-login')">登录 / 注册</button>
@@ -524,6 +525,9 @@
 
             <ul class="checklist" id="monitor-steps"></ul>
             <p class="ops-count" id="monitor-count"></p>
+            <h3>Agent / 执行分配</h3>
+            <p id="monitor-bindings" class="expect"></p>
+            <div id="monitor-jobs" aria-live="polite"></div>
           </div>
 
           <p class="form-error" id="monitor-error" role="alert"></p>
@@ -747,7 +751,7 @@ state   = WAITING_PERMISSION</pre>
     if (res.status !== 401) { return false; }
     var expired = !!state.user;
     state.user = null; state.csrf = null; state.mustChange = false;
-    fileRequest++; clearArtifactPreview(); document.getElementById('files-list').textContent = '';
+    clearMobilePrivateViews(); fileRequest++; clearArtifactPreview(); document.getElementById('files-list').textContent = '';
     stopMonitor(); renderSessionUI();
     facaiGo('screen-login');
     loginError(expired ? '登录已过期，请重新登录' : '请先登录');
@@ -841,7 +845,7 @@ state   = WAITING_PERMISSION</pre>
   function facaiLogout() {
     apiRequest('POST', '/api/v1/auth/logout').then(function () {
       state.user = null; state.csrf = null; state.mustChange = false;
-      fileRequest++; clearArtifactPreview(); document.getElementById('files-list').textContent = '';
+      clearMobilePrivateViews(); fileRequest++; clearArtifactPreview(); document.getElementById('files-list').textContent = '';
     stopMonitor(); renderSessionUI(); renderLoggedOutHome();
       facaiGo('screen-login');
       facaiToast('已退出登录');
@@ -1078,6 +1082,7 @@ state   = WAITING_PERMISSION</pre>
     count.appendChild(el('b', null, doneCount));
     count.appendChild(document.createTextNode(' / 共 ' + steps.length + ' 个阶段'));
 
+    loadAgentJobs(mission);
     monitorError('');
     if (isTerminal(mission)) { stopMonitor(); }
   }
@@ -1329,6 +1334,54 @@ state   = WAITING_PERMISSION</pre>
     });
   }
 
+  var jobsRequest = 0;
+  var resourceRequest = 0;
+  function loadAgentJobs(mission) {
+    var request = ++jobsRequest, user = state.user;
+    document.getElementById('monitor-bindings').textContent =
+      'Agent：' + (mission.agent_id || '未绑定') + ' · 模型：' + (mission.model_id || '未绑定') +
+      ' · Runtime：' + (mission.runtime_id || '未绑定');
+    var list = document.getElementById('monitor-jobs');
+    list.textContent = '读取真实执行队列…';
+    apiRequest('GET', '/api/v1/missions/' + encodeURIComponent(mission.id) + '/jobs').then(function (res) {
+      if (request !== jobsRequest || user !== state.user || mission.id !== state.missionId) { return; }
+      if (handle401(res)) { return; }
+      list.textContent = '';
+      if (!res.ok || !Array.isArray(res.data)) { list.textContent = '执行队列读取失败：' + res.detail; return; }
+      if (!res.data.length) { list.textContent = '尚无执行任务；绑定不代表 Agent 正在运行'; return; }
+      res.data.forEach(function (job) {
+        var step = (mission.steps || []).filter(function (s) { return s.id === job.step_id; })[0];
+        var row = el('p', 'artifact-card');
+        row.textContent = 'Job ' + shortId(job.id) + ' · ' + (step ? step.label : shortId(job.step_id)) +
+          ' · ' + (STATUS_LABELS[job.status] || job.status || '未知') +
+          ' · Worker：' + (job.lease_owner || '未分配') + ' · 尝试：' + job.attempts;
+        list.appendChild(row);
+      });
+    }).catch(function () {
+      if (request === jobsRequest && user === state.user) { list.textContent = '执行队列网络请求失败'; }
+    });
+  }
+  function loadResourceSummary() {
+    var request = ++resourceRequest, user = state.user;
+    var summary = document.getElementById('me-resource-summary');
+    summary.textContent = '读取账户资源…';
+    apiRequest('GET', '/api/v1/billing/me').then(function (res) {
+      if (request !== resourceRequest || user !== state.user) { return; }
+      if (handle401(res)) { return; }
+      if (!res.ok || !res.data) { summary.textContent = '账户资源读取失败：' + res.detail; return; }
+      summary.textContent = '执行额度（USD）：' + res.data.monthly_limit_usd + ' · ' +
+        (res.data.allowed ? '当前允许派发' : '当前暂停派发') + ' · ' + (res.data.reason || '');
+    }).catch(function () {
+      if (request === resourceRequest && user === state.user) { summary.textContent = '账户资源网络请求失败'; }
+    });
+  }
+  function clearMobilePrivateViews() {
+    jobsRequest++; resourceRequest++;
+    document.getElementById('monitor-jobs').textContent = '';
+    document.getElementById('monitor-bindings').textContent = '';
+    document.getElementById('me-resource-summary').textContent = '';
+  }
+
   /* 产物仅从当前会话 API 读取；不缓存到本地，不将文本作为 HTML 执行。 */
   var fileRequest = 0;
   var artifactRequest = 0;
@@ -1415,7 +1468,7 @@ state   = WAITING_PERMISSION</pre>
     if (id === 'screen-files') { loadFiles(); }
     if (id === 'screen-timeline') { loadTimeline(); }
     if ((id === 'screen-home' || id === 'screen-tasks') && state.user) { loadMissions(); }
-    if (id === 'screen-me' && state.user) { loadMyChannels(); }
+    if (id === 'screen-me' && state.user) { loadMyChannels(); loadResourceSummary(); }
     document.getElementById('screens').scrollTop = 0;
   }
 

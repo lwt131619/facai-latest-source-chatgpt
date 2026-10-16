@@ -3,6 +3,14 @@
 先读AGENTS.md → FACAI_CODEX_HANDOFF.md → docs/engineering/CORE_INVARIANTS.md。
 源码、Git历史、任务登记表和实测报告优先于历史聊天及旧VPS上线描述。
 
+## 2026-10-16 已收录外部交接并续接
+
+已快进集成03434f4及docs/handoff-20261016/四份报告；历史报告保持原样。
+本轮Mobile补齐产物列表/文本预览/下载、独立PWA、真实执行分配和账户额度摘要。
+后续Agent先读docs/ACTIVE_DEVELOPMENT.md及docs/validation/mobile-increment.json
+（生成后），不要把下方历史测试数当成本轮测试结果。
+MOBILE-001仍PARTIAL；真实手机HTTPS、Provider规模验收及VPS部署未完成。
+
 ## 仓库与防丢失
 
 主库：https://github.com/lwt131619/facai-latest-source-chatgpt

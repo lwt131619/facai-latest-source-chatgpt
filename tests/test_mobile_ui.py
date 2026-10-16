@@ -349,6 +349,8 @@ def test_mobile_files_real_artifacts_preview_download_and_session_clear(protecte
 
     store = Store(tmp_path)
     mission = store.create('手机文件验收', '保存原话', ['输出报告'], owner_id='admin')
+    store.bind(mission['id'], agent_id='test-mobile-agent', model_id='test-mobile-model', runtime_id='test-runtime')
+    store.enqueue_job(mission['id'], '输出报告', step_id=mission['steps'][0]['id'])
     content = '<script>window.artifactExecuted=true</script>\n真实报告'
     path = Path(mission['workspace']) / 'report.txt'
     path.write_text(content, encoding='utf-8')
@@ -365,6 +367,13 @@ def test_mobile_files_real_artifacts_preview_download_and_session_clear(protecte
         page.fill('#login-password', 'mobile-pass')
         page.click('#login-submit')
         page.wait_for_selector('#screen-home.active')
+        page.evaluate('(id) => window.facaiOpenMission(id)', mission['id'])
+        page.wait_for_selector('#screen-monitor.active')
+        page.wait_for_function("document.querySelector('#monitor-jobs').textContent.includes('Job ')")
+        assert 'test-mobile-agent' in page.inner_text('#monitor-bindings')
+        assert '未分配' in page.inner_text('#monitor-jobs')
+        page.click('[data-nav="screen-me"]')
+        page.wait_for_function("document.querySelector('#me-resource-summary').textContent.includes('USD')")
         page.click('[data-nav="screen-files"]')
         page.wait_for_selector('#files-list .artifact-card')
         assert page.locator('#files-list .artifact-card').count() == 1

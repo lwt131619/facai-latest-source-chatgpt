@@ -1,3 +1,11 @@
+## Mobile execution/resource increment validated locally
+
+Real Chromium + static mobile suite: 15 passed, 0 failed at 390x844.
+Live backend covers Agent/model/runtime bindings, queued Job/lease state and
+account budget summary, plus artifacts/download/logout and offline shell tests.
+Full regression is running; see docs/validation/mobile-increment.json.
+Task registry remains PARTIAL; no physical-device, paid Provider or VPS claim.
+
 CI portability fixes: model-registration DNS fixtures now include mission control;
 three browser launch sites support FACAI_TEST_CHROMIUM and container flags;
 shared browser servers hand an already bound socket to uvicorn, removing the

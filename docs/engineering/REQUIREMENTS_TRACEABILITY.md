@@ -316,7 +316,7 @@ Evidence Collector→Claim Normalizer→Source Trust→Conflict→Confidence
 
 手机任务/实时进度/Agent/结果/通知/设置
 
-**现有定位**：`facai/static/mobile.html`、`facai/static/sw.js`、`facai/static/manifest.webmanifest`
+**现有定位**：`facai/static/mobile.html`、`facai/static/sw.js`、`facai/static/manifest.webmanifest`、`facai/static/mobile.webmanifest`
 
 **验收**：
 
@@ -324,7 +324,7 @@ Evidence Collector→Claim Normalizer→Source Trust→Conflict→Confidence
 - 保留已有有效行为，相关回归及失败路径测试通过
 - 验证命令/结果/提交与外部局限写入交接记录
 
-**下一步**：复用已有mobile/PWA，接新流程，在真实390x844浏览器和HTTPS访问验收
+**下一步**：已接真实Owner产物列表、受鉴权文本预览/文本副本下载、Agent绑定/执行Job分配、账户额度摘要；独立Mobile manifest及逐资源SW离线缓存已实现。真实Chromium验证中；保持PARTIAL，继续真机HTTPS、通知真实上游及完整任务闭环验收，不将Job数当Agent并发数。
 
 ## DESKTOP-001 — Desktop Console本地软件
 
