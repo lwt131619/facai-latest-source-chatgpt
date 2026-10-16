@@ -6,7 +6,7 @@ const SHELL = ["/", "/login", "/static/mobile.html", "/static/facai-ui.css", "/s
 const CACHE = "facai-shell-v2";
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).catch(() => null));
+  event.waitUntil(caches.open(CACHE).then((c) => Promise.all(SHELL.map((path) => c.add(path).catch(() => null)))).catch(() => null));
   self.skipWaiting();
 });
 

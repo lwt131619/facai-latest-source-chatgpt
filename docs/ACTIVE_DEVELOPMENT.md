@@ -1,3 +1,9 @@
+Mobile follow-up: real Chromium artifact ownership/inert preview/download/logout
+passed. Offline shell test exposed all-or-nothing cache.addAll failure when / is
+401 before login; installation now caches each shell resource independently.
+Real Chromium offline reload and API-cache exclusion passed (1 test).
+Full refreshed mobile regression is next. No real-device/HTTPS deployment claim.
+
 ## 2026-10-16 GitHub handoff integration / MOBILE-001 WIP
 
 Fast-forward integrated origin/main 03434f4 and its four audit/runbook documents.

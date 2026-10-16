@@ -340,3 +340,72 @@ def test_mobile_channels_bind_unbind_and_logout_through_the_real_backend(
     keep = _expected_errors("422")
     unexpected = [e for e in errors if keep(e)]
     assert not unexpected, f"console errors: {unexpected}"
+
+
+def test_mobile_files_real_artifacts_preview_download_and_session_clear(protected_server, tmp_path, playwright_api):
+    """Phone users see only their artifacts; text stays inert and clears on logout."""
+    from pathlib import Path
+    from facai.store import Store
+
+    store = Store(tmp_path)
+    mission = store.create('手机文件验收', '保存原话', ['输出报告'], owner_id='admin')
+    content = '<script>window.artifactExecuted=true</script>\n真实报告'
+    path = Path(mission['workspace']) / 'report.txt'
+    path.write_text(content, encoding='utf-8')
+    store.add_artifact(mission['id'], path.name, path)
+    other = store.create('其他用户', '原话', ['输出'], owner_id='someone-else')
+    private = Path(other['workspace']) / 'private.txt'
+    private.write_text('另一租户私有数据', encoding='utf-8')
+    store.add_artifact(other['id'], private.name, private)
+    with playwright_api.sync_playwright() as p:
+        browser = _launch(p)
+        page = _phone(browser)
+        _goto_mobile(page, protected_server)
+        page.fill('#login-username', 'admin')
+        page.fill('#login-password', 'mobile-pass')
+        page.click('#login-submit')
+        page.wait_for_selector('#screen-home.active')
+        page.click('[data-nav="screen-files"]')
+        page.wait_for_selector('#files-list .artifact-card')
+        assert page.locator('#files-list .artifact-card').count() == 1
+        assert 'private.txt' not in page.inner_text('#files-list')
+        page.click('#files-list button')
+        page.wait_for_function("document.querySelector('#artifact-content').textContent.includes('真实报告')")
+        assert page.inner_text('#artifact-content') == content
+        assert page.evaluate('window.artifactExecuted === undefined')
+        with page.expect_download() as downloaded:
+            page.click('#artifact-download')
+        assert Path(downloaded.value.path()).read_text(encoding='utf-8') == content
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth + 1')
+        page.click('[data-nav="screen-me"]')
+        page.click('#me-logout-btn')
+        page.wait_for_selector('#screen-login.active')
+        assert page.inner_text('#artifact-content') == ''
+        page.click('[data-nav="screen-files"]')
+        assert '请先登录' in page.inner_text('#files-status')
+        assert page.locator('#files-list .artifact-card').count() == 0
+        browser.close()
+
+
+def test_mobile_pwa_shell_available_offline_without_caching_api(protected_server, playwright_api):
+    """Loopback is a secure browser context; cached shell still boots honestly offline."""
+    with playwright_api.sync_playwright() as p:
+        browser = _launch(p)
+        context = browser.new_context(viewport={'width': 390, 'height': 844}, is_mobile=True)
+        page = context.new_page()
+        page.goto(protected_server + MOBILE_PAGE)
+        page.evaluate('navigator.serviceWorker.ready.then(() => true)')
+        page.wait_for_function('navigator.serviceWorker.controller !== null')
+        manifest = page.request.get(protected_server + '/static/mobile.webmanifest').json()
+        assert manifest['start_url'] == MOBILE_PAGE
+        page.wait_for_function("async () => !!(await (await caches.open('facai-shell-v2')).match('/static/mobile.html'))")
+        cached = page.evaluate("caches.open('facai-shell-v2').then(c => c.keys()).then(keys => keys.map(k => new URL(k.url).pathname))")
+        assert '/static/facai-ui.css' in cached
+        assert not any(path.startswith('/api/') for path in cached)
+        context.set_offline(True)
+        page.reload(wait_until='load')
+        page.wait_for_selector('#screen-login.active')
+        assert '连不上服务器' in page.inner_text('#login-error')
+        context.set_offline(False)
+        context.close()
+        browser.close()
