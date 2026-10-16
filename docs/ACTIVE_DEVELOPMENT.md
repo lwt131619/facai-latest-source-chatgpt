@@ -1,3 +1,9 @@
+Package metadata correction: tracked dist/ archives change while a new ZIP
+is produced. source_tree_dirty now excludes dist/ from git status but still
+reports any source change. A temporary-repository test covers both cases.
+Next package rebuild will embed the corrected metadata; previous ZIP with
+source_tree_dirty=true was hash-valid but carried that misleading status.
+
 Desktop increment checkpoint: Linux Node integration test launches/stops a
 real FACAI API; 6/6 Node checks passed in both normal and explicit-Python modes.
 Python launcher/setup browser path:5/5 passed with Chromium. CI workflow now

@@ -14,6 +14,14 @@ ROOT_FILES = ('github-backup.json', 'AGENTS.md', 'AGENT_HANDOFF.md', 'pytest.ini
 SECRET = re.compile(rb'github_pat_[A-Za-z0-9_]{30,}|gh[pousr]_[A-Za-z0-9]{30,}|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----')
 
 
+def source_tree_dirty(root):
+    # dist/ contains tracked build outputs. Rebuilding a ZIP must not make its
+    # immutable source snapshot appear dirty; actual source edits still count.
+    result = subprocess.run(['git', 'status', '--porcelain', '--', '.', ':(exclude)dist'],
+                            cwd=root, capture_output=True)
+    return bool(result.stdout) if result.returncode == 0 else None
+
+
 def build():
     files = {ROOT / name for name in ROOT_FILES}
     files.update((ROOT/'facai').rglob('*.py'))
@@ -38,10 +46,9 @@ def build():
             raise ValueError('Credential-shaped content blocks packaging: '+str(file.relative_to(ROOT)))
         contents[file.relative_to(ROOT).as_posix()] = data
     revision = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=ROOT, capture_output=True)
-    dirty = subprocess.run(['git', 'status', '--porcelain'], cwd=ROOT, capture_output=True)
     manifest = {'status': 'DEVELOPMENT_NOT_PRODUCTION',
                 'source_commit': revision.stdout.decode().strip() if revision.returncode == 0 else None,
-                'source_tree_dirty': bool(dirty.stdout) if dirty.returncode == 0 else None,
+                'source_tree_dirty': source_tree_dirty(ROOT),
                 'files': {name: hashlib.sha256(data).hexdigest() for name, data in contents.items()}}
     out = ROOT/'dist'; out.mkdir(exist_ok=True)
     package = out/'FACAI-v1.0-development.zip'
