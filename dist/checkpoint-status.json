@@ -1,18 +1,17 @@
 {
-  "updated_at": "2026-10-16T10:19:24.637191+00:00",
+  "updated_at": "2026-10-16T16:59:53.826156+00:00",
   "branch": "facai/production-build",
-  "head": "7403043e76632219a18998a5526dbb8f6b748854",
-  "validation": "Python:1364 passed/6 skipped/0 failed with Chromium; Node:8 passed; 428-file ZIP manifest verified; extracted suite not rerun",
-  "dirty": false,
+  "head": "818030c61a50cee79cedb854b6d64fce6b39fc93",
+  "validation": "partial",
+  "dirty": true,
   "bundle": "FACAI-resume.bundle",
   "bundle_verified": true,
-  "bundle_sha256": "a06bf06ea2ffe40460e84f864adf9ad0d05029c8683a33655ac3918586483adb",
+  "bundle_sha256": "072418679f7c05b18cba22b6cc20c7c51f4fa38580abd243e7258088d3c5c8ac",
   "remote_verified": true,
   "push_attempted": true,
   "repository": "lwt131619/facai-latest-source-chatgpt",
   "target_branch": "main",
   "credential_source": "INHERITED_GIT",
   "push_exit_code": 0,
-  "sync_status": "SOURCE_SYNCED_BEFORE_ARTIFACT_COMMIT",
-  "note": "ZIP and bundle embed this source head; subsequent artifact-only commit archives them and is intentionally not self-embedded. Verify final remote SHA with git ls-remote."
+  "sync_status": "SYNCED"
 }
