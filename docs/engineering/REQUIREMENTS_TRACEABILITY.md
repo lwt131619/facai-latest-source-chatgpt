@@ -330,7 +330,7 @@ Evidence Collector→Claim Normalizer→Source Trust→Conflict→Confidence
 
 启动软件即有可操作本地FACAI服务
 
-**现有定位**：`packaging/app/main.js`、`packaging/app/package.json`、`scripts/start.py`、`packaging/app/local-runtime.js`、`packaging/app/navigation.js`、`packaging/app/start-local.js`、`packaging/app/test/local-runtime.test.js`、`packaging/app/test/navigation.test.js`
+**现有定位**：`packaging/app/main.js`、`packaging/app/package.json`、`scripts/start.py`、`packaging/app/local-runtime.js`、`packaging/app/bundled-source.js`、`packaging/app/navigation.js`、`packaging/app/start-local.js`、`packaging/app/test/local-runtime.test.js`、`packaging/app/test/bundled-source.test.js`、`packaging/app/test/electron-wiring.test.js`、`packaging/app/test/navigation.test.js`
 
 **验收**：
 
@@ -338,7 +338,7 @@ Evidence Collector→Claim Normalizer→Source Trust→Conflict→Confidence
 - 保留已有有效行为，相关回归及失败路径测试通过
 - 验证命令/结果/提交与外部局限写入交接记录
 
-**下一步**：Electron源码本地模式已调用原生启动器、等待8080健康、传递一次性Owner向导入口、退出停服务；远程模式保留。Linux真实后端及窗口接线Node测试8通过、全量Python1364通过/6跳过/0失败；继续Windows/macOS native安装包资源内嵌、生命周期和端口冲突平台验收。
+**下一步**：Electron安装配置已纳入FACAI源码/静态资源，模拟安装资源与真实FastAPI启动、Owner数据隔离、窗口接线Node测试12通过；系统Python与联网装依赖仍必需。继续真实Windows/macOS native安装包构建与生命周期验收；此前Python全量1364通过/6跳过/0失败，不代表安装包验收。
 
 ## UPDATE-001 — 跨平台更新/备份/迁移/回滚
 

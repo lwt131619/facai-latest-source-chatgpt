@@ -18,10 +18,12 @@ function sourceRoot(candidate) {
 }
 
 function pythonFor(root) {
-  if (process.env.FACAI_DESKTOP_PYTHON) return process.env.FACAI_DESKTOP_PYTHON;
+  if (process.env.FACAI_DESKTOP_PYTHON) return { command: process.env.FACAI_DESKTOP_PYTHON, prefix: [] };
   const local = path.join(root, ".venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
-  if (fs.existsSync(local)) return local;
-  return process.platform === "win32" ? "python" : "python3";
+  if (fs.existsSync(local)) return { command: local, prefix: [] };
+  return process.platform === "win32"
+    ? { command: "py", prefix: ["-3"] }
+    : { command: "python3", prefix: [] };
 }
 
 function assertFreePort(port) {
@@ -83,11 +85,14 @@ async function startLocalService(options = {}) {
   const port = options.port || PORT;
   await assertFreePort(port);
   let target = null;
-  const child = spawn(pythonFor(root), [path.join(root, "scripts/start.py"),
+  const childEnv = { ...process.env };
+  if (options.dataDir) childEnv.FACAI_DATA_DIR = options.dataDir;
+  if (process.env.FACAI_DESKTOP_PYTHON) childEnv.FACAI_START_PYTHON_INSTALLED = "1";
+  const python = pythonFor(root);
+  const child = spawn(python.command, [...python.prefix, path.join(root, "scripts/start.py"),
     "--port", String(port), "--no-browser", "--desktop-handoff"], {
     cwd: root,
-    env: process.env.FACAI_DESKTOP_PYTHON
-      ? { ...process.env, FACAI_START_PYTHON_INSTALLED: "1" } : process.env,
+    env: childEnv,
     stdio: ["ignore", "pipe", "pipe"], windowsHide: true,
   });
   child.once("error", (error) => { child.facaiStartError = error; });

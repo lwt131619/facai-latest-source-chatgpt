@@ -26,7 +26,8 @@
       "navigation.js",
       "local-runtime.js",
       "start-local.js",
-      "icon.png"
+      "icon.png",
+      "bundled-source.js"
     ],
     "win": {
       "target": [
@@ -45,6 +46,32 @@
       "shortcutName": "FACAI 任务工作台",
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true
-    }
+    },
+    "extraResources": [
+      {
+        "from": "../../facai",
+        "to": "runtime-source/facai",
+        "filter": [
+          "**/*.py",
+          "static/**/*"
+        ]
+      },
+      {
+        "from": "../../vendor",
+        "to": "runtime-source/vendor",
+        "filter": [
+          "**/*.md",
+          "**/*.json"
+        ]
+      },
+      {
+        "from": "../../scripts/start.py",
+        "to": "runtime-source/scripts/start.py"
+      },
+      {
+        "from": "../../requirements.txt",
+        "to": "runtime-source/requirements.txt"
+      }
+    ]
   }
 }

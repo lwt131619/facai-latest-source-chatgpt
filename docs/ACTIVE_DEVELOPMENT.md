@@ -1,3 +1,14 @@
+## Bundled desktop source WIP
+
+2026-10-16: Electron installed-mode wiring now chooses bundled local FACAI
+source by default; versioned code is copied beneath Electron userData/runtime,
+with persistent Owner data in userData/data. Packaged config includes Python
+source/static assets and vendor metadata, but requires system Python and first
+start network dependency install. Node 12/12 pass, including real FastAPI from
+a simulated resources directory, setup URL and persistent-data separation.
+Native Windows/macOS installer and Electron binary remain NOT_VERIFIED.
+Prior full Python regression (1364/6) predates this Node/package-only change.
+
 ## Desktop current full regression
 
 2026-10-16 source code after fa0b798 and Electron wiring tests: Python suite

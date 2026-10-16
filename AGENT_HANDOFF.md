@@ -7,8 +7,9 @@
 
 `packaging/app`有Electron本地模式，先阅读docs/LOCAL_APPLIANCE.md。
 实测Linux Node启动真实FACAI、打开Owner向导、关闭服务并释放8080。
-已修远程窗口相似域名前缀误判；安装包尚未内嵌Python/源码，Windows/macOS
-native安装包未认证，DESKTOP-001保持PARTIAL。
+已修远程窗口相似域名前缀误判；安装配置纳入FACAI源码和静态资源，模拟安装
+资源可启动真实服务，Owner数据独立保存。Python/依赖仍需系统准备，Windows/macOS
+native安装包未认证，DESKTOP-001保持PARTIAL。详见docs/LOCAL_APPLIANCE.md。
 
 ## 恢复交付增量
 

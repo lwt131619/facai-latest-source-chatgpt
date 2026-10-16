@@ -31,9 +31,13 @@ Electron 源码本地模式：进入 `packaging/app`，先 `npm install`，运�
 显示错误，不会连接其他进程。需要指定源码树或 Python 时分别设置
 `FACAI_SOURCE_DIR` / `FACAI_DESKTOP_PYTHON`。显式指定的 Python 须已安装 requirements.txt；
 未指定时使用源码树 `.venv` 并在首次启动安装依赖。用户数据仍由 FACAI_DATA_DIR 管理。
-未启用本地模式的 Electron 保留已有远程站点行为。现有 Electron 安装包仍不内嵌
-Python 和 FACAI 源码；Windows/macOS 本地安装包与完整生命周期需平台实测，
-不能把本机源码模式认作正式离线发行版。本入口不是 Production v1.0 验收声明。
+Electron 安装包配置已加入 FACAI 服务源码、静态资源、必要 vendor 元数据和启动器。
+打包后默认将随包源码复制到用户数据目录的版本化 runtime，再从该目录启动；Owner
+数据库与配置保存在独立的 userData/data 中，升级源码不覆盖用户数据。第一次启动仍需
+系统 Python 3.10+ 和联网安装 requirements.txt，安装包不内嵌 Python/依赖。
+可显式设置 FACAI_DESKTOP_MODE=remote 保留原有远程站点行为。当前已在 Linux 上用
+模拟安装资源启动真实 API 并测试隔离数据目录；Electron 原生安装包构建、Windows/macOS
+窗口与升级生命周期仍未实测，不能认作正式离线发行版或 Production v1.0 验收。
 
 开发包：`python scripts/package.py` 生成 dist/FACAI-v1.0-development.zip，
 包含源文件 SHA-256 清单和压缩包校验文件。使用显式文件清单，不打包 data/、

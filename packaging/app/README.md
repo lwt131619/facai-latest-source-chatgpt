@@ -1,6 +1,7 @@
 # 打包 FACAI 桌面客户端（Windows）
 
-把 whstapp.lol 打成独立安装包（.exe），发给客户双击即用，无需记网址。
+Windows 安装包配置已纳入本地 FACAI 服务源码。原生安装包仍需 Windows 实机验收。
+首次启动需要系统 Python 3.10+ 和网络安装依赖，不是完整离线包。
 
 ## 一步打包（国内网络已配镜像加速）
 
@@ -22,9 +23,11 @@ npm run dist
 
 ## 说明
 
-- 客户端 = Electron 壳 + 打开 `https://whstapp.lol`，所有功能与网页版一致
+- 已安装客户端默认准备随包服务源码并在本机 127.0.0.1:8080 启动；用户数据独立保存在 Electron userData/data
+- 设置 `FACAI_DESKTOP_MODE=remote` 才切换到原远程站点 `https://whstapp.lol`
 - 外链自动跳系统浏览器；应用内永远留在工作台
 - 版本更新：直接重跑 `build.ps1`（版本号改 `package.json` 的 `version`）
+- 当前只有 Linux 模拟资源 + 真实 FACAI 进程测试通过；Windows 原生安装包没有验收
 
 ## 另一条更轻的「打包」路径（已上线）
 
