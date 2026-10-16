@@ -132,3 +132,26 @@ now ride explicit -e flags (79954b5). Verified: workflow run on 79954b5
 completed with conclusion=success (full ubuntu pytest + packaging). Discipline
 note: local green never implies remote green — check the Actions API, not the
 local skip path.
+
+## Two read-only audits landed and packaged for Codex handoff (takeover agent, 2026-10-16)
+
+MOBILE-001 audit (agent, 405s): all 13 mobile.html network calls hit real api.py
+routes — zero dead endpoints; verdicts PARTIAL / VERIFIED_LOCAL / PARTIAL. The
+gaps are precise: the files tab is a placeholder while GET /api/v1/artifacts
+exists (wire it + a facaiGo refresh hook), mobile.html never registers /sw.js
+(copy the index.html:2091 https-gated registration), the sw.js SHELL lacks
+/static/mobile.html (add it, bump CACHE to v2), no mobile Agent view (reuse
+OPENCODE_* events), no mobile settings summary (/api/v1/billing/me is ready),
+and the A20 real-device 390x844+HTTPS walkthrough is still not executed.
+
+Linux portability audit (agent): with 486fed8's failure isolated to the sed
+case (pytest does not stop on one failure), every other case — browsers,
+concurrency — has already passed on ubuntu-latest, so deterministic platform
+bugs are unlikely. Top non-deterministic risks: test_mission_control_flow's
+unstubbed real DNS call (one-line conftest allowlist fix), runtime-capacity
+lease timing, CJK-font-dependent pixel assertions + three launches missing
+--no-sandbox, the _free_port() TOCTOU, and eventbus SQLite lock contention.
+
+Both reports plus a prioritized not-yet-wired list live in
+docs/handoff-20261016/ (additive only — no source files touched) and ship as
+the update package for the Codex-side merge.
