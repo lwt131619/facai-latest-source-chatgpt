@@ -1,3 +1,9 @@
+Desktop CI runner fix: an explicitly selected installed Python now uses its
+existing dependencies, while normal source mode still creates/updates .venv.
+Both default and external-Python Node test runs passed 6/6; this avoids a
+second pip install in GitHub Actions. Previous package ZIP was built before
+this adjustment; rebuild follows this checkpoint.
+
 Desktop source mode increment: Electron can start the existing Python launcher
 from a source checkout, wait for loopback health, receive a one-use setup URL
 only via its private child stdout pipe, and stop its child on quit. Remote mode

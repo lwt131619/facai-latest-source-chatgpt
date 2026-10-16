@@ -29,7 +29,8 @@ Electron 源码本地模式：进入 `packaging/app`，先 `npm install`，运�
 127.0.0.1:8080 就绪后打开 Owner 首次向导；已有 Owner 则打开控制台。
 关闭应用会停止由本次窗口启动的服务。8080 被占用、Python 丢失或源码缺失时会
 显示错误，不会连接其他进程。需要指定源码树或 Python 时分别设置
-`FACAI_SOURCE_DIR` / `FACAI_DESKTOP_PYTHON`，用户数据仍由 FACAI_DATA_DIR 管理。
+`FACAI_SOURCE_DIR` / `FACAI_DESKTOP_PYTHON`。显式指定的 Python 须已安装 requirements.txt；
+未指定时使用源码树 `.venv` 并在首次启动安装依赖。用户数据仍由 FACAI_DATA_DIR 管理。
 未启用本地模式的 Electron 保留已有远程站点行为。现有 Electron 安装包仍不内嵌
 Python 和 FACAI 源码；Windows/macOS 本地安装包与完整生命周期需平台实测，
 不能把本机源码模式认作正式离线发行版。本入口不是 Production v1.0 验收声明。

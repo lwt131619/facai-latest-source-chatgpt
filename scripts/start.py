@@ -69,14 +69,15 @@ def main():
     if sys.version_info < (3, 10):
         parser.error('Python 3.10 or newer is required')
     environment = ROOT / '.venv'
-    python = environment / ('Scripts/python.exe' if os.name == 'nt' else 'bin/python')
+    use_installed = os.environ.get('FACAI_START_PYTHON_INSTALLED') == '1'
+    python = Path(sys.executable) if use_installed else environment / ('Scripts/python.exe' if os.name == 'nt' else 'bin/python')
     if not python.exists():
         print('Preparing Python environment (first start requires Internet)...', flush=True)
         venv.EnvBuilder(with_pip=True).create(environment)
     import hashlib
     digest = hashlib.sha256((ROOT/'requirements.txt').read_bytes()).hexdigest()
     marker = environment / '.facai-requirements'
-    if not marker.exists() or marker.read_text() != digest:
+    if not use_installed and (not marker.exists() or marker.read_text() != digest):
         subprocess.run([str(python), '-m', 'pip', 'install', '-r', str(ROOT/'requirements.txt')], check=True)
         marker.write_text(digest)
     data = Path(os.environ.get('FACAI_DATA_DIR', str(ROOT/'data'))).expanduser().resolve()

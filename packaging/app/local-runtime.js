@@ -85,7 +85,10 @@ async function startLocalService(options = {}) {
   let target = null;
   const child = spawn(pythonFor(root), [path.join(root, "scripts/start.py"),
     "--port", String(port), "--no-browser", "--desktop-handoff"], {
-    cwd: root, env: process.env, stdio: ["ignore", "pipe", "pipe"], windowsHide: true,
+    cwd: root,
+    env: process.env.FACAI_DESKTOP_PYTHON
+      ? { ...process.env, FACAI_START_PYTHON_INSTALLED: "1" } : process.env,
+    stdio: ["ignore", "pipe", "pipe"], windowsHide: true,
   });
   child.once("error", (error) => { child.facaiStartError = error; });
   let lineBuffer = "";

@@ -24,7 +24,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - run: node --test packaging/app/test/*.test.js
+      - run: FACAI_DESKTOP_PYTHON="$(command -v python)" node --test packaging/app/test/*.test.js
       - run: python -m pytest -q --junitxml=dist/pytest.xml
       - uses: actions/upload-artifact@v4
         if: always()
