@@ -215,7 +215,7 @@
     "保留已有有效行为，相关回归及失败路径测试通过",
     "验证命令/结果/提交与外部局限写入交接记录"
    ],
-   "next_action": "定义规范核心事件与旧事件映射，新增路径同事务写事件，补游标重放/幂等"
+   "next_action": "已建成并有测试钉死(tests/test_eventbus.py 8例三连绿):规范词表CANONICAL_TYPES写入端校验(publish拒绝未知类型/非dict)、owner级全局流(events_for_owner)、/api/v1/events?after=与SSE流同光标契约、legacy类型原样流过、跨owner隔离、端点鉴权;新增并发追加测试:8线程24事件全局序号严格有序无重复,同光标双客户端重放逐字节一致(幂等)。剩余:首批消费端出现时把新路径的发布切到规范名(现无客户端消费CamelCase,不预先改语义)。"
   },
   {
    "id": "PKG-001",
@@ -331,7 +331,7 @@
     "线程/CLI进程/模型并发分别计量，OpenCode默认串行不默默移除",
     "同任务分支隔离/超时/失败/取消/结果幂等有证据"
    ],
-   "next_action": "受控适配器实测+车队上限修复已入库(tests/test_runtime_capacity.py, d28e996):24独立任务/4worker零双重认领;FACAI_MAX_RUNNING_JOBS全局认领上限三层确定性测试钉死。2026-10-16本地实弹验收通过(scripts/smoke_local.py, 11/11两连跑):真实uvicorn+真实客户流(注册会员→资金池充值→建任务→绑定opencode/deepseek-flash→派发),应用内调度器认领作业,真实OpenCode CLI执行OPENCODE_STARTED→6×OUTPUT→ARTIFACT_CREATED→COST_RECORDED/COST_PRICED→GIT_CHECKPOINT→JOB_COMPLETED共19事件,任务工作区真实生成hello.txt(内容冒烟测试)。剩余:真实CLI的20+并发执行与恢复验收(需真实配额支撑);调度并发2/上限8/同任务3不变。"
+   "next_action": "受控适配器实测+车队上限修复已入库(d28e996):24独立任务/4worker零双重认领;FACAI_MAX_RUNNING_JOBS三层确定性测试钉死。真实CLI实弹已入库(scripts/smoke_local.py 11/11两连跑;scripts/smoke_fleet.py 16/16):4真实任务经真实uvicorn并发派发(FACAI_MAX_WORKERS=4,OPENCODE_SERIAL=0),6.5秒全部COMPLETED,每任务恰好1次OPENCODE_STARTED(零双重认领)/6条OUTPUT/产物f0-f3.txt内容逐一精确匹配/4行成本记账;单任务19事件链(OPENCODE_STARTED→OUTPUT×6→ARTIFACT_CREATED→COST_RECORDED/COST_PRICED→GIT_CHECKPOINT→JOB_COMPLETED)。剩余:真实CLI的崩溃恢复与更大规模(20+)并发验收(需真实配额支撑);调度并发2/上限8/同任务3不变。"
   },
   {
    "id": "OPS-001",

@@ -65,6 +65,38 @@ class TestGlobalStreamApi:
         tail = client.get(f"/api/v1/events?after={after}").json()["events"]
         assert [e["sequence"] for e in tail] == sequences[1:]
 
+    def test_concurrent_appends_replay_idempotently(self, tmp_path, monkeypatch):
+        """Fleet writes: schedulers appending concurrently must leave the
+        global feed strictly ordered and duplicate-free, and two clients
+        replaying from the same cursor get the identical tail — replay is
+        idempotent, never double-delivering a sequence."""
+        import threading
+
+        client = _client(tmp_path, monkeypatch)
+        client.post("/api/v1/conversion/console", json={"text": TEXT})
+        store = Store(tmp_path)
+        mission_id = store.events_for_owner("admin")[0]["mission_id"]
+
+        barrier = threading.Barrier(8)
+        def publish_one(index):
+            barrier.wait()
+            publish(store, mission_id, "StepCompleted", {"stage": f"s{index}"})
+
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            list(pool.map(publish_one, range(24)))
+
+        feed = client.get("/api/v1/events").json()["events"]
+        sequences = [e["sequence"] for e in feed]
+        assert sequences == sorted(sequences)
+        assert len(sequences) == len(set(sequences))   # never double-delivered
+        assert sum(1 for e in feed if e["type"] == "StepCompleted") == 24
+        cursor = sequences[10]
+        tail_a = client.get(f"/api/v1/events?after={cursor}").json()["events"]
+        tail_b = client.get(f"/api/v1/events?after={cursor}").json()["events"]
+        assert tail_a == tail_b
+        assert [e["sequence"] for e in tail_a] == sequences[11:]
+
     def test_legacy_event_types_flow_through_untouched(self, tmp_path, monkeypatch):
         client = _client(tmp_path, monkeypatch)
         client.post("/api/v1/conversion/console", json={"text": TEXT})

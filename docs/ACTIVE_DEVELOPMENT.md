@@ -85,3 +85,22 @@ hello.txt with the requested content. The unbound-dispatch gate also verified:
 without a binding the API refuses with 409 instead of faking progress.
 RUNTIME-001 keeps status PARTIAL: real-CLI 20+ concurrent execution/recovery
 acceptance still needs real provider quota.
+
+## Concurrent real-CLI acceptance + event-bus replay idempotency (takeover agent, 2026-10-16)
+
+scripts/smoke_fleet.py (new): four missions through the real customer surface,
+dispatched together on a server configured FACAI_MAX_WORKERS=4 /
+FACAI_OPENCODE_SERIAL=0. Verdict 16/16: all four jobs COMPLETED in 6.5s wall
+time, each mission shows exactly one OPENCODE_STARTED (zero double-claims) with
+six OUTPUT events, the four requested files exist with exactly the requested
+content, and four cost rows are recorded. Combined with smoke_local.py's single
+19-event chain, RUNTIME-001's real-CLI concurrency line is now measured; crash
+recovery on the real CLI and 20+ scale still need real provider quota.
+
+tests/test_eventbus.py gains the replay-idempotency pin: 24 concurrent appends
+(8 threads behind a barrier) leave the owner-level global feed strictly ordered
+and duplicate-free, and two clients replaying from the same cursor receive
+byte-identical tails. EVENT-001's registry entry now records what is actually
+built (vocabulary validation, owner-scoped cursor replay, SSE contract, legacy
+pass-through, isolation, auth) and the one honest remainder: new paths switch
+to canonical names when the first client consumes them — not before.
