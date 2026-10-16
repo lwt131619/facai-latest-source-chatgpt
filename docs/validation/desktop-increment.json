@@ -1,0 +1,40 @@
+{
+  "status": "PARTIAL_NOT_PRODUCTION",
+  "source_commit": "55f43c4f81c0d75de703ccd7390c2114816da9bb",
+  "verified_on": "Linux source checkout",
+  "node_runtime_tests": {
+    "passed": 6,
+    "failed": 0,
+    "modes": [
+      "default .venv",
+      "explicit installed Python"
+    ],
+    "real_fastapi_process": true
+  },
+  "python_launcher_and_setup_browser_tests": {
+    "passed": 5,
+    "failed": 0,
+    "chromium": "/usr/bin/chromium"
+  },
+  "verified": [
+    "actual loopback FastAPI startup",
+    "private one-time Owner setup URL handoff",
+    "port conflict rejection",
+    "missing Python failure",
+    "service exit and port release",
+    "exact-origin Electron navigation rule"
+  ],
+  "not_verified": [
+    "actual Electron window or installed native package",
+    "Windows/macOS platform lifecycle",
+    "Python/FACAI bundled inside installer",
+    "complete Production v1.0 acceptance"
+  ],
+  "source_sha256": {
+    "packaging/app/main.js": "ec60b9b6d97b56e0ee4eee5f013e5bfc0c1a247558a2b8b43cb5efc60602a560",
+    "packaging/app/local-runtime.js": "72819fb93f2a2a7fb2c7e029fc7311492790d6ffbfaecef0be4c21db20561e2f",
+    "packaging/app/navigation.js": "242820199d267cbc9b5ed211a98aecd520a143c894281e1899a4edc42451681a",
+    "packaging/app/start-local.js": "4b7e8fb18abf3aa935d96cc95ab01bf2c690e97b73c21cf9d997a36199465c2c",
+    "scripts/start.py": "1f631d18171ee008f38b16716267f3e95937aa6bc34833d1d7e5fcdf565fdcb5"
+  }
+}

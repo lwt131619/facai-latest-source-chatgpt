@@ -1,3 +1,11 @@
+Desktop increment checkpoint: Linux Node integration test launches/stops a
+real FACAI API; 6/6 Node checks passed in both normal and explicit-Python modes.
+Python launcher/setup browser path:5/5 passed with Chromium. CI workflow now
+runs these Node checks before Python suite. See docs/validation/desktop-increment.json
+for source hashes and unverified native installer limits. DESKTOP-001 PARTIAL.
+Full Python regression after this increment: NOT_RUN locally; GitHub CI result
+must be read from the workflow, not inferred from focused checks.
+
 Desktop CI runner fix: an explicitly selected installed Python now uses its
 existing dependencies, while normal source mode still creates/updates .venv.
 Both default and external-Python Node test runs passed 6/6; this avoids a
