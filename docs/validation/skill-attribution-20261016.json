@@ -1,0 +1,31 @@
+{
+  "status": "PARTIAL_NOT_PRODUCTION",
+  "full_regression_source_commit": "d338b3cef9083997775d41dc4193341cb7439128",
+  "full_regression": {
+    "command": "FACAI_TEST_CHROMIUM=/usr/bin/chromium /workspace/facai-venv/bin/python -m pytest -q",
+    "passed": 1427,
+    "skipped": 7,
+    "failed": 0,
+    "seconds": 267.49,
+    "real_chromium_enabled": true
+  },
+  "attribution_correction_commit": "a73ca84",
+  "post_correction_focused": {
+    "passed": 38,
+    "failed": 0,
+    "scope": "skill lifecycle, mission isolation, real Chromium skill drawer"
+  },
+  "verified_behavior": [
+    "owner-scoped metadata attribution aggregate",
+    "version captured from resolved skill registry entry",
+    "disabled or absent skill is not attributed",
+    "soft-deleted skill retains owner-scoped attribution history",
+    "UI and API explicitly state invocation is unverified"
+  ],
+  "not_verified": [
+    "SKILL.md body storage and actual runtime invocation",
+    "skill causal effectiveness or semantic correctness",
+    "native desktop installer",
+    "real provider 20+ concurrency and full Production v1.0 acceptance"
+  ]
+}

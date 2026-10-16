@@ -11,6 +11,14 @@
 资源可启动真实服务，Owner数据独立保存。Python/依赖仍需系统准备，Windows/macOS
 native安装包未认证，DESKTOP-001保持PARTIAL。详见docs/LOCAL_APPLIANCE.md。
 
+## 最新接续重点：Skill执行仍未闭环
+
+技能导入当前只保留元数据，SKILL.md正文尚未交给运行时。/registries/skills/{key}/usage
+及指挥中心展示的是按Owner/版本隔离的「任务执行归因」，不是实际Skill调用或效果验收。
+继续开发时先完成Owner控制下的正文持久化、版本锁定与执行接线，再记录真实调用和效果；
+不要把目前归因数字描述为Skill已经运行。精确验证范围见
+docs/validation/skill-attribution-20261016.json及task-registry.json的SKILL-001。
+
 ## 恢复交付增量
 
 backup.sh / backup.bat 提供本地数据库备份与隔离恢复演练，不修改在线数据。

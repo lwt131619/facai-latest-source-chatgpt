@@ -7,7 +7,8 @@ Center labels these as attribution and says Skill body execution is unverified.
 Actual version-locked Skill body storage/invocation is the next engineering
 gap, not claimed complete. Full regression before this wording/metadata-only
 correction: 1427 passed /7 skipped /0 failed with real Chromium, 267.49s on
-d338b3c. Focused regression after correction is recorded separately.
+d338b3c. Focused regression after correction: 38 passed /0 failed, including
+real Chromium. Details: docs/validation/skill-attribution-20261016.json.
 
 ## Skill observed usage WIP
 
