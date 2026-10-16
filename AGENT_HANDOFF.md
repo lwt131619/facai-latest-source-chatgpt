@@ -3,6 +3,12 @@
 先读AGENTS.md → FACAI_CODEX_HANDOFF.md → docs/engineering/CORE_INVARIANTS.md。
 源码、Git历史、任务登记表和实测报告优先于历史聊天及旧VPS上线描述。
 
+## 恢复交付增量
+
+backup.sh / backup.bat 提供本地数据库备份与隔离恢复演练，不修改在线数据。
+必须读docs/LOCAL_RECOVERY.md；不能把DATABASE_ONLY误报为完整密钥/工作区恢复。
+UPDATE-001保持PARTIAL，Windows/macOS/VPS仍需实测。
+
 ## 2026-10-16 已收录外部交接并续接
 
 已快进集成03434f4及docs/handoff-20261016/四份报告；历史报告保持原样。

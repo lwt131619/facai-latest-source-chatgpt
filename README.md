@@ -142,3 +142,7 @@ must be deployed and verified separately; don't treat this recorded server state
 as including later changes.
 The data plane moves to PostgreSQL/Redis when the SQLite design stops meeting
 concurrency needs.
+
+本地备份：Linux/macOS 运行 `./backup.sh`，Windows 运行 `backup.bat`。
+入口会创建数据库快照并进行隔离恢复演练；密钥、配置、工作区需另行私密保存。
+完整步骤与局限见 [本地恢复说明](docs/LOCAL_RECOVERY.md)。

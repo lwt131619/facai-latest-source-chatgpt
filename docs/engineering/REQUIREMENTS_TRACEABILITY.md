@@ -344,7 +344,7 @@ Evidence Collector→Claim Normalizer→Source Trust→Conflict→Confidence
 
 update.bat/update.sh升级前备份，失败可恢复
 
-**现有定位**：`facai/backup.py`、`deploy/deploy.sh`
+**现有定位**：`facai/backup.py`、`deploy/deploy.sh`、`backup.sh`、`backup.bat`、`scripts/backup_local.py`、`docs/LOCAL_RECOVERY.md`、`tests/test_backup.py`
 
 **验收**：
 
@@ -352,7 +352,7 @@ update.bat/update.sh升级前备份，失败可恢复
 - 保留已有有效行为，相关回归及失败路径测试通过
 - 验证命令/结果/提交与外部局限写入交接记录
 
-**下一步**：保留已有Linux部署update/rollback，补本地入口和真实恢复演练
+**下一步**：已补本地backup.sh/backup.bat、私有不可覆盖SQLite快照、隔离恢复演练与退出码；在线变化与恢复错误分开，新增表纳入核对。继续完整数据/密钥/工作区一致恢复和更新失败回滚，Windows/macOS及VPS未验收。
 
 ## RUST-001 — Rust核心增量边界
 

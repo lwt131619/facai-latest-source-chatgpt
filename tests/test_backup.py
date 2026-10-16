@@ -222,3 +222,41 @@ def test_failed_online_backup_removes_reserved_destination(tmp_path, monkeypatch
         create_backup(tmp_path, destination)
     assert not destination.exists()
     assert len(Store(tmp_path).list()) == 1
+
+
+def test_local_backup_launcher_rehearses_without_mutating_live(tmp_path):
+    import json
+    import subprocess
+    import sys
+    seed(tmp_path)
+    script = Path(__file__).resolve().parents[1] / 'scripts/backup_local.py'
+    result = subprocess.run([sys.executable, str(script), '--data-dir', str(tmp_path)],
+                            capture_output=True, text=True, cwd=tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    report, _ = json.JSONDecoder().raw_decode(result.stdout)
+    assert report['ok'] and report['backup_counts']['missions'] == 1
+    assert Path(report['backup']).is_file()
+    assert len(Store(tmp_path).list()) == 1
+    assert not list(tmp_path.glob('facai.pre-restore-*'))
+
+
+def test_local_backup_launcher_missing_database_fails_without_creating_one(tmp_path):
+    import subprocess
+    import sys
+    script = Path(__file__).resolve().parents[1] / 'scripts/backup_local.py'
+    result = subprocess.run([sys.executable, str(script), '--data-dir', str(tmp_path)],
+                            capture_output=True, text=True)
+    assert result.returncode == 1
+    assert not (tmp_path / 'facai.sqlite3').exists()
+
+
+@pytest.mark.skipif(backup_module.os.name == 'nt', reason='POSIX launcher')
+def test_posix_backup_entry_works_from_other_directory(tmp_path):
+    import subprocess
+    seed(tmp_path)
+    script = Path(__file__).resolve().parents[1] / 'backup.sh'
+    result = subprocess.run(['sh', str(script), '--data-dir', str(tmp_path)],
+                            cwd=tmp_path, capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert 'DATABASE_ONLY' in result.stdout
+    assert len(list((tmp_path / 'backups').glob('*.sqlite3'))) == 1

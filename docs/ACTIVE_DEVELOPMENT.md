@@ -1,3 +1,9 @@
+Local backup launchers added with independent source/working-directory handling;
+package allowlist includes both launchers and scripts. Linux subprocess tests
+exercise actual snapshot+restore drill and failure on missing database; Windows
+batch syntax is supplied but not certified on a Windows host. Related tests are
+recorded in the next validation checkpoint; full regression follows.
+
 ## Recovery increment after overlap check
 
 Fetched origin/main and confirmed 9b49940 already includes external03434f4 and
