@@ -338,7 +338,7 @@ Evidence Collector→Claim Normalizer→Source Trust→Conflict→Confidence
 - 保留已有有效行为，相关回归及失败路径测试通过
 - 验证命令/结果/提交与外部局限写入交接记录
 
-**下一步**：Electron源码本地模式已调用原生启动器、等待8080健康、传递一次性Owner向导入口、退出停服务；远程模式保留。Linux真实后端Node测试6通过；继续Windows/macOS native安装包资源内嵌、生命周期和端口冲突平台验收。
+**下一步**：Electron源码本地模式已调用原生启动器、等待8080健康、传递一次性Owner向导入口、退出停服务；远程模式保留。Linux真实后端及窗口接线Node测试8通过、全量Python1364通过/6跳过/0失败；继续Windows/macOS native安装包资源内嵌、生命周期和端口冲突平台验收。
 
 ## UPDATE-001 — 跨平台更新/备份/迁移/回滚
 

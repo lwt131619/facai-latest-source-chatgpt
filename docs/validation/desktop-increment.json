@@ -37,6 +37,19 @@
     "packaging/app/local-runtime.js": "72819fb93f2a2a7fb2c7e029fc7311492790d6ffbfaecef0be4c21db20561e2f",
     "packaging/app/navigation.js": "242820199d267cbc9b5ed211a98aecd520a143c894281e1899a4edc42451681a",
     "packaging/app/start-local.js": "4b7e8fb18abf3aa935d96cc95ab01bf2c690e97b73c21cf9d997a36199465c2c",
-    "scripts/start.py": "1f631d18171ee008f38b16716267f3e95937aa6bc34833d1d7e5fcdf565fdcb5"
-  }
+    "scripts/start.py": "1f631d18171ee008f38b16716267f3e95937aa6bc34833d1d7e5fcdf565fdcb5",
+    "scripts/package.py": "616c5f95b6249d82cccc68a96316852bc914b9394384760926d61a98d55928aa"
+  },
+  "full_python_regression": {
+    "tests": "1370",
+    "failures": "0",
+    "errors": "0",
+    "skipped": "6",
+    "time": "224.988",
+    "passed": 1364,
+    "real_chromium_enabled": true
+  },
+  "source_commit_before_report": "271ed566e933a8de7a9d83a1a4c59dd376c42032",
+  "package_metadata_check": "source_tree_dirty ignores tracked dist outputs; temporary-repository test passed",
+  "github_actions_status": "NOT_CHECKED"
 }
