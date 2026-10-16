@@ -1,3 +1,13 @@
+## 2026-10-16 GitHub handoff integration / MOBILE-001 WIP
+
+Fast-forward integrated origin/main 03434f4 and its four audit/runbook documents.
+Mobile files now use owner-scoped artifact listing and bounded text previews,
+with explicit truncation and UTF-8 text-copy download labels. Mobile gets its own
+manifest; SW v2 caches mobile shell/CSS, never API responses. No VPS changes.
+Focused artifact/runtime/workspace/static regression: 41 passed, 0 failed.
+Browser coverage for this new file/PWA path is pending; MOBILE-001 stays PARTIAL.
+Historical audit and package validation remain historical evidence, not this build.
+
 # Active development checkpoint
 
 Runtime isolation increment is committed WIP. Latest focused run: **35 passed,

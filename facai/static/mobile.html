@@ -6,11 +6,8 @@
   <meta name="theme-color" content="#050b16">
   <meta name="description" content="FACAI 随身遥控器：真登录、真下单、真进度、真绑渠道。Desktop 是总控台，Mobile 是遥控器。">
   <title>FACAI · 发财遥控器</title>
-  <!-- PWA：真机安装复用根 manifest（/manifest.webmanifest 已由 facai/api.py 挂载，
-       图标 /static/icon-192.png、/static/icon-512.png，Service Worker /sw.js）。
-       本页已接真实接口，激活安装引用：
-  -->
-  <link rel="manifest" href="/manifest.webmanifest">
+  <!-- 手机独立安装入口；桌面 manifest 保持原入口。 -->
+  <link rel="manifest" href="/static/mobile.webmanifest">
   <link rel="apple-touch-icon" href="/static/icon-192.png">
   <!-- 设计令牌层：同目录 facai-ui.css（服务路径 /static/facai-ui.css，基线 §21） -->
   <link rel="stylesheet" href="facai-ui.css">
@@ -215,7 +212,9 @@
     .needyou{margin-top:var(--sp-3);font-size:var(--fs-sm);color:var(--mut)}
     .needyou b{color:var(--ok)}
 
-    /* 文件占位页 */
+    /* 产物中心 */
+    .artifact-card{padding:16px;border-bottom:1px solid var(--line);overflow-wrap:anywhere}
+    #artifact-content{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;max-height:45vh;overflow:auto}
     .stub{color:var(--mut);font-size:var(--fs-sm);line-height:1.8;text-align:center;padding:var(--sp-6) var(--sp-4)}
 
     /* 底部导航（基线 §24：首页 任务 发财 文件 我的，中央发财=自然语言入口） */
@@ -332,10 +331,18 @@
           </div>
         </section>
 
-        <!-- ══ 文件 Tab（产物中心入口占位，口径如实）══ -->
+        <!-- ══ 文件 Tab：真实产物元数据与受鉴权的文本预览 ══ -->
         <section class="screen" id="screen-files" aria-label="文件">
           <div class="topbar"><b>文件</b></div>
-          <p class="stub">产物中心待接 /api/v1/artifacts<br>（当前未展示任何演示文件；任务产物先在 Desktop 总控台查看）</p>
+          <button class="facai-btn" id="files-refresh">刷新文件</button>
+          <p id="files-status" role="status" aria-live="polite"></p>
+          <div id="files-list"></div>
+          <section id="artifact-preview" hidden>
+            <h3 id="artifact-name"></h3>
+            <p id="artifact-status" role="status"></p>
+            <pre id="artifact-content"></pre>
+            <a id="artifact-download" class="facai-btn" hidden>下载文本副本</a>
+          </section>
         </section>
 
         <!-- ══ 我的（真实会话 + 真实渠道绑定）══ -->
@@ -740,6 +747,7 @@ state   = WAITING_PERMISSION</pre>
     if (res.status !== 401) { return false; }
     var expired = !!state.user;
     state.user = null; state.csrf = null; state.mustChange = false;
+    fileRequest++; clearArtifactPreview(); document.getElementById('files-list').textContent = '';
     stopMonitor(); renderSessionUI();
     facaiGo('screen-login');
     loginError(expired ? '登录已过期，请重新登录' : '请先登录');
@@ -833,7 +841,8 @@ state   = WAITING_PERMISSION</pre>
   function facaiLogout() {
     apiRequest('POST', '/api/v1/auth/logout').then(function () {
       state.user = null; state.csrf = null; state.mustChange = false;
-      stopMonitor(); renderSessionUI(); renderLoggedOutHome();
+      fileRequest++; clearArtifactPreview(); document.getElementById('files-list').textContent = '';
+    stopMonitor(); renderSessionUI(); renderLoggedOutHome();
       facaiGo('screen-login');
       facaiToast('已退出登录');
     }).catch(function () { facaiToast('退出请求失败，请重试'); });
@@ -1320,6 +1329,70 @@ state   = WAITING_PERMISSION</pre>
     });
   }
 
+  /* 产物仅从当前会话 API 读取；不缓存到本地，不将文本作为 HTML 执行。 */
+  var fileRequest = 0;
+  var artifactRequest = 0;
+  var artifactURL = null;
+  function clearArtifactPreview() {
+    artifactRequest++;
+    if (artifactURL) { URL.revokeObjectURL(artifactURL); artifactURL = null; }
+    document.getElementById('artifact-preview').hidden = true;
+    document.getElementById('artifact-content').textContent = '';
+    var download = document.getElementById('artifact-download');
+    download.hidden = true; download.removeAttribute('href');
+  }
+  function loadFiles() {
+    var request = ++fileRequest;
+    clearArtifactPreview();
+    var list = document.getElementById('files-list');
+    var status = document.getElementById('files-status');
+    list.textContent = '';
+    if (!state.user) { status.textContent = '请先登录，再查看自己的文件'; return; }
+    var user = state.user;
+    status.textContent = '正在读取文件…';
+    apiRequest('GET', '/api/v1/artifacts').then(function (res) {
+      if (request !== fileRequest || user !== state.user) { return; }
+      if (handle401(res)) { return; }
+      if (!res.ok || !Array.isArray(res.data)) { status.textContent = '读取失败：' + res.detail; return; }
+      status.textContent = res.data.length ? '最近 ' + res.data.length + ' 个文件' : '暂无产物；执行产生文件后会显示在这里';
+      res.data.forEach(function (artifact) {
+        var card = el('article', 'artifact-card');
+        card.appendChild(el('strong', '', artifact.name || artifact.kind || artifact.id));
+        card.appendChild(el('p', '', (artifact.title || shortId(artifact.mission_id)) + ' · ' + (artifact.created_at || '')));
+        var button = el('button', 'facai-btn', '查看文本');
+        button.addEventListener('click', function () { openArtifact(artifact); });
+        card.appendChild(button); list.appendChild(card);
+      });
+    }).catch(function () {
+      if (request === fileRequest && user === state.user) { status.textContent = '网络请求失败，请重试'; }
+    });
+  }
+  function openArtifact(artifact) {
+    clearArtifactPreview();
+    if (!state.user) { return; }
+    var request = artifactRequest, user = state.user;
+    document.getElementById('artifact-preview').hidden = false;
+    document.getElementById('artifact-name').textContent = artifact.name || artifact.kind || artifact.id;
+    var status = document.getElementById('artifact-status');
+    status.textContent = '正在读取…';
+    apiRequest('GET', '/api/v1/missions/' + encodeURIComponent(artifact.mission_id) +
+      '/artifacts/' + encodeURIComponent(artifact.id) + '?limit=200000').then(function (res) {
+      if (request !== artifactRequest || user !== state.user) { return; }
+      if (handle401(res)) { return; }
+      if (!res.ok || !res.data || typeof res.data.content !== 'string') { status.textContent = '读取失败：' + res.detail; return; }
+      document.getElementById('artifact-content').textContent = res.data.content;
+      status.textContent = res.data.truncated ? '仅显示前 200000 字符；文本已截断，不提供不完整下载' : '文本预览；下载为 UTF-8 文本副本';
+      if (!res.data.truncated) {
+        artifactURL = URL.createObjectURL(new Blob([res.data.content], {type: 'text/plain;charset=utf-8'}));
+        var download = document.getElementById('artifact-download');
+        download.href = artifactURL; download.download = (artifact.name || artifact.kind || 'artifact') + '.txt';
+        download.hidden = false;
+      }
+    }).catch(function () {
+      if (request === artifactRequest && user === state.user) { status.textContent = '网络请求失败，请重试'; }
+    });
+  }
+
   /* ── 切页与底部导航 ── */
   var NAV_TABS = { 'screen-home': '首页', 'screen-tasks': '任务',
                    'screen-files': '文件', 'screen-me': '我的' };
@@ -1339,6 +1412,7 @@ state   = WAITING_PERMISSION</pre>
     }
     /* 离开监控即停轮询；进入真实数据视图时按需刷新 */
     if (id !== 'screen-monitor') { stopMonitor(); }
+    if (id === 'screen-files') { loadFiles(); }
     if (id === 'screen-timeline') { loadTimeline(); }
     if ((id === 'screen-home' || id === 'screen-tasks') && state.user) { loadMissions(); }
     if (id === 'screen-me' && state.user) { loadMyChannels(); }
@@ -1416,6 +1490,10 @@ state   = WAITING_PERMISSION</pre>
 
   function boot() {
     wireEvents();
+    document.getElementById('files-refresh').addEventListener('click', loadFiles);
+    if ('serviceWorker' in navigator && window.isSecureContext) {
+      navigator.serviceWorker.register('/sw.js').catch(function () {});
+    }
     if (!window.fetch) {
       facaiGo('screen-login');
       loginError('当前浏览器不支持本页所需的请求能力，请更换现代浏览器');

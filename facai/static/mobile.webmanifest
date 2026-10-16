@@ -1,0 +1,33 @@
+{
+  "name": "FACAI 随身控制台",
+  "short_name": "FACAI Mobile",
+  "description": "说一句需求，Agent 船队自动开工：大白话下单、多模型并行执行、真实进度与账单。",
+  "start_url": "/static/mobile.html",
+  "scope": "/static/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#050b16",
+  "theme_color": "#050b16",
+  "lang": "zh-CN",
+  "icons": [
+    {
+      "src": "/static/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "id": "/static/mobile.html"
+}

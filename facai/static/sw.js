@@ -2,8 +2,8 @@
 // The console is live data — never serve a stale API response. Only the
 // static shell (login/console HTML) is cached, and only after a successful
 // network response.
-const SHELL = ["/", "/login", "/static/icon-192.png", "/static/icon-512.png"];
-const CACHE = "facai-shell-v1";
+const SHELL = ["/", "/login", "/static/mobile.html", "/static/facai-ui.css", "/static/mobile.webmanifest", "/static/icon-192.png", "/static/icon-512.png"];
+const CACHE = "facai-shell-v2";
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).catch(() => null));
