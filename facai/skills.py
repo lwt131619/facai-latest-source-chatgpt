@@ -267,8 +267,8 @@ def explicitly_requested_skill(raw_request, skills):
         pattern = (r"(?:使用|调用|启用|use|apply|invoke)\s*"
                    r"(?<![A-Za-z0-9-])" + re.escape(key) + r"(?![A-Za-z0-9-])")
         for match in re.finditer(pattern, request, re.IGNORECASE):
-            lead = request[max(0, match.start() - 8):match.start()].casefold()
-            if re.search(r"(?:不要|不准|禁止|别|勿|不|do not|don't|never)\s*$", lead):
+            clause = re.split(r"[，,。.;；!?！？\n]|\bbut\b|但是|但", request[:match.start()])[-1].casefold()
+            if re.search(r"(?:不要|不准|禁止|避免|别|勿|不|do not|don't|never)", clause):
                 continue
             matches.append(key)
             break

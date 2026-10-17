@@ -96,6 +96,8 @@ class TestAssignment:
         assert explicitly_requested_skill("请使用 code-review 分析", skills)[0] == "code-review"
         assert explicitly_requested_skill("不要使用 code-review", skills) is None
         assert explicitly_requested_skill("不使用 code-review", skills) is None
+        assert explicitly_requested_skill("不要在这个任务中使用 code-review", skills) is None
+        assert explicitly_requested_skill("不要分析问题，但使用 code-review", skills)[0] == "code-review"
         assert explicitly_requested_skill("do not use code-review", skills) is None
         assert explicitly_requested_skill("提到 code-review 但不调用", skills) is None
         assert explicitly_requested_skill("分析代码", skills) is None

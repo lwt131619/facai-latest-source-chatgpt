@@ -10,6 +10,10 @@ or a missing source leave the mission unbound. Conversion suite:
 1405 passed, 36 skipped, 0 failed in 99.21 seconds with real Chromium on
 2026-10-17. The first full attempt was interrupted by an environment restart;
 these numbers come from the completed rerun.
+Follow-up clause-level negation check rejects longer negative requests and
+accepts a subsequent positive clause. Focused conversion/Skill/execution
+regression after this follow-up: 94 passed, 0 failed. The 1405-result above
+predates this follow-up; native/live-provider acceptance remains open.
 
 ## Checkpoint bundle size correction (2026-10-17)
 
