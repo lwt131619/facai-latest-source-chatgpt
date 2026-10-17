@@ -831,12 +831,9 @@ class Store:
             return [{**dict(row), "payload": json.loads(row["payload"])} for row in rows]
 
     def skill_usage(self, skill_id, owner_id="admin", recent_limit=20):
-        """Terminal CLI/model outcomes attributed to resolved skill metadata.
+        """Separate verified body attachment from legacy metadata attribution.
 
-        Count only events with a runtime-resolved skill name. A mission binding
-        alone is not proof that a disabled/removed skill was resolved. The
-        runtime does not yet load SKILL.md body, so these counts cannot be
-        presented as actual skill invocations or effectiveness.
+        A terminal status still does not establish semantic correctness.
         """
         from .gateway import OUTCOMES
         types = ("OPENCODE_COMPLETED", "OPENCODE_FAILED", "OPENCODE_TIMEOUT", *OUTCOMES)
@@ -850,16 +847,20 @@ class Store:
         with self.connect() as db:
             rows = db.execute(
                 "SELECT e.type AS status, json_extract(e.payload,'$.skill_version')"
-                " AS version, COUNT(*) AS count" + source +
-                " GROUP BY e.type, version ORDER BY version, e.type", params).fetchall()
+                " AS version, COALESCE(json_extract(e.payload,'$.skill_invocation_verified'),0)"
+                " AS invoked, COUNT(*) AS count" + source +
+                " GROUP BY e.type, version, invoked ORDER BY version, e.type", params).fetchall()
             recent = db.execute(
                 "SELECT e.id AS event_id, e.mission_id, e.step_id, e.type AS status,"
-                " e.occurred_at, json_extract(e.payload,'$.skill_version') AS version"
+                " e.occurred_at, json_extract(e.payload,'$.skill_version') AS version,"
+                " COALESCE(json_extract(e.payload,'$.skill_invocation_verified'),0) AS invoked"
                 + source + " ORDER BY e.sequence DESC LIMIT ?",
                 (*params, max(1, min(int(recent_limit), 100)))).fetchall()
-        by_status, by_version = {}, {}
+        by_status, by_version, verified = {}, {}, 0
         for row in rows:
             count = row["count"]
+            if row["invoked"]:
+                verified += count
             by_status[row["status"]] = by_status.get(row["status"], 0) + count
             version = row["version"]
             version_group = by_version.setdefault(version, {"version": version,
@@ -871,10 +872,12 @@ class Store:
                 "observed_results": observed, "completed": completed,
                 "other_outcomes": observed - completed,
                 "completion_rate": completed / observed if observed else None,
-                "skill_invocation_verified": False,
+                "verified_invocations": verified,
+                "attribution_only_results": observed - verified,
+                "skill_invocation_verified": bool(observed and verified == observed),
                 "by_status": by_status, "by_version": list(by_version.values()),
                 "recent": [dict(row) for row in recent],
-                "limitation": "Registry attribution only: SKILL.md body was not invoked; terminal status is not semantic verification."}
+                "limitation": "Verified invocation means the Skill body was attached to an adapter run; it does not prove the adapter followed it or that the result is factually correct."}
 
     def events_for_owner(self, owner_id, after=0):
         """The Event Bus spine: every event of every mission one owner owns,

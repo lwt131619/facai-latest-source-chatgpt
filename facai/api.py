@@ -2567,11 +2567,7 @@ def create_app(data_dir=None, opencode_adapter=None, goose_adapter=None):
 
     @app.get("/api/v1/registries/skills/{key}/usage")
     def skill_usage(key: str):
-        """Owner-scoped outcomes attributed to skill metadata, across versions.
-
-        A tombstoned skill retains attribution history. This does not prove
-        the SKILL.md body ran; the adapter is not yet wired to load it.
-        """
+        """Owner-scoped outcomes and verified Skill body attachments across versions."""
         owner = current_owner()
         if (registries.resolve("skills", key, owner_id=owner) is None
                 and store.registry_tombstone("skills", key, owner_id=owner) is None):

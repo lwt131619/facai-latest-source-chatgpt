@@ -466,11 +466,28 @@ class TestSkillUsage:
         assert usage["other_outcomes"] == 1
         assert usage["completion_rate"] == 0.5
         assert usage["skill_invocation_verified"] is False
+        assert usage["verified_invocations"] == 0
+        assert usage["attribution_only_results"] == 2
         assert usage["source"] == "resolved_skill_attributed_terminal_events"
         assert {row["version"]: row["observed_results"] for row in usage["by_version"]} \
             == {"1.2.0": 1, "2.0.0": 1}
         assert {row["mission_id"] for row in usage["recent"]} == {own}
         assert store.skill_usage("code-review", owner_id="missing")["completion_rate"] is None
+
+    def test_usage_separates_verified_body_attachment_from_legacy_attribution(self, tmp_path):
+        store = Store(tmp_path)
+        mission_id = store.create("Review", "request", ["step"], owner_id="admin")["id"]
+        base = {"skill_id": "code-review", "skill_name": "code-review",
+                "skill_version": "1.2.0"}
+        store.append(mission_id, "OPENCODE_COMPLETED", base)
+        store.append(mission_id, "OPENCODE_FAILED", {
+            **base, "skill_invocation_verified": True, "skill_body_sha256": "a" * 64})
+        usage = store.skill_usage("code-review")
+        assert usage["observed_results"] == 2
+        assert usage["verified_invocations"] == 1
+        assert usage["attribution_only_results"] == 1
+        assert usage["skill_invocation_verified"] is False
+        assert store.skill_usage("code-review", owner_id="other")["observed_results"] == 0
 
     def test_usage_endpoint_survives_soft_remove_without_cross_tenant_leak(self, tmp_path, monkeypatch):
         client = _admin_client(tmp_path, monkeypatch)

@@ -438,8 +438,10 @@ async function openRegistry(){
           `${v.version || "未记录版本"}: ${v.observed_results}`).join(" · ");
         target.textContent = `归因终态 ${usage.observed_results} · 运行完成 ${usage.completed}` +
           ` · 其他结果 ${usage.other_outcomes}` +
+          ` · 正文交给运行时 ${usage.verified_invocations || 0}` +
+          ` · 仅元数据归因 ${usage.attribution_only_results ?? usage.observed_results}` +
           (versions ? ` · ${versions}` : "") +
-          "。Skill 正文执行未验证；运行完成不代表事实已验证。";
+          "。正文交付不证明模型遵循指令；运行完成不代表事实已验证。";
       } catch (err) { target.textContent = `归因记录读取失败：${err.message}`; }
     };
   });

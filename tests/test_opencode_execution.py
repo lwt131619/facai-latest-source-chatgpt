@@ -144,6 +144,37 @@ def test_run_endpoint_records_mission_scoped_events_and_artifacts(tmp_path):
                    for event in other_events)
 
 
+def test_bound_skill_body_reaches_runtime_and_terminal_trace(tmp_path):
+    runner = FakeRunner(stdout='{"type":"text","text":"review done"}\n')
+    client = make_client(tmp_path, OpenCodeAdapter(binary='opencode', runner=runner))
+    source = 'Review the diff against acceptance criteria.'
+    digest = client.app.state.store.skill_source_register('code-review', '1.2.0', source)
+    client.app.state.registries.register('skills', 'code-review', {
+        'name': 'code-review', 'description': 'Review code', 'license': 'MIT',
+        'source_url': 'https://example.com/code-review', 'version': '1.2.0',
+        'body_sha256': digest,
+    })
+    mission = create(client, 'Review project')
+    binding = client.put(f"/api/v1/missions/{mission['id']}/binding", json={
+        'agent_id': 'opencode', 'model_id': 'deepseek-flash', 'skill_id': 'code-review'})
+    assert binding.status_code == 200, binding.text
+    response = client.post(f"/api/v1/missions/{mission['id']}/opencode/run", json={
+        'prompt': 'Check project', 'step_id': mission['steps'][0]['id']})
+    assert response.status_code == 200, response.text
+    command = runner.calls[0]['command']
+    assert source in command[-1] and command[-1].startswith('Check project\n')
+    events = client.get(f"/api/v1/missions/{mission['id']}/events").json()
+    started = next(e for e in events if e['type'] == 'OPENCODE_STARTED')['payload']
+    ended = next(e for e in events if e['type'] == 'OPENCODE_COMPLETED')['payload']
+    assert started['prompt'] == 'Check project' and source not in str(started)
+    assert ended['skill_invocation_verified'] is True
+    assert ended['skill_body_sha256'] == digest
+    assert source not in str(ended)
+    usage = client.get('/api/v1/registries/skills/code-review/usage').json()
+    assert usage['verified_invocations'] == 1
+    assert usage['skill_invocation_verified'] is True
+
+
 def test_streaming_runner_records_redacted_output_during_run_and_once(tmp_path):
     client_holder = {}
     mission_holder = {}
