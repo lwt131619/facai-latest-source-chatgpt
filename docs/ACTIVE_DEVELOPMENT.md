@@ -19,8 +19,10 @@ API and scheduler resolve this snapshot for execution even after registry
 updates, while disable/removal still blocks dispatch. Existing automatic
 bindings without a source snapshot retain prior latest-registry semantics.
 Focused execution/lifecycle/scheduler tests: 52 passed, including a registry
-update between binding and execution. Full regression after this increment is
-pending; the 1401/36 result above predates the binding change.
+update between binding and execution. Full regression after this increment:
+1401 passed, 36 skipped, 0 failed in 138.54 seconds with real Chromium on
+2026-10-17. Native installers, live provider calls and production acceptance
+remain unverified.
 
 ## Skill attribution semantics correction (historical)
 
