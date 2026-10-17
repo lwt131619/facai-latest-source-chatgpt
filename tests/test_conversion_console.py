@@ -94,8 +94,12 @@ class TestAssignment:
         skills = {"code-review": {"name": "code-review", "body_sha256": "a" * 64},
                   "deploy-check": {"name": "deploy-check", "body_sha256": "b" * 64}}
         assert explicitly_requested_skill("请使用 code-review 分析", skills)[0] == "code-review"
+        assert explicitly_requested_skill("不要使用 code-review", skills) is None
+        assert explicitly_requested_skill("不使用 code-review", skills) is None
+        assert explicitly_requested_skill("do not use code-review", skills) is None
+        assert explicitly_requested_skill("提到 code-review 但不调用", skills) is None
         assert explicitly_requested_skill("分析代码", skills) is None
-        assert explicitly_requested_skill("code-review 和 deploy-check", skills) is None
+        assert explicitly_requested_skill("使用 code-review 并调用 deploy-check", skills) is None
         assert explicitly_requested_skill("code-reviewer", skills) is None
         assert explicitly_requested_skill("code-review", {
             "code-review": {**skills["code-review"], "enabled": False}}) is None

@@ -258,12 +258,20 @@ def bound_skill(entry, mission):
 
 
 def explicitly_requested_skill(raw_request, skills):
-    """Select one named, enabled imported Skill without guessing from similarity."""
+    """Select one positively invoked Skill, never one merely mentioned."""
     request = raw_request or ""
-    matches = [key for key, entry in (skills or {}).items()
-               if dispatchable_skill(entry) and entry.get("body_sha256")
-               and re.search(r"(?<![A-Za-z0-9-])" + re.escape(key) +
-                             r"(?![A-Za-z0-9-])", request, re.IGNORECASE)]
+    matches = []
+    for key, entry in (skills or {}).items():
+        if not dispatchable_skill(entry) or not entry.get("body_sha256"):
+            continue
+        pattern = (r"(?:使用|调用|启用|use|apply|invoke)\s*"
+                   r"(?<![A-Za-z0-9-])" + re.escape(key) + r"(?![A-Za-z0-9-])")
+        for match in re.finditer(pattern, request, re.IGNORECASE):
+            lead = request[max(0, match.start() - 8):match.start()].casefold()
+            if re.search(r"(?:不要|不准|禁止|别|勿|不|do not|don't|never)\s*$", lead):
+                continue
+            matches.append(key)
+            break
     if len(matches) != 1:
         return None
     key = matches[0]
