@@ -15,6 +15,7 @@ import json
 import pytest
 
 from facai.conversion import assign_stage, build_assignment
+from facai.execution import skill_runtime_prompt
 from facai.registries import Registries, _validate_skill_metadata
 from facai.skills import (build_skill_metadata, dispatchable_skill,
                           enabled_only, parse_skill_md)
@@ -71,6 +72,24 @@ class TestVersionLandsInMetadata:
         assert response.status_code == 201, response.text
         skills = client.get("/api/v1/registries/skills").json()
         assert skills["code-review"]["version"] == "1.2.0"
+        digest = skills["code-review"]["body_sha256"]
+        store = Store(tmp_path)
+        assert store.skill_source_get("code-review", digest, owner_id="admin") == parse_skill_md(SKILL_MD_V1)["_body"]
+        assert store.skill_source_get("code-review", digest, owner_id="other") is None
+        assert "Body never enters" not in json.dumps(skills)
+
+    def test_runtime_prompt_uses_exact_owner_scoped_source(self, tmp_path):
+        store = Store(tmp_path)
+        body = "Review the change against acceptance criteria."
+        digest = store.skill_source_register("code-review", "1.2.0", body, "alice")
+        mission = {"skill_id": "code-review", "owner_id": "alice"}
+        skill = {"name": "code-review", "version": "1.2.0", "body_sha256": digest}
+        runtime_prompt, loaded = skill_runtime_prompt(store, mission, skill, "Check project")
+        assert runtime_prompt.startswith("Check project\n")
+        assert body in runtime_prompt and loaded == digest
+        with pytest.raises(ValueError, match="unavailable"):
+            skill_runtime_prompt(store, {**mission, "owner_id": "bob"}, skill, "Check project")
+        assert skill_runtime_prompt(store, mission, None, "Check project") == ("Check project", None)
 
     def test_import_without_version_leaves_no_version_key(self, tmp_path, monkeypatch):
         client = _admin_client(tmp_path, monkeypatch)

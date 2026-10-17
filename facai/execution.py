@@ -7,6 +7,7 @@ outcome. Nothing here fabricates success.
 """
 
 import json
+import hashlib
 import threading
 from pathlib import Path
 
@@ -76,6 +77,21 @@ def mission_attribution(mission, model, runtime=None, skill=None, model_ref=None
         "skill_invocation_verified": False if skill else None,
     }
     return {key: value for key, value in attribution.items() if value is not None}
+
+
+def skill_runtime_prompt(store, mission, skill, prompt):
+    """Attach only the exact owner-scoped, imported Skill body to a run."""
+    if not skill or not skill.get("body_sha256"):
+        return prompt, None
+    digest = skill["body_sha256"]
+    body = store.skill_source_get(mission["skill_id"], digest,
+                                  owner_id=mission.get("owner_id", "admin"))
+    if body is None or hashlib.sha256(body.encode("utf-8")).hexdigest() != digest:
+        raise ValueError("Bound Skill source is unavailable or corrupted")
+    return (f"{prompt}\n\n[BOUND FACAI SKILL: {mission['skill_id']}"
+            f" version={skill.get('version') or 'unspecified'} sha256={digest}]\n"
+            "Apply this capability without changing the user's original objective.\n"
+            f"{body}\n[/BOUND FACAI SKILL]"), digest
 
 
 def user_model_runtime(store, mission, model, workspace, root=None):
@@ -296,6 +312,7 @@ def execute_mission_task(store, adapter, mission, model, root, prompt, step_id=N
         # checkpoint: a completed step cannot be completed a second time, and
         # the store would reject the final transition after the work had already run.
         raise ValueError("Step is already completed")
+    runtime_prompt, skill_body_sha256 = skill_runtime_prompt(store, mission, skill, prompt)
     # Authorization precedes every side effect. 彻底无审核（2026-10-07 操作员指令）:
     # a missing/expired/exhausted grant no longer refuses — the platform core
     # re-signs the mission grant in place (a mission still in the store is
@@ -355,7 +372,7 @@ def execute_mission_task(store, adapter, mission, model, root, prompt, step_id=N
         override = {"workspace_override": workspace_override} if workspace_override else {}
         if user_config:
             override["env"] = user_env
-        result = adapter.execute(mission_id, root, prompt, model_ref, timeout,
+        result = adapter.execute(mission_id, root, runtime_prompt, model_ref, timeout,
                                  on_output=on_output, **override)
     except ValueError:
         store.session_status(mission_id, session_id, "FAILED")
@@ -379,6 +396,9 @@ def execute_mission_task(store, adapter, mission, model, root, prompt, step_id=N
             pass
 
     problem = _adapter_result_problem(result, root)
+    if skill_body_sha256:
+        attribution["skill_invocation_verified"] = True
+        attribution["skill_body_sha256"] = skill_body_sha256
     if problem is not None:
         _fail_malformed_result(store, mission_id, session_id, step_id, attribution, problem,
                                agent_id)
