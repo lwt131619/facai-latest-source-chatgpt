@@ -157,6 +157,12 @@ CREATE TABLE IF NOT EXISTS registries (
  updated_at TEXT NOT NULL, owner_id TEXT NOT NULL DEFAULT 'admin',
  PRIMARY KEY (kind, id, owner_id)
 );
+CREATE TABLE IF NOT EXISTS skill_sources (
+ owner_id TEXT NOT NULL, skill_id TEXT NOT NULL,
+ body_sha256 TEXT NOT NULL, version TEXT NOT NULL,
+ body TEXT NOT NULL, created_at TEXT NOT NULL,
+ PRIMARY KEY (owner_id, skill_id, body_sha256)
+);
 CREATE TABLE IF NOT EXISTS checkpoints (
  id TEXT PRIMARY KEY, mission_id TEXT NOT NULL REFERENCES missions(id),
  commit_hash TEXT NOT NULL, message TEXT NOT NULL, created_at TEXT NOT NULL
@@ -474,6 +480,26 @@ class Store:
             db.execute("""INSERT INTO registries (kind, id, value, updated_at, owner_id, deleted_at, deleted_by) VALUES (?, ?, ?, ?, ?, NULL, NULL)
                        ON CONFLICT(kind, id, owner_id) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at, deleted_at=NULL, deleted_by=NULL""",
                        (kind, key, json.dumps(value, ensure_ascii=False), now(), owner_id))
+
+    def skill_source_register(self, skill_id, version, body, owner_id="admin"):
+        """Preserve imported SKILL.md by content hash, separate from public metadata."""
+        if not isinstance(body, str) or not body.strip() or len(body.encode("utf-8")) > 65536:
+            raise ValueError("skill source must be nonempty and at most 64 KiB")
+        digest = hashlib.sha256(body.encode("utf-8")).hexdigest()
+        with self.connect() as db:
+            db.execute("""INSERT OR IGNORE INTO skill_sources
+                (owner_id, skill_id, body_sha256, version, body, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)""",
+                (owner_id, skill_id, digest, version, body, now()))
+        return digest
+
+    def skill_source_get(self, skill_id, body_sha256, owner_id="admin"):
+        """Retrieve only the exact imported source belonging to this owner."""
+        with self.connect() as db:
+            row = db.execute("""SELECT body FROM skill_sources
+                WHERE owner_id=? AND skill_id=? AND body_sha256=?""",
+                (owner_id, skill_id, body_sha256)).fetchone()
+        return row["body"] if row else None
 
     def registry_delete(self, kind, key, owner_id="admin", deleted_by=None):
         """Soft-delete one owner-scoped registry row (SKILL-001 ③).
