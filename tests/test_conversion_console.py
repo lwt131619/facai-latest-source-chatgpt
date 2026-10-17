@@ -15,6 +15,7 @@ from facai.conversion import (ConsoleError, ConversionConsole,
                               analyze_environment, assign_stage,
                               build_assignment)
 from facai.prompting import deterministic_plan
+from facai.skills import explicitly_requested_skill
 
 TEXT = "帮我写一个爬虫抓取商品价格并存成表格"
 
@@ -88,6 +89,16 @@ class TestAssignment:
         agents = {"custom": {"name": "自定义", "adapter": "custom"}}
         tree = assign_stage("写代码", "", agents, {})
         assert tree["primary"]["agent_id"] == "custom"
+
+    def test_explicit_skill_selection_never_guesses_or_selects_ambiguity(self):
+        skills = {"code-review": {"name": "code-review", "body_sha256": "a" * 64},
+                  "deploy-check": {"name": "deploy-check", "body_sha256": "b" * 64}}
+        assert explicitly_requested_skill("请使用 code-review 分析", skills)[0] == "code-review"
+        assert explicitly_requested_skill("分析代码", skills) is None
+        assert explicitly_requested_skill("code-review 和 deploy-check", skills) is None
+        assert explicitly_requested_skill("code-reviewer", skills) is None
+        assert explicitly_requested_skill("code-review", {
+            "code-review": {**skills["code-review"], "enabled": False}}) is None
 
     def test_assignment_tree_is_deterministic(self):
         plan = deterministic_plan(TEXT)
@@ -177,6 +188,29 @@ class TestPipelineAndGates:
 
 
 class TestConversionApi:
+    def test_explicit_skill_is_pinned_on_conversion_create(self, tmp_path, monkeypatch):
+        client = _client(tmp_path, monkeypatch)
+        imported = client.post('/api/v1/skills/import', json={'content': '''---
+name: code-review
+description: Review code against requirements
+version: 1.0.0
+source_url: https://example.com/code-review
+---
+Compare the code to acceptance criteria.
+'''})
+        assert imported.status_code == 201, imported.text
+        created = client.post('/api/v1/conversion/console', json={
+            'text': '请使用 code-review 分析这个项目'})
+        assert created.status_code == 201, created.text
+        mission = created.json()['mission']
+        assert mission['skill_id'] == 'code-review'
+        assert mission['skill_version'] == '1.0.0'
+        assert mission['skill_body_sha256']
+        events = client.get(f"/api/v1/missions/{mission['id']}/events").json()
+        binding = [e['payload'] for e in events if e['type'] == 'BINDING_CHANGED'][-1]
+        assert binding['reason'] == 'explicit-skill'
+        assert binding['skill_body_sha256'] == mission['skill_body_sha256']
+
     def test_plan_is_a_pure_dry_run(self, tmp_path, monkeypatch):
         client = _client(tmp_path, monkeypatch)
         before = client.get("/api/v1/missions").json()

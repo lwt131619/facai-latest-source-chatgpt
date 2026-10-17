@@ -255,3 +255,16 @@ def bound_skill(entry, mission):
         return active
     return {**active, "body_sha256": digest,
             "version": mission.get("skill_version")}
+
+
+def explicitly_requested_skill(raw_request, skills):
+    """Select one named, enabled imported Skill without guessing from similarity."""
+    request = raw_request or ""
+    matches = [key for key, entry in (skills or {}).items()
+               if dispatchable_skill(entry) and entry.get("body_sha256")
+               and re.search(r"(?<![A-Za-z0-9-])" + re.escape(key) +
+                             r"(?![A-Za-z0-9-])", request, re.IGNORECASE)]
+    if len(matches) != 1:
+        return None
+    key = matches[0]
+    return key, skills[key]

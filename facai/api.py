@@ -50,6 +50,7 @@ from .prompting import (complete_with_bound_model, convert_message,
 from .registries import Registries, public_registry_value
 from .scheduler import Scheduler
 from .skills import (bound_skill, build_skill_metadata, dispatchable_skill, enabled_only,
+                     explicitly_requested_skill,
                      parse_skill_md)
 from .store import Store, assist_context, DEFAULT_APPROVAL_TTL_SECONDS
 
@@ -2762,10 +2763,22 @@ def create_app(data_dir=None, opencode_adapter=None, goose_adapter=None):
                         "reason": f"仅 opencode 适配器可执行该阶段"
                                   f"（{primary['agent_id']} 适配器不可执行，保持默认绑定）",
                     })
+            selected = explicitly_requested_skill(body.text, skills)
+            # An exact Skill ID in the owner's raw request is an unambiguous
+            # selection. Confirm its source exists before freezing the version;
+            # vague scoring alone never injects instructions into a mission.
+            if selected and store.skill_source_get(
+                    selected[0], selected[1]["body_sha256"], owner_id=owner,
+                    version=selected[1].get("version") or "") is None:
+                selected = None
+            changes = {"agent_id", "model_id", "runtime_id"}
+            if selected:
+                changes.add("skill_id")
             store.bind(mission_id, agent_id=agent_id, model_id=model_id,
                        runtime_id=runtime_id,
-                       changed={"agent_id", "model_id", "runtime_id"},
-                       reason=bind_reason)
+                       skill_id=selected[0] if selected else None,
+                       skill_snapshot=selected[1] if selected else None,
+                       changed=changes, reason="explicit-skill" if selected else bind_reason)
         dispatch = dispatch_mission_jobs(mission_id)
         return {**pipeline, "mission": public_mission(store.get(mission_id)),
                 "dispatch": dispatch}
