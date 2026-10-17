@@ -198,7 +198,7 @@ Users/Owner/Agents/Skills/Missions/Executions/Events/Evidence/Claims/Artifacts/K
 - 保留已有有效行为，相关回归及失败路径测试通过
 - 验证命令/结果/提交与外部局限写入交接记录
 
-**下一步**：版本落库、禁用生效、软删tombstone及治理日志已入库。导入Skill正文按Owner/版本/SHA独立存储，手动绑定冻结版本与哈希，任务授权后交给适配器；usage区分正文已交付与旧事件仅元数据归因。此标记不证明模型遵循指令或结果事实正确。下一步:自动绑定/转换路径也冻结版本、更新冲突和回滚策略；补版本感知更新previous_version/sha、依赖字段、自动路由与可验证效果指标。
+**下一步**：版本落库、禁用生效、软删tombstone及治理日志已入库。导入Skill正文按Owner/版本/SHA独立存储；手动绑定和转换原话准确点名唯一Skill ID时均冻结版本与哈希，任务授权后交给适配器。usage区分正文已交付与旧事件仅元数据归因，不证明模型遵循指令或结果事实正确。评分匹配只留痕不暗中执行。下一步:模糊匹配的Owner确认体验、更新冲突和回滚策略、previous_version/sha、依赖字段与可验证效果指标。
 
 ## ROUTER-001 — 能力到Agent/Skill/Tool路由
 
