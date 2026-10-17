@@ -657,6 +657,7 @@ def test_skill_usage_drawer_reads_owner_scoped_results(console_server, playwrigh
         usage.get_by_text("归因终态 0", exact=False).wait_for()
         assert "正文交给运行时 0" in usage.inner_text()
         assert "仅元数据归因 0" in usage.inner_text()
+        assert "已存正文版本 无正文版本" in usage.inner_text()
         assert "运行完成不代表事实已验证" in usage.inner_text()
         browser.close()
 

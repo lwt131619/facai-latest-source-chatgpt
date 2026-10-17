@@ -1,3 +1,12 @@
+## Skill source version visibility (2026-10-17)
+
+Owner-scoped `/registries/skills/{key}/versions` lists immutable source
+versions, SHA256 and import timestamps without bodies, including after soft
+removal. The Command Center Skill drawer shows the stored version summary.
+The owner-isolation/lifecycle suite passed 40 tests. With Playwright installed
+in this test environment, the real Chromium drawer test passed (1/1).
+Full post-change regression is pending.
+
 ## Durable Skill governance journal (2026-10-17)
 
 Lifecycle journal entries now flush to the boundary state file immediately;

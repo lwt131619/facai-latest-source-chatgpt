@@ -28,6 +28,8 @@ Skill版本与正文哈希，后续注册表更新不改已有任务。转换操
 覆盖同名Skill，属于向后兼容路径，不能宣称所有更新都已有冲突保护。
 治理日志已修为每次生命周期事件立即落盘，`SKILL_UPDATED`记录新旧版本和哈希；
 SQLite注册表与边界日志文件仍非同一事务，跨存储崩溃一致性尚待补齐。
+`GET /api/v1/registries/skills/{key}/versions`列出本Owner的历史版本/哈希/时间，
+软删除后仍可审计；控制台Skill抽屉展示版本摘要，不回显正文。
 旧的`docs/validation/skill-attribution-20261016.json`只代表上述提交之前的基线。
 
 ## 恢复交付增量

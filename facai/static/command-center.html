@@ -434,12 +434,16 @@ async function openRegistry(){
       target.textContent = "读取执行归因记录…";
       try {
         const usage = await api(`/api/v1/registries/skills/${encodeURIComponent(btn.dataset.skill)}/usage`);
+        const history = await api(`/api/v1/registries/skills/${encodeURIComponent(btn.dataset.skill)}/versions`)
+          .catch(() => null);
         const versions = usage.by_version.map(v =>
           `${v.version || "未记录版本"}: ${v.observed_results}`).join(" · ");
+        const saved = history?.versions?.map(v => v.version || "未标版本").join("、") || "无正文版本";
         target.textContent = `归因终态 ${usage.observed_results} · 运行完成 ${usage.completed}` +
           ` · 其他结果 ${usage.other_outcomes}` +
           ` · 正文交给运行时 ${usage.verified_invocations || 0}` +
           ` · 仅元数据归因 ${usage.attribution_only_results ?? usage.observed_results}` +
+          ` · 已存正文版本 ${saved}` +
           (versions ? ` · ${versions}` : "") +
           "。正文交付不证明模型遵循指令；运行完成不代表事实已验证。";
       } catch (err) { target.textContent = `归因记录读取失败：${err.message}`; }
