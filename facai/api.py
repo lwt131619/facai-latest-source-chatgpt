@@ -2519,6 +2519,12 @@ def create_app(data_dir=None, opencode_adapter=None, goose_adapter=None):
             updated = store.skill_source_update(
                 key, metadata, parsed["_body"], body.expected_version,
                 body.expected_body_sha256, owner_id=current_owner())
+            boundary_governor.journal_lifecycle_event(
+                "SKILL_UPDATED", key, actor=auth.username,
+                extra={"previous_version": body.expected_version,
+                       "previous_body_sha256": body.expected_body_sha256,
+                       "version": updated.get("version"),
+                       "body_sha256": updated["body_sha256"]})
         except KeyError:
             raise HTTPException(404, "Imported Skill not found") from None
         except SkillUpdateConflict as exc:

@@ -18,6 +18,7 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 
 from facai.conversion import assign_stage, build_assignment
+from facai.boundary import BoundaryGovernor
 from facai.execution import skill_runtime_prompt
 from facai.registries import Registries, _validate_skill_metadata
 from facai.skills import (build_skill_metadata, dispatchable_skill,
@@ -66,6 +67,12 @@ class TestVersionLandsInMetadata:
                                       'admin', '2.0.0') is not None
         assert client.post(path, json=payload).status_code == 409
         assert client.get('/api/v1/registries/skills').json()['code-review'] == after
+        update_events = [entry for entry in BoundaryGovernor(tmp_path).journal
+                         if entry['decision'] == 'SKILL_UPDATED']
+        assert len(update_events) == 1
+        assert update_events[0]['previous_version'] == '1.2.0'
+        assert update_events[0]['version'] == '2.0.0'
+        assert update_events[0]['body_sha256'] == after['body_sha256']
 
     def test_guarded_updates_cannot_both_win(self, tmp_path):
         store = Store(tmp_path)
@@ -400,6 +407,8 @@ class TestSkillLifecycleApi:
                               if e["decision"] == "SKILL_DISABLED")
         assert disabled_event["skill"] == "code-review"
         assert disabled_event["actor"] == "admin"
+        assert any(entry['decision'] == 'SKILL_DISABLED'
+                   for entry in BoundaryGovernor(tmp_path).journal)
 
         enabled = client.post("/api/v1/registries/skills/code-review/enabled",
                               json={"enabled": True})

@@ -441,7 +441,9 @@ class BoundaryGovernor:
                 entry.update(extra)
             core = {k: entry.pop(k) for k in ("decision", "skill", "violations",
                                               "severed", "quarantine_id")}
-            return self._journal(**core, **entry)
+            recorded = self._journal(**core, **entry)
+            self._save()
+            return recorded
 
     # --- state -----------------------------------------------------------------
     def _journal(self, decision, skill, violations, severed, quarantine_id,
