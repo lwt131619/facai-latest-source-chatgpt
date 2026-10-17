@@ -1,3 +1,15 @@
+## Guarded Skill updates (2026-10-17)
+
+`POST /api/v1/registries/skills/{key}/update` compares expected version and
+source SHA256, then inserts the new source and updates registry metadata in one
+SQLite IMMEDIATE transaction. Stale callers receive 409; two concurrent calls
+cannot both win. Old versions remain available to pinned missions and enabled
+state is preserved. Focused conversion/Skill/execution regression: 96 passed.
+Legacy `/skills/import` remains an unguarded overwrite for compatibility, so
+this is an opt-in safe update path rather than universal update protection.
+Full regression after this increment: 1407 passed, 36 skipped, 0 failed in
+104.11 seconds with real Chromium on 2026-10-17.
+
 ## Explicit Skill routing (2026-10-17)
 
 Assignment candidates now record matched Skill ID and score as structured

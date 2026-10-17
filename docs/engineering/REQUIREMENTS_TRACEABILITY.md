@@ -198,7 +198,7 @@ Users/Owner/Agents/Skills/Missions/Executions/Events/Evidence/Claims/Artifacts/K
 - 保留已有有效行为，相关回归及失败路径测试通过
 - 验证命令/结果/提交与外部局限写入交接记录
 
-**下一步**：版本落库、禁用生效、软删tombstone及治理日志已入库。导入Skill正文按Owner/版本/SHA独立存储；手动绑定和转换原话以正向动词明确调用唯一Skill ID时均冻结版本与哈希，任务授权后交给适配器。否定句/仅提及/多Skill请求不自动绑定。usage区分正文已交付与旧事件仅元数据归因，不证明模型遵循指令或结果事实正确。评分匹配只留痕不暗中执行。下一步:模糊匹配的Owner确认体验、更新冲突和回滚策略、previous_version/sha、依赖字段与可验证效果指标。
+**下一步**：版本落库、禁用生效、软删tombstone及治理日志已入库。导入正文按Owner/版本/SHA存储；手动绑定及原话正向明确调用唯一Skill时冻结版本。否定句/仅提及/多Skill不自动绑定。usage区分正文交付与旧归因，不证明模型遵循。新增/registries/skills/{key}/update用预期版本+SHA在SQLite事务内CAS，旧版本保留且禁用状态不重置；旧/import仍是可覆盖的兼容路径，不能宣称所有更新受CAS保护。下一步:统一导入/更新冲突策略、模糊匹配Owner确认、回滚、依赖字段与可验证效果指标。
 
 ## ROUTER-001 — 能力到Agent/Skill/Tool路由
 
