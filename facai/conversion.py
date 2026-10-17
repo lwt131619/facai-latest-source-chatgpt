@@ -177,7 +177,9 @@ def assign_stage(label: str, professional: str, agents: dict,
             reasons.append(f"技能库匹配 {best_skill_id}（重叠 {best_skill:.2f}）")
         ranked.append({"agent_id": agent_id, "adapter": adapter,
                        "name": entry.get("name", agent_id), "score": round(score, 4),
-                       "reasons": reasons})
+                       "reasons": reasons,
+                       "matched_skill_id": best_skill_id or None,
+                       "matched_skill_score": round(best_skill, 4)})
     ranked.sort(key=lambda row: (-row["score"], row["agent_id"]))
     primary = ranked[0] if ranked else None
     fallbacks = ranked[1:3]
@@ -204,6 +206,8 @@ def _compact_candidate(row: dict) -> dict:
     """One ranked candidate as a lean event entry: 分数两位小数，reasons 原文。"""
     return {"agent_id": row.get("agent_id"), "adapter": row.get("adapter"),
             "score": round(float(row.get("score") or 0.0), 2),
+            "matched_skill_id": row.get("matched_skill_id"),
+            "matched_skill_score": row.get("matched_skill_score", 0),
             "reasons": list(row.get("reasons") or [])}
 
 

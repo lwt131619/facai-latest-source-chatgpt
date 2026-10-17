@@ -81,6 +81,8 @@ class TestAssignment:
         tree = assign_stage("抓取阶段", "", self.AGENTS, skills)
         assert tree["primary"]["agent_id"] == "goose"
         assert any("技能库匹配" in reason for reason in tree["primary"]["reasons"])
+        assert tree["primary"]["matched_skill_id"] == "distilled-crawler"
+        assert tree["primary"]["matched_skill_score"] > 0
 
     def test_unknown_adapter_never_disappears(self):
         agents = {"custom": {"name": "自定义", "adapter": "custom"}}
