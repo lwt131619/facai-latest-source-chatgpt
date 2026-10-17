@@ -289,7 +289,7 @@
         "保留已有有效行为，相关回归及失败路径测试通过",
         "验证命令/结果/提交与外部局限写入交接记录"
       ],
-      "next_action": "版本落库、禁用三路生效、软删tombstone及治理日志已入库。/registries/skills/{key}/usage 与指挥中心只展示按Owner/版本聚合的已解析Skill元数据执行归因；当前SKILL.md正文未传给运行时，不得称真实调用。下一步优先接通Owner控制下的Skill正文保存/执行与版本锁定，再做版本感知更新previous_version/sha、依赖字段、效果验收。"
+      "next_action": "版本落库、禁用生效、软删tombstone及治理日志已入库。导入Skill正文现按Owner/版本/SHA独立存储，绑定任务授权后交给适配器；usage区分正文已交付与旧事件仅元数据归因。此标记不证明模型遵循指令或结果事实正确。下一步:绑定时冻结Skill版本与哈希，处理更新冲突和回滚；补版本感知更新previous_version/sha、依赖字段、自动路由与可验证效果指标。"
     },
     {
       "id": "ROUTER-001",

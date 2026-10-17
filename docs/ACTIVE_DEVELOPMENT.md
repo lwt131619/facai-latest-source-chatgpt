@@ -1,4 +1,19 @@
-## Skill attribution semantics correction
+## Skill source runtime integration (2026-10-17)
+
+Commits `12cb873` → `6403ae3` add owner-scoped, version/hash-checked Skill
+source persistence and attach its body to bound adapter tasks after authority
+checks. `OPENCODE_STARTED` retains the original user prompt; terminal events
+record only the source hash and whether the body reached the adapter. Usage
+counts verified attachments separately from legacy metadata attribution.
+Focused lifecycle/execution tests: 57 passed; one real adapter-path test asserts
+the command receives the source and the event contains no source body. Full
+regression after these source/usage changes: 1401 passed, 36 skipped, 0 failed,
+136.17 seconds with FACAI_TEST_CHROMIUM=/usr/bin/chromium on 2026-10-17.
+The skipped tests and native package/provider acceptance are not certified.
+The bound mission does not yet pin its Skill version across registry updates;
+adapter following the instructions and factual correctness remain unverified.
+
+## Skill attribution semantics correction (historical)
 
 Audit found that SKILL.md import persists metadata only; no adapter loads the
 body. The new /usage endpoint therefore explicitly reports resolved-skill

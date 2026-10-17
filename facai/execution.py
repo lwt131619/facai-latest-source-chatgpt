@@ -53,9 +53,8 @@ def opencode_model_ref(model):
 def mission_attribution(mission, model, runtime=None, skill=None, model_ref=None):
     """The provider/model/runtime/skill identity attached to every task event.
 
-    The console reads these exact fields. Skill fields currently identify
-    resolved registry metadata; importing a SKILL.md does not yet connect its
-    body to the adapter, so attribution cannot certify skill invocation.
+    The console reads these exact fields. Resolution alone identifies metadata;
+    only a returned adapter call with an attached source sets invocation true.
     """
     model = model or {}
     runtime = runtime or {}

@@ -11,13 +11,16 @@
 资源可启动真实服务，Owner数据独立保存。Python/依赖仍需系统准备，Windows/macOS
 native安装包未认证，DESKTOP-001保持PARTIAL。详见docs/LOCAL_APPLIANCE.md。
 
-## 最新接续重点：Skill执行仍未闭环
+## 最新接续重点：Skill正文已接运行时，效果验收仍未闭环
 
-技能导入当前只保留元数据，SKILL.md正文尚未交给运行时。/registries/skills/{key}/usage
-及指挥中心展示的是按Owner/版本隔离的「任务执行归因」，不是实际Skill调用或效果验收。
-继续开发时先完成Owner控制下的正文持久化、版本锁定与执行接线，再记录真实调用和效果；
-不要把目前归因数字描述为Skill已经运行。精确验证范围见
-docs/validation/skill-attribution-20261016.json及task-registry.json的SKILL-001。
+`8f38304`起：导入的Skill正文独立于公开元数据，按Owner/Skill ID/版本/正文SHA256
+留在SQLite；同步API与调度器共用`execute_mission_task`，在授权后把匹配正文附给
+OpenCode/Goose适配器的单次任务。原始用户prompt仍单独保存。旧元数据Skill没有正文，
+仍按旧行为运行；正文丢失/不匹配时明确失败，不虚构调用。`6403ae3`起加载还校验版本。
+`/registries/skills/{key}/usage`区分已交给运行时的次数与旧任务仅元数据归因的次数；
+“已交给运行时”不证明模型遵循指令，更不等于结果事实验证。当前绑定任务仍随注册表
+更新解析最新Skill，未冻结绑定时的版本；自动路由、依赖解析、效果指标仍待开发。
+旧的`docs/validation/skill-attribution-20261016.json`只代表上述提交之前的基线。
 
 ## 恢复交付增量
 
