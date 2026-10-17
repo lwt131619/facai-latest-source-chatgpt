@@ -11,6 +11,7 @@
 """
 
 import json
+import hashlib
 import sqlite3
 
 import pytest
@@ -102,7 +103,13 @@ class TestVersionLandsInMetadata:
                 body_sha256 TEXT NOT NULL, version TEXT NOT NULL,
                 body TEXT NOT NULL, created_at TEXT NOT NULL,
                 PRIMARY KEY (owner_id, skill_id, body_sha256))""")
+            legacy_hash = hashlib.sha256(b"legacy body").hexdigest()
+            db.execute("""INSERT INTO skill_sources
+                (owner_id, skill_id, body_sha256, version, body, created_at)
+                VALUES ('alice', 'code-review', ?, '0.9.0', 'legacy body', '2026-10-16')""",
+                (legacy_hash,))
         store = Store(tmp_path)
+        assert store.skill_source_get("code-review", legacy_hash, "alice", "0.9.0") == "legacy body"
         old_hash = store.skill_source_register("code-review", "1.0.0", "same body", "alice")
         new_hash = store.skill_source_register("code-review", "2.0.0", "same body", "alice")
         assert old_hash == new_hash
