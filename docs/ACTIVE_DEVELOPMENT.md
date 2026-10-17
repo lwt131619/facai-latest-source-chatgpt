@@ -1,3 +1,14 @@
+## Checkpoint bundle size correction (2026-10-17)
+
+GitHub remains the primary resume source. Tracking `FACAI-resume.bundle` inside
+the same repository made every new full-history bundle include the previous
+bundle's blob (43 MiB → 51 MiB → 61 MiB). Checkpoint now refuses that tracked
+state; bundle/checksum/status are generated locally and ignored by Git, while
+the complete source/history and validation docs continue to be pushed to both
+remote refs. Historical tracked bundles remain in Git history only. An offline
+handoff must transfer the latest local bundle as a separate file. This does
+not erase Git history or change source semantics.
+
 ## Skill source runtime integration (2026-10-17)
 
 Commits `12cb873` → `6403ae3` add owner-scoped, version/hash-checked Skill

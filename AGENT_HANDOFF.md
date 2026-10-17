@@ -85,7 +85,8 @@ python -m pytest -q
 当前云依赖/workspace/facai-venv；可选安装playwright并设置FACAI_TEST_CHROMIUM=/usr/bin/chromium运行真实浏览器。
 复验：python scripts/smoke_appliance.py；构建Docker镜像后python scripts/smoke_docker.py。
 交付：python scripts/package.py；python scripts/verify_package.py --full-tests --chromium /usr/bin/chromium。
-备份：python scripts/checkpoint.py --validation pass，生成完整dist/FACAI-resume.bundle并验证远端。
+备份：python scripts/checkpoint.py --validation pass，在本机生成完整dist/FACAI-resume.bundle
+并验证远端。bundle不再跟踪入自身Git历史；下一Agent联网时直接克隆最新远端分支。
 ZIP是开发包，不带Git历史；bundle才是完整已提交历史。最终包重建的文档更新不会改动已测runtime/test文件，其哈希可核对。
 
 ## 下一阶段优先项

@@ -43,6 +43,13 @@ def checkpoint(message=None, paths=(), validation='not_run', push=True):
     head = git('rev-parse', 'HEAD').stdout.decode().strip()
     out = ROOT/'dist'; out.mkdir(exist_ok=True)
     bundle = out/'FACAI-resume.bundle'
+    # A Git bundle contains repository history. Tracking it in the same
+    # repository makes each new bundle contain the previous bundle's blob and
+    # grows without bound. Keep the portable backup local; GitHub refs remain
+    # the durable, verified shared handoff channel.
+    tracked = git('ls-files', '--error-unmatch', 'dist/FACAI-resume.bundle', check=False)
+    if tracked.returncode == 0:
+        raise ValueError('Untrack dist/FACAI-resume.bundle before checkpointing to avoid recursive growth')
     git('bundle', 'create', str(bundle), '--all')
     git('bundle', 'verify', str(bundle))
     bundle_sha256 = hashlib.sha256(bundle.read_bytes()).hexdigest()

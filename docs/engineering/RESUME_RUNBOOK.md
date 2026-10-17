@@ -21,10 +21,10 @@ python -m pip install -r requirements.txt
 python -m pytest -q
 ```
 
-远端尚无该分支或push未成功时，不声称拉到最新；用下面完整bundle。
+远端尚无该分支或push未成功时，不声称拉到最新；用本机新生成的完整bundle。
 新环境应读自己的网络/凭据配置，不假定能访问旧Windows localhost或环境变量。
 
-## GitHub不可写时从bundle续接
+## GitHub不可写时从本机bundle续接
 
 ```sh
 git bundle verify FACAI-resume.bundle
@@ -33,7 +33,10 @@ cd facai-resumed
 git remote set-url origin https://github.com/lwt131619/facai-latest-source-chatgpt.git
 ```
 
-bundle保留已提交全部历史。开发ZIP是启动/交付包，不能代替Git历史。
+bundle保留已提交全部历史。`scripts/checkpoint.py`在本机`dist/`生成并验证它；
+bundle不再跟踪入同一Git仓库，否则每轮bundle会包含上一轮bundle并无限膨胀。
+GitHub上历史旧bundle只是历史快照，不代表最新HEAD。无法联网时需把本机新bundle
+作为独立文件交给下一Agent。开发ZIP是启动/交付包，不能代替Git历史。
 读取随包checkpoint-status.json，核验head/dirty/bundle_verified/remote_verified。
 只有dirty=false的检查点才能保证所有本次修改已在bundle中；有未提交文件先检查归属。
 
@@ -51,7 +54,7 @@ bundle保留已提交全部历史。开发ZIP是启动/交付包，不能代替G
 python scripts/checkpoint.py --message 'task-id: verified change' --paths file1 file2 --validation pass
 ```
 
-明确列文件，不自动提交未知工作区文件。检查凭据形状后提交，生成完整bundle并验证，
+明确列文件，不自动提交未知工作区文件。检查凭据形状后提交，在本机生成完整bundle并验证，
 尝试普通push，再ls-remote比对HEAD。exit2表示本地成功但push失败。
 成功只在remote_verified=true时报告；错误时保留外部阻塞并提供bundle。
 不能用force push/删库/重建/改公开性代替授权。跨工作区迁移先保留双方历史。

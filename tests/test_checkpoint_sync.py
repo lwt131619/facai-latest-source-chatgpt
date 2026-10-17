@@ -44,3 +44,17 @@ def test_new_repository_verifies_both_refs_without_persisting_credentials(tmp_pa
     assert token not in state and token not in capsys.readouterr().out
     assert token not in (tmp_path/'.git/config').read_text()
     assert (tmp_path/'dist/FACAI-resume.bundle').is_file()
+
+
+def test_checkpoint_refuses_recursive_tracked_bundle(tmp_path, monkeypatch):
+    def real(*args):
+        return subprocess.run(['git', *args], cwd=tmp_path, capture_output=True, check=True)
+    real('init', '-b', 'facai/production-build')
+    (tmp_path/'dist').mkdir()
+    (tmp_path/'dist/FACAI-resume.bundle').write_bytes(b'previous backup')
+    real('add', 'dist/FACAI-resume.bundle')
+    real('-c', 'user.name=QA', '-c', 'user.email=qa@example.invalid',
+         'commit', '-m', 'legacy tracked backup')
+    monkeypatch.setattr(checkpoint, 'ROOT', tmp_path)
+    with pytest.raises(ValueError, match='recursive growth'):
+        checkpoint.checkpoint(push=False)
