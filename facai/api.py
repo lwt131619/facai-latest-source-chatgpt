@@ -2480,18 +2480,19 @@ def create_app(data_dir=None, opencode_adapter=None, goose_adapter=None):
 
     @app.post("/api/v1/skills/import", status_code=201)
     def import_skill(body: SkillImport):
-        """Parse a SKILL.md and register it as active, usable skill metadata
-        under FACAI OWNER authority (§十一.C.6: no pending-only queue).
+        """Import versioned SKILL.md source under FACAI OWNER authority.
 
-        Only metadata enters the registry — the skill body/instructions are
-        dropped at the threshold as data hygiene. Pipe-to-shell payloads are
-        refused (product reliability).
+        Registry listings expose metadata and a hash, never the source body.
+        Pipe-to-shell payloads are refused (product reliability).
         """
         try:
             parsed = parse_skill_md(body.content)
             if body.source_url and not parsed.get("source_url"):
                 parsed["source_url"] = body.source_url.strip()
             metadata = build_skill_metadata(parsed)
+            metadata["body_sha256"] = store.skill_source_register(
+                parsed["name"], metadata.get("version") or "", parsed["_body"],
+                owner_id=current_owner())
             registries.register("skills", parsed["name"], metadata, owner_id=current_owner())
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from None
