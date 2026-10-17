@@ -24,6 +24,13 @@ update between binding and execution. Full regression after this increment:
 2026-10-17. Native installers, live provider calls and production acceptance
 remain unverified.
 
+Same-body version migration follow-up: `skill_sources` now keys each version
+separately even when SHA256 is identical. Startup migrates the previous
+owner/skill/hash primary key and preserves existing rows. A populated legacy
+database and repeated import across two versions are covered by tests.
+Full regression after this migration: 1402 passed, 36 skipped, 0 failed in
+160.83 seconds with FACAI_TEST_CHROMIUM=/usr/bin/chromium on 2026-10-17.
+
 ## Skill attribution semantics correction (historical)
 
 Audit found that SKILL.md import persists metadata only; no adapter loads the
