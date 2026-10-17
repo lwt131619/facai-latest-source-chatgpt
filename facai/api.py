@@ -47,12 +47,12 @@ from .goose import GooseAdapter
 from .opencode import OpenCodeAdapter
 from .prompting import (complete_with_bound_model, convert_message,
                         deterministic_plan, plan_with_bound_model)
-from .registries import Registries, public_registry_value
+from .registries import Registries, public_registry_value, _validate_skill_metadata
 from .scheduler import Scheduler
 from .skills import (bound_skill, build_skill_metadata, dispatchable_skill, enabled_only,
                      explicitly_requested_skill,
                      parse_skill_md)
-from .store import Store, assist_context, DEFAULT_APPROVAL_TTL_SECONDS
+from .store import Store, SkillUpdateConflict, assist_context, DEFAULT_APPROVAL_TTL_SECONDS
 
 logger = logging.getLogger(__name__)
 _request_owner = ContextVar("facai_request_owner", default="admin")
@@ -95,6 +95,12 @@ class RegisterRequest(BaseModel):
 class SkillImport(BaseModel):
     content: str = Field(min_length=1, max_length=100_000)
     source_url: str | None = Field(default=None, max_length=500)
+
+
+class SkillVersionUpdate(BaseModel):
+    content: str = Field(min_length=1, max_length=100_000)
+    expected_version: str = Field(max_length=64)
+    expected_body_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
 class SkillEnabledToggle(BaseModel):
@@ -2500,6 +2506,28 @@ def create_app(data_dir=None, opencode_adapter=None, goose_adapter=None):
         return {"id": parsed["name"], "registered": True,
                 "review_status": metadata.get("review_status", "approved"),
                 "warnings": metadata.get("warnings", [])}
+
+    @app.post("/api/v1/registries/skills/{key}/update")
+    def update_skill_version(key: str, body: SkillVersionUpdate):
+        """Replace an imported version only when the expected revision matches."""
+        try:
+            parsed = parse_skill_md(body.content)
+            if parsed["name"] != key:
+                raise ValueError("SKILL.md name must match the Skill being updated")
+            metadata = build_skill_metadata(parsed)
+            _validate_skill_metadata(key, metadata)
+            updated = store.skill_source_update(
+                key, metadata, parsed["_body"], body.expected_version,
+                body.expected_body_sha256, owner_id=current_owner())
+        except KeyError:
+            raise HTTPException(404, "Imported Skill not found") from None
+        except SkillUpdateConflict as exc:
+            raise HTTPException(409, str(exc)) from None
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
+        return {"id": key, "version": updated.get("version"),
+                "body_sha256": updated["body_sha256"],
+                "enabled": updated.get("enabled", True)}
 
     # --- skill lifecycle: enable / disable / soft remove (SKILL-001 ②③) --------
     # 禁用与移除是站长级的治理动作：走管理员会话闸（require_admin_owner，

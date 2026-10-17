@@ -13,6 +13,7 @@
 import json
 import hashlib
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
@@ -21,7 +22,7 @@ from facai.execution import skill_runtime_prompt
 from facai.registries import Registries, _validate_skill_metadata
 from facai.skills import (build_skill_metadata, dispatchable_skill,
                           enabled_only, parse_skill_md)
-from facai.store import Store
+from facai.store import Store, SkillUpdateConflict
 
 pytestmark = pytest.mark.raw_budget
 
@@ -44,6 +45,54 @@ SKILL_MD_V2 = SKILL_MD_V1.replace("version: 1.2.0", "version: 2.0.0")
 # ---------------------------------------------------------------------------
 
 class TestVersionLandsInMetadata:
+    def test_guarded_update_is_atomic_and_retains_old_version(self, tmp_path, monkeypatch):
+        client = _admin_client(tmp_path, monkeypatch)
+        _register_via_import(client)
+        before = client.get('/api/v1/registries/skills').json()['code-review']
+        client.post('/api/v1/registries/skills/code-review/enabled', json={'enabled': False})
+        path = '/api/v1/registries/skills/code-review/update'
+        payload = {'content': SKILL_MD_V2, 'expected_version': '1.2.0',
+                   'expected_body_sha256': before['body_sha256']}
+        response = client.post(path, json=payload)
+        assert response.status_code == 200, response.text
+        assert response.json()['version'] == '2.0.0'
+        assert response.json()['enabled'] is False
+        after = client.get('/api/v1/registries/skills').json()['code-review']
+        assert after['version'] == '2.0.0'
+        store = client.app.state.store
+        assert store.skill_source_get('code-review', before['body_sha256'],
+                                      'admin', '1.2.0') is not None
+        assert store.skill_source_get('code-review', after['body_sha256'],
+                                      'admin', '2.0.0') is not None
+        assert client.post(path, json=payload).status_code == 409
+        assert client.get('/api/v1/registries/skills').json()['code-review'] == after
+
+    def test_guarded_updates_cannot_both_win(self, tmp_path):
+        store = Store(tmp_path)
+        old_hash = store.skill_source_register('code-review', '1.0.0', 'old body')
+        base = {**build_skill_metadata(parse_skill_md(SKILL_MD_V1)),
+                'version': '1.0.0', 'body_sha256': old_hash}
+        store.registry_register('skills', 'code-review', base)
+
+        def update(version):
+            candidate = {**base, 'version': version}
+            try:
+                store.skill_source_update('code-review', candidate, version + ' body',
+                                          '1.0.0', old_hash)
+                return version
+            except SkillUpdateConflict:
+                return None
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(update, ['2.0.0', '3.0.0']))
+        assert len([result for result in results if result is not None]) == 1
+        winner = next(result for result in results if result is not None)
+        current = store.registry_list('skills', owner_id='admin')['code-review']
+        assert current['version'] == winner
+        loser = '3.0.0' if winner == '2.0.0' else '2.0.0'
+        loser_hash = hashlib.sha256((loser + ' body').encode()).hexdigest()
+        assert store.skill_source_get('code-review', loser_hash, 'admin', loser) is None
+
     def test_version_carried_into_metadata(self):
         metadata = build_skill_metadata(parse_skill_md(SKILL_MD_V1))
         assert metadata["version"] == "1.2.0"

@@ -17,6 +17,10 @@ def now():
     return datetime.now(timezone.utc).isoformat()
 
 
+class SkillUpdateConflict(ValueError):
+    """The caller's expected Skill revision no longer matches SQLite."""
+
+
 # 协助模式 attribution. The API layer sets this (via require_mission's assist
 # bypass) for the duration of a request that reaches another owner's resource
 # through an active assist session: {"admin", "reason", "expires_at"}. Every
@@ -507,6 +511,34 @@ class Store:
                 VALUES (?, ?, ?, ?, ?, ?)""",
                 (owner_id, skill_id, digest, version, body, now()))
         return digest
+
+    def skill_source_update(self, skill_id, metadata, body, expected_version,
+                            expected_sha256, owner_id="admin"):
+        """Compare and replace a live Skill with its source in one transaction."""
+        if not isinstance(body, str) or not body.strip() or len(body.encode("utf-8")) > 65536:
+            raise ValueError("skill source must be nonempty and at most 64 KiB")
+        digest = hashlib.sha256(body.encode("utf-8")).hexdigest()
+        with self.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute("""SELECT value, deleted_at FROM registries
+                WHERE kind='skills' AND id=? AND owner_id=?""",
+                (skill_id, owner_id)).fetchone()
+            if row is None or row["deleted_at"] is not None:
+                raise KeyError(skill_id)
+            current = json.loads(row["value"])
+            if ((current.get("version") or "") != expected_version
+                    or current.get("body_sha256") != expected_sha256):
+                raise SkillUpdateConflict("Skill update conflict: version or source changed")
+            updated = {**current, **metadata, "body_sha256": digest,
+                       "review_status": current.get("review_status", "approved")}
+            db.execute("""INSERT OR IGNORE INTO skill_sources
+                (owner_id, skill_id, body_sha256, version, body, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)""",
+                (owner_id, skill_id, digest, updated.get("version") or "", body, now()))
+            db.execute("""UPDATE registries SET value=?, updated_at=?
+                WHERE kind='skills' AND id=? AND owner_id=?""",
+                (json.dumps(updated, ensure_ascii=False), now(), skill_id, owner_id))
+        return updated
 
     def skill_source_get(self, skill_id, body_sha256, owner_id="admin", version=None):
         """Retrieve only the exact imported source belonging to this owner."""
