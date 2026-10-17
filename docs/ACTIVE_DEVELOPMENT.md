@@ -6,9 +6,10 @@ pin a Skill only when the owner's raw request names exactly one enabled Skill
 ID with a positive invocation verb and its imported source exists. A vague
 similarity score remains advisory; negated mentions, multiple positive names
 or a missing source leave the mission unbound. Conversion suite:
-36 passed after the negation refinement. Full regression before the refinement:
-1405 passed, 36 skipped, 0 failed in 109.04 seconds with real Chromium on
-2026-10-17; final post-refinement full regression is pending.
+36 passed after the negation refinement. Full regression after the refinement:
+1405 passed, 36 skipped, 0 failed in 99.21 seconds with real Chromium on
+2026-10-17. The first full attempt was interrupted by an environment restart;
+these numbers come from the completed rerun.
 
 ## Checkpoint bundle size correction (2026-10-17)
 
