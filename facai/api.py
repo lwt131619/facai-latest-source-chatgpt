@@ -100,7 +100,7 @@ class SkillImport(BaseModel):
 class SkillVersionUpdate(BaseModel):
     content: str = Field(min_length=1, max_length=100_000)
     expected_version: str = Field(max_length=64)
-    expected_body_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    expected_body_sha256: str | None = Field(pattern=r"^[0-9a-f]{64}$")
 
 
 class SkillEnabledToggle(BaseModel):

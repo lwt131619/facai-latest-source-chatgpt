@@ -9,6 +9,9 @@ Legacy `/skills/import` remains an unguarded overwrite for compatibility, so
 this is an opt-in safe update path rather than universal update protection.
 Full regression after this increment: 1407 passed, 36 skipped, 0 failed in
 104.11 seconds with real Chromium on 2026-10-17.
+Follow-up: metadata-only legacy Skills can enter the guarded path by supplying
+an empty expected version and a null expected source SHA. Focused
+conversion/Skill/execution regression after this change: 97 passed.
 
 ## Explicit Skill routing (2026-10-17)
 

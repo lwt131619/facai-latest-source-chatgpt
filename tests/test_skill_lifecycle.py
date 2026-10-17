@@ -93,6 +93,19 @@ class TestVersionLandsInMetadata:
         loser_hash = hashlib.sha256((loser + ' body').encode()).hexdigest()
         assert store.skill_source_get('code-review', loser_hash, 'admin', loser) is None
 
+    def test_guarded_update_can_migrate_metadata_only_skill(self, tmp_path, monkeypatch):
+        client = _admin_client(tmp_path, monkeypatch)
+        client.app.state.registries.register('skills', 'code-review', {
+            'name': 'code-review', 'description': 'Legacy review Skill',
+            'license': 'MIT', 'source_url': 'https://example.com/review'})
+        response = client.post('/api/v1/registries/skills/code-review/update', json={
+            'content': SKILL_MD_V1, 'expected_version': '',
+            'expected_body_sha256': None})
+        assert response.status_code == 200, response.text
+        assert response.json()['version'] == '1.2.0'
+        assert client.app.state.store.skill_source_get(
+            'code-review', response.json()['body_sha256'], 'admin', '1.2.0') is not None
+
     def test_version_carried_into_metadata(self):
         metadata = build_skill_metadata(parse_skill_md(SKILL_MD_V1))
         assert metadata["version"] == "1.2.0"
