@@ -73,6 +73,12 @@ class TestVersionLandsInMetadata:
         assert update_events[0]['previous_version'] == '1.2.0'
         assert update_events[0]['version'] == '2.0.0'
         assert update_events[0]['body_sha256'] == after['body_sha256']
+        versions = client.get('/api/v1/registries/skills/code-review/versions')
+        assert versions.status_code == 200
+        assert {entry['version'] for entry in versions.json()['versions']} == {'1.2.0', '2.0.0'}
+        assert 'Body never enters' not in versions.text
+        assert all(set(entry) == {'version', 'body_sha256', 'created_at'}
+                   for entry in versions.json()['versions'])
 
     def test_guarded_updates_cannot_both_win(self, tmp_path):
         store = Store(tmp_path)
@@ -112,6 +118,19 @@ class TestVersionLandsInMetadata:
         assert response.json()['version'] == '1.2.0'
         assert client.app.state.store.skill_source_get(
             'code-review', response.json()['body_sha256'], 'admin', '1.2.0') is not None
+
+    def test_versions_are_owner_scoped_and_survive_soft_remove(self, tmp_path, monkeypatch):
+        client = _admin_client(tmp_path, monkeypatch)
+        _register_via_import(client)
+        path = '/api/v1/registries/skills/code-review/versions'
+        assert len(client.get(path).json()['versions']) == 1
+        assert client.delete('/api/v1/registries/skills/code-review').status_code == 200
+        assert len(client.get(path).json()['versions']) == 1
+        tenant = client.post('/api/v1/auth/register', json={
+            'username': 'versions-tenant', 'password': 'versions-pass-1234'})
+        assert tenant.status_code == 201
+        client.headers.update({'X-CSRF-Token': tenant.json()['csrf_token']})
+        assert client.get(path).status_code == 404
 
     def test_version_carried_into_metadata(self):
         metadata = build_skill_metadata(parse_skill_md(SKILL_MD_V1))

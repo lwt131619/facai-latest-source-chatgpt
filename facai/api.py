@@ -2535,6 +2535,15 @@ def create_app(data_dir=None, opencode_adapter=None, goose_adapter=None):
                 "body_sha256": updated["body_sha256"],
                 "enabled": updated.get("enabled", True)}
 
+    @app.get("/api/v1/registries/skills/{key}/versions")
+    def skill_versions(key: str):
+        """List the current owner's imported source revisions, without bodies."""
+        owner = current_owner()
+        if (registries.resolve("skills", key, owner_id=owner) is None
+                and store.registry_tombstone("skills", key, owner_id=owner) is None):
+            raise HTTPException(404, "Skill not found")
+        return {"id": key, "versions": store.skill_source_versions(key, owner_id=owner)}
+
     # --- skill lifecycle: enable / disable / soft remove (SKILL-001 ②③) --------
     # 禁用与移除是站长级的治理动作：走管理员会话闸（require_admin_owner，
     # 客户端 API key 的 scope 也不含 /api/v1/registries，天然进不来）。

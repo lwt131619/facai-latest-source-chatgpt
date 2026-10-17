@@ -553,6 +553,15 @@ class Store:
                     (owner_id, skill_id, body_sha256, version)).fetchone()
         return row["body"] if row else None
 
+    def skill_source_versions(self, skill_id, owner_id="admin"):
+        """Owner-scoped immutable source revisions, without instruction bodies."""
+        with self.connect() as db:
+            rows = db.execute("""SELECT version, body_sha256, created_at
+                FROM skill_sources WHERE owner_id=? AND skill_id=?
+                ORDER BY created_at DESC, version DESC, body_sha256""",
+                (owner_id, skill_id)).fetchall()
+        return [dict(row) for row in rows]
+
     def registry_delete(self, kind, key, owner_id="admin", deleted_by=None):
         """Soft-delete one owner-scoped registry row (SKILL-001 ③).
 
