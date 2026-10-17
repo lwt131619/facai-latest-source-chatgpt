@@ -162,7 +162,7 @@ CREATE TABLE IF NOT EXISTS skill_sources (
  owner_id TEXT NOT NULL, skill_id TEXT NOT NULL,
  body_sha256 TEXT NOT NULL, version TEXT NOT NULL,
  body TEXT NOT NULL, created_at TEXT NOT NULL,
- PRIMARY KEY (owner_id, skill_id, body_sha256)
+ PRIMARY KEY (owner_id, skill_id, version, body_sha256)
 );
 CREATE TABLE IF NOT EXISTS checkpoints (
  id TEXT PRIMARY KEY, mission_id TEXT NOT NULL REFERENCES missions(id),
@@ -355,6 +355,20 @@ class Store:
 
     @staticmethod
     def _migrate(db):
+        source_pk = [row[1] for row in db.execute("PRAGMA table_info(skill_sources)")
+                     if row[5]]
+        if source_pk == ["owner_id", "skill_id", "body_sha256"]:
+            db.execute("ALTER TABLE skill_sources RENAME TO skill_sources_old")
+            db.execute("""CREATE TABLE skill_sources (
+                owner_id TEXT NOT NULL, skill_id TEXT NOT NULL,
+                body_sha256 TEXT NOT NULL, version TEXT NOT NULL,
+                body TEXT NOT NULL, created_at TEXT NOT NULL,
+                PRIMARY KEY (owner_id, skill_id, version, body_sha256))""")
+            db.execute("""INSERT INTO skill_sources
+                (owner_id, skill_id, body_sha256, version, body, created_at)
+                SELECT owner_id, skill_id, body_sha256, version, body, created_at
+                FROM skill_sources_old""")
+            db.execute("DROP TABLE skill_sources_old")
         columns = {row[1] for row in db.execute("PRAGMA table_info(missions)")}
         for name in ("professional_prompt", "skill_id", "runtime_id", "skill_body_sha256", "skill_version"):
             if name not in columns:
@@ -497,10 +511,15 @@ class Store:
     def skill_source_get(self, skill_id, body_sha256, owner_id="admin", version=None):
         """Retrieve only the exact imported source belonging to this owner."""
         with self.connect() as db:
-            row = db.execute("""SELECT body, version FROM skill_sources
-                WHERE owner_id=? AND skill_id=? AND body_sha256=?""",
-                (owner_id, skill_id, body_sha256)).fetchone()
-        return row["body"] if row and (version is None or row["version"] == version) else None
+            if version is None:
+                row = db.execute("""SELECT body FROM skill_sources
+                    WHERE owner_id=? AND skill_id=? AND body_sha256=? LIMIT 1""",
+                    (owner_id, skill_id, body_sha256)).fetchone()
+            else:
+                row = db.execute("""SELECT body FROM skill_sources
+                    WHERE owner_id=? AND skill_id=? AND body_sha256=? AND version=?""",
+                    (owner_id, skill_id, body_sha256, version)).fetchone()
+        return row["body"] if row else None
 
     def registry_delete(self, kind, key, owner_id="admin", deleted_by=None):
         """Soft-delete one owner-scoped registry row (SKILL-001 ③).

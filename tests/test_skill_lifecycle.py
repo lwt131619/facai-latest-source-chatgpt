@@ -11,6 +11,7 @@
 """
 
 import json
+import sqlite3
 
 import pytest
 
@@ -92,6 +93,22 @@ class TestVersionLandsInMetadata:
         with pytest.raises(ValueError, match="unavailable"):
             skill_runtime_prompt(store, mission, {**skill, "version": "2.0.0"}, "Check project")
         assert skill_runtime_prompt(store, mission, None, "Check project") == ("Check project", None)
+
+    def test_same_body_can_have_two_versions_and_old_table_migrates(self, tmp_path):
+        path = tmp_path / "facai.sqlite3"
+        with sqlite3.connect(path) as db:
+            db.execute("""CREATE TABLE skill_sources (
+                owner_id TEXT NOT NULL, skill_id TEXT NOT NULL,
+                body_sha256 TEXT NOT NULL, version TEXT NOT NULL,
+                body TEXT NOT NULL, created_at TEXT NOT NULL,
+                PRIMARY KEY (owner_id, skill_id, body_sha256))""")
+        store = Store(tmp_path)
+        old_hash = store.skill_source_register("code-review", "1.0.0", "same body", "alice")
+        new_hash = store.skill_source_register("code-review", "2.0.0", "same body", "alice")
+        assert old_hash == new_hash
+        assert store.skill_source_get("code-review", old_hash, "alice", "1.0.0") == "same body"
+        assert store.skill_source_get("code-review", new_hash, "alice", "2.0.0") == "same body"
+        assert Store(tmp_path).skill_source_get("code-review", old_hash, "alice", "1.0.0") == "same body"
 
     def test_import_without_version_leaves_no_version_key(self, tmp_path, monkeypatch):
         client = _admin_client(tmp_path, monkeypatch)
