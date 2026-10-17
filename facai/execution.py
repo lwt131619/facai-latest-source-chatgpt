@@ -85,7 +85,8 @@ def skill_runtime_prompt(store, mission, skill, prompt):
         return prompt, None
     digest = skill["body_sha256"]
     body = store.skill_source_get(mission["skill_id"], digest,
-                                  owner_id=mission.get("owner_id", "admin"))
+                                  owner_id=mission.get("owner_id", "admin"),
+                                  version=skill.get("version") or "")
     if body is None or hashlib.sha256(body.encode("utf-8")).hexdigest() != digest:
         raise ValueError("Bound Skill source is unavailable or corrupted")
     return (f"{prompt}\n\n[BOUND FACAI SKILL: {mission['skill_id']}"
@@ -312,7 +313,6 @@ def execute_mission_task(store, adapter, mission, model, root, prompt, step_id=N
         # checkpoint: a completed step cannot be completed a second time, and
         # the store would reject the final transition after the work had already run.
         raise ValueError("Step is already completed")
-    runtime_prompt, skill_body_sha256 = skill_runtime_prompt(store, mission, skill, prompt)
     # Authorization precedes every side effect. 彻底无审核（2026-10-07 操作员指令）:
     # a missing/expired/exhausted grant no longer refuses — the platform core
     # re-signs the mission grant in place (a mission still in the store is
@@ -341,6 +341,7 @@ def execute_mission_task(store, adapter, mission, model, root, prompt, step_id=N
                           verdict["reason"], backend=GATE_BACKEND).state},
                      step_id, None, agent_id)
         raise MissionDenied(verdict["reason"], verdict["mode"])
+    runtime_prompt, skill_body_sha256 = skill_runtime_prompt(store, mission, skill, prompt)
     session_id = store.start_session(mission_id, "opencode", step_model_id or mission["model_id"])
     if worktree is not None:
         store.append(mission_id, "WORKTREE_CREATED",

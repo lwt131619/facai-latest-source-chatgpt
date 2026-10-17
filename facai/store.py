@@ -493,13 +493,13 @@ class Store:
                 (owner_id, skill_id, digest, version, body, now()))
         return digest
 
-    def skill_source_get(self, skill_id, body_sha256, owner_id="admin"):
+    def skill_source_get(self, skill_id, body_sha256, owner_id="admin", version=None):
         """Retrieve only the exact imported source belonging to this owner."""
         with self.connect() as db:
-            row = db.execute("""SELECT body FROM skill_sources
+            row = db.execute("""SELECT body, version FROM skill_sources
                 WHERE owner_id=? AND skill_id=? AND body_sha256=?""",
                 (owner_id, skill_id, body_sha256)).fetchone()
-        return row["body"] if row else None
+        return row["body"] if row and (version is None or row["version"] == version) else None
 
     def registry_delete(self, kind, key, owner_id="admin", deleted_by=None):
         """Soft-delete one owner-scoped registry row (SKILL-001 ③).

@@ -89,6 +89,8 @@ class TestVersionLandsInMetadata:
         assert body in runtime_prompt and loaded == digest
         with pytest.raises(ValueError, match="unavailable"):
             skill_runtime_prompt(store, {**mission, "owner_id": "bob"}, skill, "Check project")
+        with pytest.raises(ValueError, match="unavailable"):
+            skill_runtime_prompt(store, mission, {**skill, "version": "2.0.0"}, "Check project")
         assert skill_runtime_prompt(store, mission, None, "Check project") == ("Check project", None)
 
     def test_import_without_version_leaves_no_version_key(self, tmp_path, monkeypatch):
