@@ -49,7 +49,7 @@ from .prompting import (complete_with_bound_model, convert_message,
                         deterministic_plan, plan_with_bound_model)
 from .registries import Registries, public_registry_value
 from .scheduler import Scheduler
-from .skills import (build_skill_metadata, dispatchable_skill, enabled_only,
+from .skills import (bound_skill, build_skill_metadata, dispatchable_skill, enabled_only,
                      parse_skill_md)
 from .store import Store, assist_context, DEFAULT_APPROVAL_TTL_SECONDS
 
@@ -2981,7 +2981,10 @@ def create_app(data_dir=None, opencode_adapter=None, goose_adapter=None):
                 if values[field] not in registries.list(kind, owner_id=current_owner()):
                     raise HTTPException(422, f"Unknown {kind[:-1]}: {values[field]}")
         bound = store.bind(mission_id, **values, changed=set(values),
-                           reason="owner-manual")
+                           reason="owner-manual",
+                           skill_snapshot=(registries.resolve("skills", values["skill_id"],
+                                                             owner_id=current_owner())
+                                           if "skill_id" in values and values["skill_id"] else None))
         if store.messages_for_mission(mission_id):
             ensure_channel_dispatch(mission_id)
         return bound
@@ -3016,8 +3019,8 @@ def create_app(data_dir=None, opencode_adapter=None, goose_adapter=None):
         owner = current_owner()
         model = registries.resolve("models", mission["model_id"], owner_id=owner)
         runtime = registries.resolve("runtimes", mission["runtime_id"], owner_id=owner)
-        skill = dispatchable_skill(
-            registries.resolve("skills", mission["skill_id"], owner_id=owner))
+        skill = bound_skill(
+            registries.resolve("skills", mission["skill_id"], owner_id=owner), mission)
         try:
             result = await run_in_threadpool(
                 execute_mission_task, store, adapter, mission, model, root, body.prompt,

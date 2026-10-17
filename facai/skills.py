@@ -243,3 +243,15 @@ def dispatchable_skill(entry):
     if entry is None or entry.get("enabled") is False:
         return None
     return entry
+
+
+def bound_skill(entry, mission):
+    """Keep a manually bound source version while honoring disable/removal."""
+    active = dispatchable_skill(entry)
+    if active is None:
+        return None
+    digest = mission.get("skill_body_sha256")
+    if not digest:
+        return active
+    return {**active, "body_sha256": digest,
+            "version": mission.get("skill_version")}

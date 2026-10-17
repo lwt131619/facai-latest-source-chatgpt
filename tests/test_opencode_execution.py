@@ -158,17 +158,27 @@ def test_bound_skill_body_reaches_runtime_and_terminal_trace(tmp_path):
     binding = client.put(f"/api/v1/missions/{mission['id']}/binding", json={
         'agent_id': 'opencode', 'model_id': 'deepseek-flash', 'skill_id': 'code-review'})
     assert binding.status_code == 200, binding.text
+    assert binding.json()['skill_body_sha256'] == digest
+    newer = 'Use a different review method.'
+    newer_digest = client.app.state.store.skill_source_register('code-review', '2.0.0', newer)
+    client.app.state.registries.register('skills', 'code-review', {
+        'name': 'code-review', 'description': 'Review code', 'license': 'MIT',
+        'source_url': 'https://example.com/code-review', 'version': '2.0.0',
+        'body_sha256': newer_digest,
+    })
     response = client.post(f"/api/v1/missions/{mission['id']}/opencode/run", json={
         'prompt': 'Check project', 'step_id': mission['steps'][0]['id']})
     assert response.status_code == 200, response.text
     command = runner.calls[0]['command']
-    assert source in command[-1] and command[-1].startswith('Check project\n')
+    assert source in command[-1] and newer not in command[-1]
+    assert command[-1].startswith('Check project\n')
     events = client.get(f"/api/v1/missions/{mission['id']}/events").json()
     started = next(e for e in events if e['type'] == 'OPENCODE_STARTED')['payload']
     ended = next(e for e in events if e['type'] == 'OPENCODE_COMPLETED')['payload']
     assert started['prompt'] == 'Check project' and source not in str(started)
     assert ended['skill_invocation_verified'] is True
     assert ended['skill_body_sha256'] == digest
+    assert ended['skill_version'] == '1.2.0'
     assert source not in str(ended)
     usage = client.get('/api/v1/registries/skills/code-review/usage').json()
     assert usage['verified_invocations'] == 1

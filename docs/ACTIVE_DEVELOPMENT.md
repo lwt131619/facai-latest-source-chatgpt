@@ -10,8 +10,17 @@ the command receives the source and the event contains no source body. Full
 regression after these source/usage changes: 1401 passed, 36 skipped, 0 failed,
 136.17 seconds with FACAI_TEST_CHROMIUM=/usr/bin/chromium on 2026-10-17.
 The skipped tests and native package/provider acceptance are not certified.
-The bound mission does not yet pin its Skill version across registry updates;
-adapter following the instructions and factual correctness remain unverified.
+At the 6403ae3 checkpoint, the bound mission did not pin its Skill version.
+Adapter following the instructions and factual correctness remain unverified.
+
+Subsequent increment: manual mission binding now stores the resolved Skill
+version and source hash in mission columns and BINDING_CHANGED. Both synchronous
+API and scheduler resolve this snapshot for execution even after registry
+updates, while disable/removal still blocks dispatch. Existing automatic
+bindings without a source snapshot retain prior latest-registry semantics.
+Focused execution/lifecycle/scheduler tests: 52 passed, including a registry
+update between binding and execution. Full regression after this increment is
+pending; the 1401/36 result above predates the binding change.
 
 ## Skill attribution semantics correction (historical)
 

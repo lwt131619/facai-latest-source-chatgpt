@@ -129,7 +129,8 @@ CREATE TABLE IF NOT EXISTS missions (
  id TEXT PRIMARY KEY, title TEXT NOT NULL, original_input TEXT NOT NULL,
  status TEXT NOT NULL, workspace TEXT NOT NULL, agent_id TEXT, model_id TEXT,
  created_at TEXT NOT NULL, professional_prompt TEXT,
- skill_id TEXT, runtime_id TEXT, owner_id TEXT NOT NULL DEFAULT 'admin'
+ skill_id TEXT, runtime_id TEXT, owner_id TEXT NOT NULL DEFAULT 'admin',
+ skill_body_sha256 TEXT, skill_version TEXT
 );
 CREATE TABLE IF NOT EXISTS steps (
  id TEXT NOT NULL, mission_id TEXT NOT NULL REFERENCES missions(id),
@@ -355,7 +356,7 @@ class Store:
     @staticmethod
     def _migrate(db):
         columns = {row[1] for row in db.execute("PRAGMA table_info(missions)")}
-        for name in ("professional_prompt", "skill_id", "runtime_id"):
+        for name in ("professional_prompt", "skill_id", "runtime_id", "skill_body_sha256", "skill_version"):
             if name not in columns:
                 db.execute(f"ALTER TABLE missions ADD COLUMN {name} TEXT")
         if "owner_id" not in columns:
@@ -957,7 +958,7 @@ class Store:
                         {"status": "WAITING", "dependency_retry": step_id})
 
     def bind(self, mission_id, agent_id=None, model_id=None, skill_id=None, runtime_id=None,
-             changed=None, reason=None):
+             changed=None, reason=None, skill_snapshot=None):
         """Bind any subset of the four capability registries to one mission.
 
         `changed` restricts which fields are written so agent, model, skill and
@@ -972,6 +973,9 @@ class Store:
         if changed is None:
             changed = set(values)
         updates = {key: values[key] for key in values if key in changed}
+        if "skill_id" in changed:
+            updates["skill_body_sha256"] = skill_snapshot.get("body_sha256") if skill_snapshot else None
+            updates["skill_version"] = skill_snapshot.get("version") if skill_snapshot else None
         with self.connect() as db:
             if db.execute("SELECT 1 FROM missions WHERE id=?", (mission_id,)).fetchone() is None:
                 raise KeyError(mission_id)
@@ -979,11 +983,13 @@ class Store:
                 assignments = ", ".join(f"{key}=?" for key in updates)
                 db.execute(f"UPDATE missions SET {assignments} WHERE id=?",
                            (*updates.values(), mission_id))
-            row = db.execute("SELECT agent_id, model_id, skill_id, runtime_id FROM missions WHERE id=?",
+            row = db.execute("SELECT agent_id, model_id, skill_id, runtime_id, skill_body_sha256, skill_version FROM missions WHERE id=?",
                              (mission_id,)).fetchone()
             self._event(db, mission_id, None, None, row["agent_id"], "BINDING_CHANGED",
                         {"agent_id": row["agent_id"], "model_id": row["model_id"],
                          "skill_id": row["skill_id"], "runtime_id": row["runtime_id"],
+                         "skill_body_sha256": row["skill_body_sha256"],
+                         "skill_version": row["skill_version"],
                          "changed": sorted(updates), "reason": reason})
         return self.get(mission_id)
 
