@@ -1,3 +1,14 @@
+## Durable Skill governance journal (2026-10-17)
+
+Lifecycle journal entries now flush to the boundary state file immediately;
+the previous disable/enable/remove path only appended in memory. Guarded
+updates add `SKILL_UPDATED` with previous/current version and SHA256, never
+source body. Reload tests verify the journal survives restart. Skill and
+boundary tests: 65 passed. Registry mutation and the boundary JSON journal
+are separate stores, so a crash between them is still a cross-store gap.
+Full regression after the journal change: 1408 passed, 36 skipped, 0 failed
+in 106.25 seconds with real Chromium on 2026-10-17.
+
 ## Guarded Skill updates (2026-10-17)
 
 `POST /api/v1/registries/skills/{key}/update` compares expected version and

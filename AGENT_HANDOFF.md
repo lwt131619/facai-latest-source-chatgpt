@@ -26,6 +26,8 @@ Skill版本与正文哈希，后续注册表更新不改已有任务。转换操
 `POST /api/v1/registries/skills/{key}/update`提供版本+正文SHA预期值的原子更新：
 过期提交409、旧版本正文保留、禁用状态不重置。旧`/skills/import`仍允许不带预期值
 覆盖同名Skill，属于向后兼容路径，不能宣称所有更新都已有冲突保护。
+治理日志已修为每次生命周期事件立即落盘，`SKILL_UPDATED`记录新旧版本和哈希；
+SQLite注册表与边界日志文件仍非同一事务，跨存储崩溃一致性尚待补齐。
 旧的`docs/validation/skill-attribution-20261016.json`只代表上述提交之前的基线。
 
 ## 恢复交付增量
