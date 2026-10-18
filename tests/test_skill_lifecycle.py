@@ -123,14 +123,31 @@ class TestVersionLandsInMetadata:
         client = _admin_client(tmp_path, monkeypatch)
         _register_via_import(client)
         path = '/api/v1/registries/skills/code-review/versions'
-        assert len(client.get(path).json()['versions']) == 1
+        versions = client.get(path).json()['versions']
+        assert len(versions) == 1
+        exact = client.get('/api/v1/registries/skills/code-review/source', params={
+            'version': versions[0]['version'],
+            'body_sha256': versions[0]['body_sha256']})
+        assert exact.status_code == 200
+        assert exact.headers['cache-control'] == 'no-store'
+        assert exact.json()['body'] == parse_skill_md(SKILL_MD_V1)['_body']
+        assert client.get('/api/v1/registries/skills/code-review/source', params={
+            'version': 'wrong', 'body_sha256': versions[0]['body_sha256']}).status_code == 404
+        assert client.get('/api/v1/registries/skills/code-review/source', params={
+            'version': versions[0]['version'], 'body_sha256': 'wrong'}).status_code == 422
         assert client.delete('/api/v1/registries/skills/code-review').status_code == 200
         assert len(client.get(path).json()['versions']) == 1
+        assert client.get('/api/v1/registries/skills/code-review/source', params={
+            'version': versions[0]['version'],
+            'body_sha256': versions[0]['body_sha256']}).status_code == 200
         tenant = client.post('/api/v1/auth/register', json={
             'username': 'versions-tenant', 'password': 'versions-pass-1234'})
         assert tenant.status_code == 201
         client.headers.update({'X-CSRF-Token': tenant.json()['csrf_token']})
         assert client.get(path).status_code == 404
+        assert client.get('/api/v1/registries/skills/code-review/source', params={
+            'version': versions[0]['version'],
+            'body_sha256': versions[0]['body_sha256']}).status_code == 404
 
     def test_version_carried_into_metadata(self):
         metadata = build_skill_metadata(parse_skill_md(SKILL_MD_V1))

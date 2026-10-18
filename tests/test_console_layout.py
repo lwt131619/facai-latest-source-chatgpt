@@ -670,6 +670,32 @@ def test_skill_usage_drawer_reads_owner_scoped_results(console_server, playwrigh
         browser.close()
 
 
+def test_skill_source_revision_can_be_reviewed_without_executing_it(console_server, playwright_api):
+    """Owner clicks an exact persisted revision; the body is rendered as text."""
+    with playwright_api.sync_playwright() as p:
+        browser = _launch(p)
+        page = browser.new_page(viewport={"width": 1440, "height": 900})
+        content = ("---\nname: audit-skill\ndescription: Review a repository\n"
+                   "version: 1.0.0\nlicense: MIT\n"
+                   "source_url: https://example.com/audit-skill\n---\n"
+                   "Inspect files only. <script>window.skillInjected=true</script>\n")
+        registered = page.request.post(
+            console_server + "/api/v1/skills/import",
+            data=json.dumps({"content": content}),
+            headers={"Content-Type": "application/json"})
+        assert registered.ok, registered.text
+        page.goto(console_server + "/command-center", wait_until="load")
+        page.locator("#reg").click()
+        page.locator('button[data-skill="audit-skill"]').click()
+        page.get_by_role("button", name="查看 v1.0.0 正文", exact=False).click()
+        source = page.locator(".skill-source")
+        source.get_by_text("Inspect files only", exact=False).wait_for()
+        assert "Inspect files only" in source.inner_text()
+        assert source.locator("script").count() == 0
+        assert page.evaluate("window.skillInjected === true") is False
+        browser.close()
+
+
 def test_mobile_me_tab_keeps_channel_binding_form_an_honest_static_demo():
     """mobile.html「我的」区绑定入口：与总控台同名的表单必须存在、凭据框
     type=password、真实 API 以注释位标注；整个页面保持零 fetch 的静态演示

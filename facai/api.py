@@ -2544,6 +2544,22 @@ def create_app(data_dir=None, opencode_adapter=None, goose_adapter=None):
             raise HTTPException(404, "Skill not found")
         return {"id": key, "versions": store.skill_source_versions(key, owner_id=owner)}
 
+    @app.get("/api/v1/registries/skills/{key}/source")
+    def skill_source_version(key: str, version: str, body_sha256: str):
+        """Read one immutable imported body for the owning user, including tombstones."""
+        owner = current_owner()
+        if (registries.resolve("skills", key, owner_id=owner) is None
+                and store.registry_tombstone("skills", key, owner_id=owner) is None):
+            raise HTTPException(404, "Skill not found")
+        if len(body_sha256) != 64 or any(c not in "0123456789abcdef" for c in body_sha256):
+            raise HTTPException(422, "Invalid source hash")
+        source = store.skill_source_get(key, body_sha256, owner_id=owner, version=version)
+        if source is None:
+            raise HTTPException(404, "Skill source version not found")
+        return JSONResponse(
+            {"id": key, "version": version, "body_sha256": body_sha256, "body": source},
+            headers={"Cache-Control": "no-store"})
+
     # --- skill lifecycle: enable / disable / soft remove (SKILL-001 ②③) --------
     # 禁用与移除是站长级的治理动作：走管理员会话闸（require_admin_owner，
     # 客户端 API key 的 scope 也不含 /api/v1/registries，天然进不来）。

@@ -102,6 +102,9 @@
                    background:var(--panel);margin-bottom:4px;color:var(--txt);}
   .regdrawer .skill-usage{font-size:var(--fs-2xs);color:var(--mut);margin-top:5px;
                           line-height:1.5;overflow-wrap:anywhere;}
+  .regdrawer .skill-source{max-height:260px;overflow:auto;white-space:pre-wrap;
+                          overflow-wrap:anywhere;color:var(--txt);background:var(--bg);
+                          border:1px solid var(--line-strong);padding:8px;}
   .pool{padding:8px 10px;border-radius:var(--r-sm);background:var(--panel);
         margin-bottom:6px;font-size:var(--fs-xs);}
   .pool .prow{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-2);}
@@ -446,6 +449,29 @@ async function openRegistry(){
           ` · 已存正文版本 ${saved}` +
           (versions ? ` · ${versions}` : "") +
           "。正文交付不证明模型遵循指令；运行完成不代表事实已验证。";
+        if (history?.versions?.length) {
+          const sourceView = document.createElement("pre");
+          sourceView.className = "skill-source";
+          sourceView.hidden = true;
+          for (const revision of history.versions) {
+            const view = document.createElement("button");
+            view.type = "button";
+            view.className = "facai-btn";
+            view.textContent = `查看 v${revision.version || "未标版本"} 正文 · ${revision.body_sha256.slice(0, 8)}`;
+            view.onclick = async () => {
+              sourceView.hidden = false;
+              sourceView.textContent = "读取已存指令正文…";
+              const query = new URLSearchParams({version: revision.version,
+                                                 body_sha256: revision.body_sha256});
+              try {
+                const source = await api(`/api/v1/registries/skills/${encodeURIComponent(btn.dataset.skill)}/source?${query}`);
+                sourceView.textContent = source.body;
+              } catch (err) { sourceView.textContent = `正文读取失败：${err.message}`; }
+            };
+            target.appendChild(view);
+          }
+          target.appendChild(sourceView);
+        }
       } catch (err) { target.textContent = `归因记录读取失败：${err.message}`; }
     };
   });
