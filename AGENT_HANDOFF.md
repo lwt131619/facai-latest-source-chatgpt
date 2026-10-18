@@ -124,3 +124,5 @@ CI暴露非root nginx -t使用系统缓存目录的问题；已将验证wrapper�
 控制台早期点击竞态已修复：`go`、回车、能力库入口在异步启动请求前绑定。真实 Chromium 用人为延迟的 session 请求验证能力库仍可打开，控制台浏览器文件 14 passed。全量回归 `1438 passed / 7 skipped / 0 failed`（246.13 秒，`FACAI_TEST_CHROMIUM=/usr/bin/chromium .venv/bin/python -m pytest -q -rs`）；跳过项为 deploy-now 不在树中、真实模型密钥未配置、vendor authority manifests 本机缺失。此结果不表示 Production 验收通过。
 
 `dist/FACAI-resume.bundle` 不再纳入 Git 跟踪，以避免 bundle 内包自身造成指数增长；`scripts/checkpoint.py` 本地生成和校验 bundle，远端 Git 分支保留完整已提交历史。下一 Agent 先 `git fetch origin`、核对 `main` HEAD，再按注册表继续开发，勿用旧 ZIP 覆盖新源码。
+
+后续 Skill 审查增量 `aad17c0`：`/api/v1/registries/skills/{key}/source` 要求精确 version + SHA256、按 Owner 查阅已存正文（含软删历史）、响应 `Cache-Control: no-store`；控制台以 `textContent` 呈现，避免把指令当 HTML 执行。Skill 生命周期与控制台完整两组测试 `55 passed`（真实 Chromium）。该接口只取回指令正文，不还原历史 frontmatter 元数据；回滚仍未实现，不能把此功能标为回滚。
