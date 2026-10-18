@@ -116,3 +116,11 @@ CI暴露非root nginx -t使用系统缓存目录的问题；已将验证wrapper�
 详情docs/validation/nginx-validation.json。生产nginx模板没有改动，VPS没有执行部署。
 此后变化仅Nginx验证脚本/QA脚本及交接文档；应用和业务测试源码保持与已全量解压验收的包一致。
 最新CI实际结果读GitHub Actions，不根据本地跳过的nginx路径宣布远端通过。
+
+## 2026-10-18 续接检查点
+
+最新代码已推送 `main` 至 `b4f88dc`。本轮补齐 Skill 正文导入后的来源版本历史、CAS 更新、按 Owner 隔离的版本列表及控制台展示；手动绑定和用户原话明确正向调用唯一已安装 Skill 时冻结版本，并为否定、仅提及、多 Skill 语句保留不自动绑定边界。详情及剩余缺口以 `docs/engineering/REQUIREMENTS_TRACEABILITY.md` 的 SKILL-001 为准。
+
+控制台早期点击竞态已修复：`go`、回车、能力库入口在异步启动请求前绑定。真实 Chromium 用人为延迟的 session 请求验证能力库仍可打开，控制台浏览器文件 14 passed。全量回归正在执行，最终结果必须据实际输出更新；此检查点不表示 Production 验收通过。
+
+`dist/FACAI-resume.bundle` 不再纳入 Git 跟踪，以避免 bundle 内包自身造成指数增长；`scripts/checkpoint.py` 本地生成和校验 bundle，远端 Git 分支保留完整已提交历史。下一 Agent 先 `git fetch origin`、核对 `main` HEAD，再按注册表继续开发，勿用旧 ZIP 覆盖新源码。
