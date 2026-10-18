@@ -479,6 +479,11 @@ async function openRegistry(){
 
 /* ---------- 启动 ---------- */
 (async function boot(){
+  // Bind controls before awaiting session/mission replay: the page is already
+  // visible at load, and an early click must not be silently discarded.
+  $("go").onclick = startPipeline;
+  $("plain").addEventListener("keydown", (e) => { if (e.key === "Enter") startPipeline(); });
+  $("reg").onclick = openRegistry;
   try {
     const s = await api("/api/v1/auth/session");
     csrf = s.csrf_token || null;
@@ -491,9 +496,6 @@ async function openRegistry(){
   } catch (_) {}
   openStream();
   setInterval(refreshMissions, 15000);
-  $("go").onclick = startPipeline;
-  $("plain").addEventListener("keydown", (e) => { if (e.key === "Enter") startPipeline(); });
-  $("reg").onclick = openRegistry;
 })();
 </script>
 </body>

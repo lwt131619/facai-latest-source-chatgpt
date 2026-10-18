@@ -647,6 +647,14 @@ def test_skill_usage_drawer_reads_owner_scoped_results(console_server, playwrigh
                              "license": "MIT", "review_status": "approved"}),
             headers={"Content-Type": "application/json"})
         assert registered.ok, registered.text
+        # Keep boot() waiting on session while the page is already visible.
+        # A click during that window must open the drawer, not be discarded.
+        page.add_init_script("""
+          const facaiFetch = window.fetch.bind(window);
+          window.fetch = (...args) => String(args[0]).includes('/api/v1/auth/session')
+            ? new Promise(resolve => setTimeout(() => resolve(facaiFetch(...args)), 1500))
+            : facaiFetch(...args);
+        """)
         page.goto(console_server + "/command-center", wait_until="load")
         # Slow CI runners: the registries fetch + drawer render can outlast the
         # 30s default; patience only, assertions untouched.
