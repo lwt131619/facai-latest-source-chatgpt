@@ -469,6 +469,30 @@ async function openRegistry(){
               } catch (err) { sourceView.textContent = `正文读取失败：${err.message}`; }
             };
             target.appendChild(view);
+            const restore = document.createElement("button");
+            restore.type = "button";
+            restore.className = "facai-btn";
+            restore.textContent = `以新版本发布 v${revision.version || "未标版本"} 正文`;
+            restore.onclick = async () => {
+              const current = skills[btn.dataset.skill] || {};
+              const next = prompt("新版本号（保留当前描述、权限和启用状态；只恢复指令正文）");
+              if (next === null || !next.trim()) return;
+              if (!confirm(`确认将已存 v${revision.version || "未标版本"} 正文发布为 v${next.trim()}？`)) return;
+              try {
+                await api(`/api/v1/registries/skills/${encodeURIComponent(btn.dataset.skill)}/restore`, {
+                  method: "POST", body: JSON.stringify({
+                    source_version: revision.version,
+                    source_body_sha256: revision.body_sha256,
+                    new_version: next.trim(),
+                    expected_version: current.version || "",
+                    expected_body_sha256: current.body_sha256 || null
+                  })
+                });
+                toast(`指令正文已发布为 v${next.trim()}`);
+                openRegistry();
+              } catch (err) { toast(`正文发布失败：${err.message}`); }
+            };
+            target.appendChild(restore);
           }
           target.appendChild(sourceView);
         }

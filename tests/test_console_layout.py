@@ -693,6 +693,16 @@ def test_skill_source_revision_can_be_reviewed_without_executing_it(console_serv
         assert "Inspect files only" in source.inner_text()
         assert source.locator("script").count() == 0
         assert page.evaluate("window.skillInjected === true") is False
+        def accept_restore(dialog):
+            dialog.accept("2.0.0" if dialog.type == "prompt" else None)
+        page.on("dialog", accept_restore)
+        page.get_by_role("button", name="以新版本发布 v1.0.0 正文").click()
+        page.wait_for_function("""() => document.getElementById('regdrawer').innerText.includes('v2.0.0')""")
+        metadata = page.request.get(console_server + "/api/v1/registries/skills").json()["audit-skill"]
+        assert metadata["version"] == "2.0.0"
+        latest = page.request.get(console_server + "/api/v1/registries/skills/audit-skill/source",
+                                  params={"version": "2.0.0", "body_sha256": metadata["body_sha256"]})
+        assert latest.ok and "Inspect files only" in latest.json()["body"]
         browser.close()
 
 

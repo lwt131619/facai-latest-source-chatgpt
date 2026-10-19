@@ -46,6 +46,61 @@ SKILL_MD_V2 = SKILL_MD_V1.replace("version: 1.2.0", "version: 2.0.0")
 # ---------------------------------------------------------------------------
 
 class TestVersionLandsInMetadata:
+    def test_restore_old_body_as_new_version_with_current_metadata(self, tmp_path, monkeypatch):
+        client = _admin_client(tmp_path, monkeypatch)
+        _register_via_import(client)
+        path = '/api/v1/registries/skills/code-review'
+        original = client.get('/api/v1/registries/skills').json()['code-review']
+        updated = client.post(path + '/update', json={
+            'content': SKILL_MD_V2.replace('Automated code review', 'Changed metadata')
+                       .replace('Body never enters the registry.', 'New instructions.'),
+            'expected_version': '1.2.0',
+            'expected_body_sha256': original['body_sha256']})
+        assert updated.status_code == 200, updated.text
+        assert client.post(path + '/enabled', json={'enabled': False}).status_code == 200
+        request = {'source_version': '1.2.0',
+                   'source_body_sha256': original['body_sha256'],
+                   'new_version': '3.0.0',
+                   'expected_version': '2.0.0',
+                   'expected_body_sha256': updated.json()['body_sha256']}
+        restored = client.post(path + '/restore', json=request)
+        assert restored.status_code == 200, restored.text
+        assert restored.json()['body_sha256'] == original['body_sha256']
+        live = client.get('/api/v1/registries/skills').json()['code-review']
+        assert live['version'] == '3.0.0' and live['enabled'] is False
+        assert live['description'] == 'Changed metadata for pull requests'  # metadata was never archived
+        store = client.app.state.store
+        assert store.skill_source_get('code-review', original['body_sha256'],
+                                      'admin', '3.0.0') == parse_skill_md(SKILL_MD_V1)['_body']
+        assert store.skill_source_get('code-review', updated.json()['body_sha256'],
+                                      'admin', '2.0.0').strip() == 'New instructions.'
+        assert client.post(path + '/restore', json=request).status_code == 409
+        assert client.post(path + '/restore', json={**request,
+            'expected_version': '3.0.0',
+            'expected_body_sha256': original['body_sha256'],
+            'new_version': '2.0.0'}).status_code == 409
+        events = [entry for entry in BoundaryGovernor(tmp_path).journal
+                  if entry['decision'] == 'SKILL_SOURCE_RESTORED']
+        assert len(events) == 1 and events[0]['version'] == '3.0.0'
+
+    def test_restore_rejects_foreign_or_missing_source(self, tmp_path, monkeypatch):
+        client = _admin_client(tmp_path, monkeypatch)
+        _register_via_import(client)
+        live = client.get('/api/v1/registries/skills').json()['code-review']
+        path = '/api/v1/registries/skills/code-review/restore'
+        request = {'source_version': '1.2.0',
+                   'source_body_sha256': live['body_sha256'],
+                   'new_version': '2.0.0',
+                   'expected_version': '1.2.0',
+                   'expected_body_sha256': live['body_sha256']}
+        assert client.post(path, json={**request,
+            'source_body_sha256': '0' * 64}).status_code == 404
+        tenant = client.post('/api/v1/auth/register', json={
+            'username': 'restore-tenant', 'password': 'restore-pass-1234'})
+        assert tenant.status_code == 201
+        client.headers.update({'X-CSRF-Token': tenant.json()['csrf_token']})
+        assert client.post(path, json=request).status_code == 404
+
     def test_guarded_update_is_atomic_and_retains_old_version(self, tmp_path, monkeypatch):
         client = _admin_client(tmp_path, monkeypatch)
         _register_via_import(client)

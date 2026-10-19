@@ -103,6 +103,14 @@ class SkillVersionUpdate(BaseModel):
     expected_body_sha256: str | None = Field(pattern=r"^[0-9a-f]{64}$")
 
 
+class SkillSourceRestore(BaseModel):
+    source_version: str = Field(max_length=64)
+    source_body_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    new_version: str = Field(min_length=1, max_length=64)
+    expected_version: str = Field(max_length=64)
+    expected_body_sha256: str | None = Field(pattern=r"^[0-9a-f]{64}$")
+
+
 class SkillEnabledToggle(BaseModel):
     """SKILL-001 ②③: 禁用/启用开关的请求体。"""
     enabled: bool
@@ -2559,6 +2567,30 @@ def create_app(data_dir=None, opencode_adapter=None, goose_adapter=None):
         return JSONResponse(
             {"id": key, "version": version, "body_sha256": body_sha256, "body": source},
             headers={"Cache-Control": "no-store"})
+
+    @app.post("/api/v1/registries/skills/{key}/restore")
+    def restore_skill_source(key: str, body: SkillSourceRestore):
+        """Republish a saved instruction body as a new version; retain current metadata."""
+        try:
+            updated = store.skill_source_restore(
+                key, body.source_version, body.source_body_sha256,
+                body.new_version, body.expected_version,
+                body.expected_body_sha256, owner_id=current_owner())
+            boundary_governor.journal_lifecycle_event(
+                "SKILL_SOURCE_RESTORED", key, actor=auth.username,
+                extra={"source_version": body.source_version,
+                       "source_body_sha256": body.source_body_sha256,
+                       "previous_version": body.expected_version,
+                       "previous_body_sha256": body.expected_body_sha256,
+                       "version": body.new_version,
+                       "body_sha256": updated["body_sha256"]})
+        except KeyError:
+            raise HTTPException(404, "Skill or source version not found") from None
+        except SkillUpdateConflict as exc:
+            raise HTTPException(409, str(exc)) from None
+        return {"id": key, "version": updated["version"],
+                "body_sha256": updated["body_sha256"],
+                "enabled": updated.get("enabled", True)}
 
     # --- skill lifecycle: enable / disable / soft remove (SKILL-001 ②③) --------
     # 禁用与移除是站长级的治理动作：走管理员会话闸（require_admin_owner，

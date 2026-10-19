@@ -553,6 +553,46 @@ class Store:
                     (owner_id, skill_id, body_sha256, version)).fetchone()
         return row["body"] if row else None
 
+    def skill_source_restore(self, skill_id, source_version, source_sha256,
+                             new_version, expected_version, expected_sha256,
+                             owner_id="admin"):
+        """Republish an immutable old body under a new version, with CAS.
+
+        Current description/governance fields are retained: historical
+        frontmatter was not archived, so claiming to restore it would invent
+        metadata. All source and registry writes share this SQLite transaction.
+        """
+        with self.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute("""SELECT value, deleted_at FROM registries
+                WHERE kind='skills' AND id=? AND owner_id=?""",
+                (skill_id, owner_id)).fetchone()
+            if row is None or row["deleted_at"] is not None:
+                raise KeyError(skill_id)
+            current = json.loads(row["value"])
+            if ((current.get("version") or "") != expected_version
+                    or current.get("body_sha256") != expected_sha256):
+                raise SkillUpdateConflict("Skill restore conflict: current version or source changed")
+            source = db.execute("""SELECT body FROM skill_sources
+                WHERE owner_id=? AND skill_id=? AND version=? AND body_sha256=?""",
+                (owner_id, skill_id, source_version, source_sha256)).fetchone()
+            if source is None:
+                raise KeyError("source")
+            existing = db.execute("""SELECT 1 FROM skill_sources
+                WHERE owner_id=? AND skill_id=? AND version=? LIMIT 1""",
+                (owner_id, skill_id, new_version)).fetchone()
+            if existing is not None or new_version == expected_version:
+                raise SkillUpdateConflict("Skill restore version already exists")
+            updated = {**current, "version": new_version, "body_sha256": source_sha256}
+            db.execute("""INSERT INTO skill_sources
+                (owner_id, skill_id, body_sha256, version, body, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)""",
+                (owner_id, skill_id, source_sha256, new_version, source["body"], now()))
+            db.execute("""UPDATE registries SET value=?, updated_at=?
+                WHERE kind='skills' AND id=? AND owner_id=?""",
+                (json.dumps(updated, ensure_ascii=False), now(), skill_id, owner_id))
+        return updated
+
     def skill_source_versions(self, skill_id, owner_id="admin"):
         """Owner-scoped immutable source revisions, without instruction bodies."""
         with self.connect() as db:
