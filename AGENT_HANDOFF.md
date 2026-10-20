@@ -134,3 +134,5 @@ CI暴露非root nginx -t使用系统缓存目录的问题；已将验证wrapper�
 同日全量回归首次暴露路由默认项顺序改变（`test_conversion_console` 的 `conversion-primary` 期望失败）；修复后保持默认 Agent 优先于新增 Agent 的既有迭代顺序，墓碑依旧不复活。相关转换、默认资源、Skill 三组 `89 passed`，随后需重跑全量，不能把首次红灯记成通过。
 
 第二轮全量重跑在 `aec7fe0` 工作树完成：`1442 passed / 7 skipped / 0 failed`（203.32 秒，真实 Chromium）；跳过项仍为未部署的 deploy-now、未配置真实模型密钥、缺失的 vendor authority manifests。`task-registry.json` 把该结果标为 Git 工作树验证，保留旧 ZIP 解压验证为历史记录；当前新包需单独校验，不伪称从零解压全量复验。
+
+新 ZIP 由 `585bd8d` 源码快照构建（436 文件，SHA256 见 `dist/FACAI-v1.0-development.zip.sha256`），逐文件哈希核对后从零解压完整测试：`1441 passed / 8 skipped / 0 failed`（219.65 秒，真实 Chromium）。比 Git 工作树多跳过 1 项，仅因解压树无 `.git`，Git executable-bit 测试不适用；该差异记在 `dist/package-validation.xml`。这是开发包的可复验结果，不是 A01–A26 生产终验。

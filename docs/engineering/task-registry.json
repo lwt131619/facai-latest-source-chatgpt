@@ -14,6 +14,15 @@
     "production_acceptance": false
   },
   "last_package_regression": {
+    "commit": "585bd8d4ad47ef92a7c4e81d15a1d17981912fac",
+    "scope": "freshly_extracted_development_package",
+    "passed": 1441,
+    "skipped": 8,
+    "seconds": 219.65,
+    "real_browser_enabled": true,
+    "production_acceptance": false
+  },
+  "previous_package_regression": {
     "commit": "196fd56c468c3c3466b0be6aafb91da322d17b1e",
     "scope": "freshly_extracted_development_package",
     "passed": 1319,
@@ -67,7 +76,7 @@
         "保留已有有效行为，相关回归及失败路径测试通过",
         "验证命令/结果/提交与外部局限写入交接记录"
       ],
-      "next_action": "2026-10-20 Git工作树全量测试1442通过/7跳过/0失败，真实Chromium启用，提交aec7fe0；历史ZIP从零解压验收1319通过/13跳过，见last_package_regression和docs/validation/package-acceptance.json。当前ZIP需另验解压运行，不将工作树结果伪称包内复验。"
+      "next_action": "2026-10-20 Git工作树全量测试1442通过/7跳过/0失败(aec7fe0)，真实Chromium启用；当前ZIP从零解压全量测试1441通过/8跳过/0失败，源码快照585bd8d，额外跳过项仅因部署树无.git。包内验证见dist/package-validation.json；尚非生产验收。旧ZIP结果保留在previous_package_regression。"
     },
     {
       "id": "SYNC-001",
