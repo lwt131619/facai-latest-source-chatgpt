@@ -500,6 +500,14 @@ class Store:
                        ON CONFLICT(kind, id, owner_id) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at, deleted_at=NULL, deleted_by=NULL""",
                        (kind, key, json.dumps(value, ensure_ascii=False), now(), owner_id))
 
+    def registry_seed_default(self, kind, key, value, owner_id="admin"):
+        """Insert a missing default without reviving a tombstone or replacing a write."""
+        with self.connect() as db:
+            db.execute("""INSERT OR IGNORE INTO registries
+                (kind, id, value, updated_at, owner_id, deleted_at, deleted_by)
+                VALUES (?, ?, ?, ?, ?, NULL, NULL)""",
+                (kind, key, json.dumps(value, ensure_ascii=False), now(), owner_id))
+
     def skill_source_register(self, skill_id, version, body, owner_id="admin"):
         """Preserve imported SKILL.md by content hash, separate from public metadata."""
         if not isinstance(body, str) or not body.strip() or len(body.encode("utf-8")) > 65536:

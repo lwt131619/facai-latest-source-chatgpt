@@ -388,6 +388,23 @@ class TestDisabledSkillSkipsScoring:
 # ---------------------------------------------------------------------------
 
 class TestStoreSoftDelete:
+    def test_default_tombstone_survives_restart_and_other_owner_keeps_seed(self, tmp_path):
+        store = Store(tmp_path)
+        reg = Registries(store)
+        assert 'deepseek-flash' in reg.list('models', owner_id='admin')
+        removed = reg.delete('models', 'deepseek-flash', owner_id='admin',
+                             deleted_by='admin')
+        assert removed is not None
+        restarted = Registries(Store(tmp_path))
+        assert 'deepseek-flash' not in restarted.list('models', owner_id='admin')
+        assert restarted.resolve('models', 'deepseek-flash', owner_id='admin') is None
+        assert store.registry_tombstone('models', 'deepseek-flash', 'admin') is not None
+        assert 'deepseek-flash' in restarted.list('models', owner_id='tenant')
+        restarted.register('models', 'deepseek-flash', removed['snapshot'],
+                           owner_id='admin')
+        assert 'deepseek-flash' in Registries(Store(tmp_path)).list('models', 'admin')
+        assert store.registry_tombstone('models', 'deepseek-flash', 'admin') is None
+
     def test_deleted_skill_invisible_in_list_but_tombstone_queryable(self, tmp_path):
         store = Store(tmp_path)
         reg = Registries(store)

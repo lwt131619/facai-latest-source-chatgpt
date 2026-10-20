@@ -197,12 +197,13 @@ class Registries:
         if not self.store:
             return defaults
         persisted = self.store.registry_list(kind, owner_id=owner_id)
-        # Ensure defaults are persisted for this owner if they aren't already.
+        # Seed defaults only when there is no row. INSERT OR IGNORE is atomic:
+        # a tombstone or concurrent Owner write wins over a seed, including
+        # across process restarts.
         for key, value in defaults.items():
             if key not in persisted:
-                self.store.registry_register(kind, key, value, owner_id=owner_id)
-                persisted[key] = value
-        return {**defaults, **persisted}
+                self.store.registry_seed_default(kind, key, value, owner_id=owner_id)
+        return self.store.registry_list(kind, owner_id=owner_id)
 
     def resolve(self, kind, key, owner_id="admin"):
         """Return a bound registry entry, or None when unbound/missing."""
