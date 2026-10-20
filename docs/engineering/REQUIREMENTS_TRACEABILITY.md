@@ -58,7 +58,7 @@
 - 保留已有有效行为，相关回归及失败路径测试通过
 - 验证命令/结果/提交与外部局限写入交接记录
 
-**下一步**：最新源码ZIP从零解压全量测试1319通过/13跳过，真实Chromium启用；之前Git工作树全量1318通过/12跳过。精确范围和源码哈希见docs/validation/package-acceptance.json。
+**下一步**：2026-10-20 Git工作树全量测试1442通过/7跳过/0失败，真实Chromium启用，提交aec7fe0；历史ZIP从零解压验收1319通过/13跳过，见last_package_regression和docs/validation/package-acceptance.json。当前ZIP需另验解压运行，不将工作树结果伪称包内复验。
 
 ## SYNC-001 — GitHub检查点与断点备份
 

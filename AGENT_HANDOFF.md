@@ -132,3 +132,5 @@ CI暴露非root nginx -t使用系统缓存目录的问题；已将验证wrapper�
 2026-10-20 治理修复：默认 Agent/Model/Runtime 的软删墓碑不能在应用重启后被默认种子覆盖。`Registries.list` 改用 SQLite `INSERT OR IGNORE` 只补真正缺失的默认项，再读取实际存活行；显式重新注册仍可恢复。测试覆盖默认模型跨重启保持删除、另一 Owner 独立拥有默认项、显式恢复，相关三组 `152 passed`。全量结果待本轮记录。
 
 同日全量回归首次暴露路由默认项顺序改变（`test_conversion_console` 的 `conversion-primary` 期望失败）；修复后保持默认 Agent 优先于新增 Agent 的既有迭代顺序，墓碑依旧不复活。相关转换、默认资源、Skill 三组 `89 passed`，随后需重跑全量，不能把首次红灯记成通过。
+
+第二轮全量重跑在 `aec7fe0` 工作树完成：`1442 passed / 7 skipped / 0 failed`（203.32 秒，真实 Chromium）；跳过项仍为未部署的 deploy-now、未配置真实模型密钥、缺失的 vendor authority manifests。`task-registry.json` 把该结果标为 Git 工作树验证，保留旧 ZIP 解压验证为历史记录；当前新包需单独校验，不伪称从零解压全量复验。
