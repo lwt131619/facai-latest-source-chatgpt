@@ -203,7 +203,10 @@ class Registries:
         for key, value in defaults.items():
             if key not in persisted:
                 self.store.registry_seed_default(kind, key, value, owner_id=owner_id)
-        return self.store.registry_list(kind, owner_id=owner_id)
+        live = self.store.registry_list(kind, owner_id=owner_id)
+        # Keep the previous default-first iteration order. Routing's legacy
+        # default binding consumes it, while tombstoned defaults stay absent.
+        return {**{key: live[key] for key in defaults if key in live}, **live}
 
     def resolve(self, kind, key, owner_id="admin"):
         """Return a bound registry entry, or None when unbound/missing."""

@@ -130,3 +130,5 @@ CI暴露非root nginx -t使用系统缓存目录的问题；已将验证wrapper�
 2026-10-19 增量：受控恢复旧 Skill 指令正文，要求旧版版本+SHA 和当前版本+SHA，单个 SQLite 事务内发布到未用过的新版本；Owner 隔离、软删拒绝、版本冲突拒绝、旧正文保留。控制台有确认操作，历史 frontmatter 未存档，故沿用当前描述/治理状态，不宣称完整元数据回滚。相关 Skill 与真实 Chromium 控制台测试 `57 passed`；全量测试 `1441 passed / 7 skipped / 0 failed`（210.91 秒，真实 Chromium，跳过项同上）。
 
 2026-10-20 治理修复：默认 Agent/Model/Runtime 的软删墓碑不能在应用重启后被默认种子覆盖。`Registries.list` 改用 SQLite `INSERT OR IGNORE` 只补真正缺失的默认项，再读取实际存活行；显式重新注册仍可恢复。测试覆盖默认模型跨重启保持删除、另一 Owner 独立拥有默认项、显式恢复，相关三组 `152 passed`。全量结果待本轮记录。
+
+同日全量回归首次暴露路由默认项顺序改变（`test_conversion_console` 的 `conversion-primary` 期望失败）；修复后保持默认 Agent 优先于新增 Agent 的既有迭代顺序，墓碑依旧不复活。相关转换、默认资源、Skill 三组 `89 passed`，随后需重跑全量，不能把首次红灯记成通过。

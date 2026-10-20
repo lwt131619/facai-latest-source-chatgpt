@@ -391,6 +391,8 @@ class TestStoreSoftDelete:
     def test_default_tombstone_survives_restart_and_other_owner_keeps_seed(self, tmp_path):
         store = Store(tmp_path)
         reg = Registries(store)
+        reg.register('agents', 'a-oc', {'name': 'Second OpenCode', 'adapter': 'opencode'})
+        assert list(reg.list('agents', 'admin'))[:2] == ['opencode', 'goose']
         assert 'deepseek-flash' in reg.list('models', owner_id='admin')
         removed = reg.delete('models', 'deepseek-flash', owner_id='admin',
                              deleted_by='admin')
