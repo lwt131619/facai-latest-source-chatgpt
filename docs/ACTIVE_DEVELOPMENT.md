@@ -528,3 +528,6 @@ Full-suite attempt: 1448 passed / 7 skipped / 1 failed (old theme assertion
 expected integer 33 and active 1). After updating only those expectations,
 real Chromium focused retest of theme/progress/console: 31 passed / 0 failed.
 A second complete suite was not run; full regression status is partial.
+
+The second complete suite on commit 7512c4d passed: 1449 passed / 7 skipped /
+0 failed in 202.25 seconds with real Chromium. External acceptance remains open.

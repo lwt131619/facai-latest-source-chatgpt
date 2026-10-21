@@ -5,11 +5,11 @@
   "product": "FACAI / ICS Production Platform v1.0",
   "source_baseline_commit": "933b431",
   "last_full_regression": {
-    "commit": "df7deb9",
+    "commit": "7512c4d",
     "scope": "git_worktree",
-    "passed": 1447,
+    "passed": 1449,
     "skipped": 7,
-    "seconds": 215.04,
+    "seconds": 202.25,
     "real_browser_enabled": true,
     "production_acceptance": false
   },
