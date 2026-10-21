@@ -184,7 +184,7 @@ Users/Owner/Agents/Skills/Missions/Executions/Events/Evidence/Claims/Artifacts/K
 - 保留已有有效行为，相关回归及失败路径测试通过
 - 验证命令/结果/提交与外部局限写入交接记录
 
-**下一步**：池接线(①②③)与矩阵UI统计列/水位线编辑(④)与live marker(⑤)已入库：调度器reserve/report、reroute吃健康序、PoolState延迟/错误率/调用数、PUT /modelmatrix/{id}/limits管理员闸、@pytest.mark.live真实探测(FACAI_LIVE_API_KEY缺失诚实skip)。下一步:单模型多key池与key级轮换(依赖③已备,建议单独立项)、被拒率与失败原因细分列。
+**下一步**：池接线(①②③)与矩阵UI统计列/水位线编辑(④)与live marker(⑤)已入库：调度器reserve/report、reroute吃健康序、PoolState延迟/错误率/调用数、PUT /modelmatrix/{id}/limits管理员闸、@pytest.mark.live真实探测(FACAI_LIVE_API_KEY缺失诚实skip)。网关已接单模型多Key环境引用轮换，429与401/403自动换Key并短期冷却；配置及边界见docs/MODEL_KEY_POOL.md。仍缺CLI Agent上游请求统一接线、跨进程共享冷却、每Key配额与成本统计、真实Provider验收、被拒率与失败原因细分列。
 
 ## SKILL-001 — Skill全生命周期
 

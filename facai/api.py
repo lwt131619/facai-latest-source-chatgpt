@@ -3018,7 +3018,7 @@ def create_app(data_dir=None, opencode_adapter=None, goose_adapter=None):
             # at their own server would exfiltrate operator secrets
             # (DEEPSEEK_API_KEY, RELAY_SHARED_SECRET, ...). Admin keeps full
             # control; tenants bring their own key via /api/v1/my/models.
-            if value.get("api_key_env"):
+            if value.get("api_key_env") or "api_key_envs" in value:
                 raise HTTPException(403, "api_key_env 仅限站长；自有模型请走 /api/v1/my/models")
             endpoint = str(value.get("endpoint") or "")
             if endpoint:

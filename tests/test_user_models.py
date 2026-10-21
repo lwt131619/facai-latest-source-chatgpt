@@ -82,6 +82,29 @@ def test_private_endpoints_are_rejected_unless_explicitly_allowed(monkeypatch, t
         assert "Facai" in r.json()["detail"] or "回环" in r.json()["detail"]
 
 
+def test_tenant_cannot_point_a_model_at_operator_key_pool(monkeypatch, tmp_path):
+    client, _app = _client(monkeypatch, tmp_path)
+    model = {"name": "shared-looking", "endpoint": "https://example.com/v1",
+             "model": "demo", "api_key_envs": ["DEEPSEEK_API_KEY"]}
+    denied = client.put('/api/v1/registries/models/shared-looking',
+                        json=model, headers=BASIC_CLIENT)
+    assert denied.status_code == 403
+    assert client.get('/api/v1/registries/models', headers=BASIC_CLIENT).json().get(
+        'shared-looking') is None
+
+
+def test_operator_key_pool_requires_unique_env_references(monkeypatch, tmp_path):
+    client, _app = _client(monkeypatch, tmp_path)
+    model = {"name": "pool", "endpoint": "https://example.com/v1", "model": "demo"}
+    path = '/api/v1/registries/models/operator-pool'
+    assert client.put(path, json={**model, 'api_key_envs': ['FACAI_POOL_A', 'FACAI_POOL_A']},
+                      headers=BASIC_ADMIN).status_code == 422
+    assert client.put(path, json={**model, 'api_key_envs': ['invalid-name!']},
+                      headers=BASIC_ADMIN).status_code == 422
+    assert client.put(path, json={**model, 'api_key_envs': ['FACAI_POOL_A', 'FACAI_POOL_B']},
+                      headers=BASIC_ADMIN).status_code == 200
+
+
 def test_reregistering_same_name_replaces_credential(monkeypatch, tmp_path):
     client, _app = _client(monkeypatch, tmp_path)
     first = client.post("/api/v1/my/models", json=PAYLOAD, headers=BASIC_ADMIN).json()

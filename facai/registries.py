@@ -232,6 +232,13 @@ class Registries:
         if kind not in self.KINDS or not key or not isinstance(value, dict):
             raise ValueError("A nonempty ID and object are required")
         reject_raw_api_keys(value)
+        if kind == "models" and "api_key_envs" in value:
+            refs = value["api_key_envs"]
+            if (not isinstance(refs, list) or not 1 <= len(refs) <= 16
+                    or len(set(ref for ref in refs if isinstance(ref, str))) != len(refs)
+                    or any(not isinstance(ref, str) or not re.fullmatch(
+                        r"[A-Za-z_][A-Za-z0-9_]{0,63}", ref) for ref in refs)):
+                raise ValueError("api_key_envs must be 1-16 unique environment variable names")
         if kind == "skills":
             _check_forbidden_skill_fields(value)
             if "enabled" in value and not isinstance(value["enabled"], bool):

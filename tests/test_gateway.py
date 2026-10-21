@@ -110,6 +110,64 @@ def test_openai_model_object_shape_reports_content_and_usage():
     assert result["usage"]["completion_tokens"] == 2
 
 
+def test_model_key_pool_fails_over_after_429_and_cools_that_key(monkeypatch):
+    monkeypatch.setenv('FACAI_TEST_POOL_A', 'mock-pool-a')
+    monkeypatch.setenv('FACAI_TEST_POOL_B', 'mock-pool-b')
+    model = {'provider': 'OpenAI-compatible', 'endpoint': 'https://pool-429.test/v1',
+             'model': 'demo', 'api_key_envs': ['FACAI_TEST_POOL_A', 'FACAI_TEST_POOL_B']}
+    seen = []
+
+    def handler(request):
+        credential = request.headers.get('authorization')
+        seen.append(credential)
+        if credential == 'Bearer mock-pool-a':
+            return httpx.Response(429, json={'error': {'message': 'rate limited'}})
+        return httpx.Response(200, json={'choices': [{'message': {'content': 'from B'}}]})
+
+    first = invoke(handler, model)
+    assert first['status'] == 'MODEL_COMPLETED' and first['content'] == 'from B'
+    assert seen == ['Bearer mock-pool-a', 'Bearer mock-pool-b']
+    second = invoke(handler, model)
+    assert second['status'] == 'MODEL_COMPLETED'
+    assert seen[-1] == 'Bearer mock-pool-b'  # A remains in cooldown
+
+
+def test_model_key_pool_reports_exhaustion_without_exposing_keys(monkeypatch):
+    monkeypatch.setenv('FACAI_TEST_POOL_C', 'mock-pool-c')
+    monkeypatch.setenv('FACAI_TEST_POOL_D', 'mock-pool-d')
+    model = {'provider': 'Anthropic', 'endpoint': 'https://pool-auth.test/v1',
+             'model': 'claude-test', 'api_key_envs': ['FACAI_TEST_POOL_C', 'FACAI_TEST_POOL_D']}
+    seen = []
+
+    def handler(request):
+        seen.append(request.headers.get('x-api-key'))
+        return httpx.Response(401, json={'error': {'message': 'invalid credential'}})
+
+    failed = invoke(handler, model)
+    assert failed['status'] == 'MODEL_AUTH_FAILED'
+    assert set(seen) == {'mock-pool-c', 'mock-pool-d'}
+    cooled = invoke(handler, model)
+    assert cooled['status'] == 'MODEL_AUTH_FAILED' and len(seen) == 2
+    assert 'mock-pool-' not in str(cooled)
+
+
+def test_model_key_pool_all_429_keeps_rate_limit_attribution(monkeypatch):
+    monkeypatch.setenv('FACAI_TEST_POOL_E', 'mock-pool-e')
+    monkeypatch.setenv('FACAI_TEST_POOL_F', 'mock-pool-f')
+    model = {'provider': 'OpenAI-compatible', 'endpoint': 'https://pool-all-429.test/v1',
+             'model': 'demo', 'api_key_envs': ['FACAI_TEST_POOL_E', 'FACAI_TEST_POOL_F']}
+    seen = []
+
+    def handler(request):
+        seen.append(request.headers.get('authorization'))
+        return httpx.Response(429, json={'error': {'type': 'rate_limit'}})
+
+    assert invoke(handler, model)['status'] == 'MODEL_RATE_LIMITED'
+    assert len(seen) == 2
+    assert invoke(handler, model)['status'] == 'MODEL_RATE_LIMITED'
+    assert len(seen) == 2
+
+
 def test_array_shaped_error_body_is_classified_not_crashing():
     """Gemini's OpenAI-compatible endpoint answers errors as a JSON array.
 

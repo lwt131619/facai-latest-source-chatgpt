@@ -8,6 +8,44 @@ never treated as mission success.
 
 import httpx
 import os
+import re
+import threading
+import time
+
+
+class _KeyRotation:
+    """Short-lived per-endpoint/env-reference cooldowns; never stores secrets."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._cooldown = {}
+        self._next = {}
+
+    def candidates(self, endpoint, refs):
+        with self._lock:
+            now = time.monotonic()
+            ready = [ref for ref in refs if self._cooldown.get((endpoint, ref), (0, None))[0] <= now]
+            if not ready:
+                return []
+            start = self._next.get(endpoint, 0) % len(ready)
+            self._next[endpoint] = start + 1
+            return ready[start:] + ready[:start]
+
+    def penalize(self, endpoint, ref, status):
+        with self._lock:
+            # 429 is temporary quota pressure; an auth failure needs a longer
+            # pause before the same bad key is retried on another request.
+            self._cooldown[(endpoint, ref)] = (
+                time.monotonic() + (60 if status in (401, 403) else 10), status)
+
+    def unavailable_status(self, endpoint, refs):
+        with self._lock:
+            failures = [self._cooldown.get((endpoint, ref), (0, None))[1] for ref in refs]
+        return ("MODEL_AUTH_FAILED" if failures and all(s in (401, 403) for s in failures)
+                else "MODEL_RATE_LIMITED")
+
+
+_KEY_ROTATION = _KeyRotation()
 
 # The full set of upstream outcomes the gateway can report. Keeping the labels
 # explicit lets the console present the precise cause instead of a generic error.
@@ -168,17 +206,29 @@ async def complete(model, messages, client=None, timeout=30):
     if not endpoint.startswith(("http://", "https://")):
         raise ValueError("Model endpoint must be HTTP(S)")
     anthropic = _is_anthropic(model)
-    headers = {}
-    api_key = model.get("api_key") or os.getenv(model.get("api_key_env", ""))
+    refs = model.get("api_key_envs")
+    if refs is not None and (not isinstance(refs, list) or not refs
+                            or len(refs) > 16 or any(not isinstance(ref, str)
+                            or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}", ref)
+                            for ref in refs) or len(set(refs)) != len(refs)):
+        raise ValueError("api_key_envs must be 1-16 unique environment variable names")
+    # User-owned decrypted keys and the legacy single env reference keep
+    # exactly their previous one-attempt behavior.
+    rotating = bool(refs) and not model.get("api_key")
+    if rotating:
+        configured = [ref for ref in refs if os.getenv(ref)]
+        names = _KEY_ROTATION.candidates(endpoint, configured)
+        if not names:
+            return _result("MODEL_AUTH_FAILED" if not configured else
+                           _KEY_ROTATION.unavailable_status(endpoint, configured), None,
+                           reason="Configured model keys unavailable or cooling down")
+        credentials = [(name, os.getenv(name)) for name in names]
+    else:
+        credentials = [(None, model.get("api_key") or os.getenv(model.get("api_key_env", "")))]
     if anthropic:
-        if api_key:
-            headers["x-api-key"] = api_key
-        headers["anthropic-version"] = "2023-06-01"
         url, payload = _anthropic_request(endpoint, messages, model["model"],
                                           model.get("max_tokens", 8192))
     else:
-        if api_key:
-            headers["Authorization"] = f"Bearer {api_key}"
         url, payload = f"{endpoint}/chat/completions", {"model": model["model"], "messages": messages}
     own_client = client is None
     if own_client:
@@ -188,8 +238,19 @@ async def complete(model, messages, client=None, timeout=30):
             timeout = 30
         client = httpx.AsyncClient(timeout=max(1.0, timeout))
     try:
-        try:
-            response = await client.post(url, json=payload, headers=headers)
+        for ref, api_key in credentials:
+            headers = {"anthropic-version": "2023-06-01"} if anthropic else {}
+            if api_key:
+                headers["x-api-key" if anthropic else "Authorization"] = (
+                    api_key if anthropic else f"Bearer {api_key}")
+            try:
+                response = await client.post(url, json=payload, headers=headers)
+            except httpx.TimeoutException as exc:
+                return _result("MODEL_TIMEOUT", None, upstream={"error": type(exc).__name__},
+                               reason="上游请求超时")
+            except httpx.RequestError as exc:
+                return _result("MODEL_TRANSPORT_FAILED", None, upstream={"error": type(exc).__name__},
+                               reason="网络传输失败")
             try:
                 body = coerce_json_object(response.json())
             except ValueError:
@@ -203,18 +264,15 @@ async def complete(model, messages, client=None, timeout=30):
                 content = ((body.get("choices") or [{}])[0].get("message") or {}).get("content")
             failed = status != "MODEL_COMPLETED"
             usage = (_anthropic_usage(body) if anthropic else body.get("usage")) if isinstance(body, dict) else None
-            return _result(status, response.status_code, content,
-                           upstream=body if failed else None,
-                           reason=(error_text(body) or status) if failed else None,
-                           usage=usage)
-        except httpx.TimeoutException as exc:
-            return _result("MODEL_TIMEOUT", None, upstream={"error": type(exc).__name__},
-                           reason="上游请求超时")
-        except httpx.RequestError as exc:
-            # Connect/read/proxy errors that are not timeouts are transport failures,
-            # not model refusals and not Facai failures.
-            return _result("MODEL_TRANSPORT_FAILED", None, upstream={"error": type(exc).__name__},
-                           reason="网络传输失败")
+            result = _result(status, response.status_code, content,
+                             upstream=body if failed else None,
+                             reason=(error_text(body) or status) if failed else None,
+                             usage=usage)
+            if rotating and status in {"MODEL_RATE_LIMITED", "MODEL_AUTH_FAILED"}:
+                _KEY_ROTATION.penalize(endpoint, ref, response.status_code)
+                if (ref, api_key) != credentials[-1]:
+                    continue
+            return result
     finally:
         if own_client:
             await client.aclose()
