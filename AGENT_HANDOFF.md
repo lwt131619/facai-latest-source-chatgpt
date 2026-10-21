@@ -137,4 +137,6 @@ CI暴露非root nginx -t使用系统缓存目录的问题；已将验证wrapper�
 
 新 ZIP 由 `585bd8d` 源码快照构建（436 文件，SHA256 见 `dist/FACAI-v1.0-development.zip.sha256`），逐文件哈希核对后从零解压完整测试：`1441 passed / 8 skipped / 0 failed`（219.65 秒，真实 Chromium）。比 Git 工作树多跳过 1 项，仅因解压树无 `.git`，Git executable-bit 测试不适用；该差异记在 `dist/package-validation.xml`。这是开发包的可复验结果，不是 A01–A26 生产终验。
 
-2026-10-21 MODEL-001 增量：模型注册可由管理员配置多 `api_key_envs`，网关遇某 Key 上游 429 或 401/403 立即尝试下一把并短期冷却；现有单 Key 与租户自有模型路径保留，租户不能引用站长环境变量。相关网关/模型/注册回归 `65 passed`，mock upstream 不等于真实 Provider 验收。详情与缺口见 `docs/MODEL_KEY_POOL.md`；全量结果待本轮记录。
+2026-10-21 MODEL-001 增量：模型注册可由管理员配置多 `api_key_envs`，网关遇某 Key 上游 429 或 401/403 立即尝试下一把并短期冷却；现有单 Key 与租户自有模型路径保留，租户不能引用站长环境变量。相关网关/模型/注册回归 `65 passed`，mock upstream 不等于真实 Provider 验收。详情与缺口见 `docs/MODEL_KEY_POOL.md`。
+
+本轮 Git 工作树全量回归在 `df7deb9` 完成：`1447 passed / 7 skipped / 0 failed`（215.04 秒，真实 Chromium）；缺真实模型密钥的 live probe 等跳过项仍保留。新开发包需另做从零解压验证，不能把工作树测试数字写成包内结果。
