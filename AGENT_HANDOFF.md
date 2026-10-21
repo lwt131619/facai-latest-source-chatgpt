@@ -140,3 +140,5 @@ CI暴露非root nginx -t使用系统缓存目录的问题；已将验证wrapper�
 2026-10-21 MODEL-001 增量：模型注册可由管理员配置多 `api_key_envs`，网关遇某 Key 上游 429 或 401/403 立即尝试下一把并短期冷却；现有单 Key 与租户自有模型路径保留，租户不能引用站长环境变量。相关网关/模型/注册回归 `65 passed`，mock upstream 不等于真实 Provider 验收。详情与缺口见 `docs/MODEL_KEY_POOL.md`。
 
 本轮 Git 工作树全量回归在 `df7deb9` 完成：`1447 passed / 7 skipped / 0 failed`（215.04 秒，真实 Chromium）；缺真实模型密钥的 live probe 等跳过项仍保留。新开发包需另做从零解压验证，不能把工作树测试数字写成包内结果。
+
+从零解压的首轮包测试出现 1 项浏览器时序失败：`test_parallel_running_nodes_show_real_progress_and_reduced_motion` 在任意卡片出现后立即读取尚未渲染的运行连线。测试已改为等待目标并行节点和运行连线，原有进度/动效断言未改变；定向 Chromium 1 passed。此前失败的包不得称为通过，需重建并重跑最终包。

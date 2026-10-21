@@ -254,6 +254,12 @@ def test_parallel_running_nodes_show_real_progress_and_reduced_motion(console_se
         _advance(page.request, console_server, mission["id"], second["id"], "RUNNING")
         page.goto(f"{console_server}/?mission={mission['id']}", wait_until="load")
         page.wait_for_selector("#detail .pipeline-graph .workflow-step")
+        page.wait_for_function("""() => {
+          const cards = [...document.querySelectorAll('#detail .pipeline-graph .workflow-step')];
+          const labels = cards.map(card => card.querySelector('.label')?.textContent.trim());
+          return ['工作 A', '工作 B', '等待节点'].every(label => labels.includes(label))
+            && !!document.querySelector('#workflow-edges path.running');
+        }""")
 
         result = page.evaluate("""() => {
           const cards = [...document.querySelectorAll('#detail .pipeline-graph .workflow-step')];
