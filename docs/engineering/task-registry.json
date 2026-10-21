@@ -377,7 +377,7 @@
         "0.01%来源于可测基数；不可测时不编造精确小数",
         "缺模型/CLI/权限显示真实等待或错误"
       ],
-      "next_action": "接新Intent确认/授权与事件，任务/阶段/Agent进度精度0.01%有真实计量依据"
+      "next_action": "已新增完成步骤计数驱动的两位小数 progress_measured 与 progress_basis；控制台总体/阶段显示采用可测值，运行中无计量分母显示未计量，旧 progress 字段保留兼容。剩余：Agent 级真实工作量计量、事件与进度一致性、20+ 并发及跨端实测；A10 仍 NOT_VERIFIED。"
     },
     {
       "id": "TRUST-001",

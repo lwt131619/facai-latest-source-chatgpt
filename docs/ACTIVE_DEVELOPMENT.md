@@ -511,3 +511,20 @@ tree, plus two integration stitches by the coordinator:
 Full suite: 1421 passed / 9 skipped / 0 failed. Handoff back to Codex from
 here; next queue — skill usage aggregation, version-aware updates, DISPUTED
 adjudication exit, conversion fallback events, multi-key pools.
+
+## Measured mission progress increment (2026-10-21)
+
+The mission API now adds `progress_measured` (two decimal places, completed
+steps / total steps) and `progress_basis` (unit, completed, total and active
+unmeasured count). Each step also exposes `progress_measured`; active/failed
+steps with no runtime work denominator return null. The desktop console uses
+these measured values and says “未计量” instead of claiming 1% or 90% for an
+active step. The legacy integer `progress` fields remain for older clients.
+This proves only step-completion measurement. Agent work-unit measurement,
+20+ concurrency, and full A10 acceptance remain open. Focused API and real
+Chromium checks are run for this increment; see the latest commit/checkpoint
+for final validation status.
+Full-suite attempt: 1448 passed / 7 skipped / 1 failed (old theme assertion
+expected integer 33 and active 1). After updating only those expectations,
+real Chromium focused retest of theme/progress/console: 31 passed / 0 failed.
+A second complete suite was not run; full regression status is partial.

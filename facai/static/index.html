@@ -765,6 +765,11 @@ body.client-view #detail details[data-key="raw-events"]{display:none}
     // Single source of truth for the bar: always a whole 0-100 integer so the
     // fill width, aria-valuenow and the visible label can never disagree.
     const progressPct=v=>{const n=Math.round(Number(v));return Number.isFinite(n)?Math.max(0,Math.min(100,n)):0};
+    // The new value counts completed steps only; legacy progress remains in the API.
+    const measuredPct=m=>Number.isFinite(Number(m.progress_measured))
+      ?Math.max(0,Math.min(100,Number(m.progress_measured))).toFixed(2)
+      :progressPct(m.progress).toFixed(2);
+    const stepProgressText=s=>s.progress_measured==null ? "未计量" : Number(s.progress_measured).toFixed(2)+"%";
     function billingMultiplier(){
       const fallback=10; // 站长定价基准：估算按 10 倍展示（倍率输入已隐藏）
       try{const raw=localStorage.getItem('facai.billingMultiplier');if(raw===null)return fallback;const value=Number(raw);return Number.isFinite(value)&&value>=0&&value<=10000?value:fallback}
@@ -1547,7 +1552,7 @@ body.client-view #detail details[data-key="raw-events"]{display:none}
     function updatePicker(list){
       const sel=document.querySelector('#mission-picker');if(!sel)return;
       const val=selected||'';
-      sel.innerHTML='<option value="">选择 Mission…</option>'+list.map(m=>`<option value="${escapeHtml(m.id)}" ${m.id===val?'selected':''}>${escapeHtml(m.title)} · ${progressPct(m.progress)}%</option>`).join('');
+      sel.innerHTML='<option value="">选择 Mission…</option>'+list.map(m=>`<option value="${escapeHtml(m.id)}" ${m.id===val?'selected':''}>${escapeHtml(m.title)} · ${measuredPct(m)}%</option>`).join('');
     }
     // ── 指挥台化（基线 §8 三层视图 / §9 多任务中心，加法式） ──────────────────
     // §8：三视图只改同一 Mission 的投影（Projection）——不新建任务、不重拉数据，
@@ -1615,8 +1620,8 @@ body.client-view #detail details[data-key="raw-events"]{display:none}
       const byRef=new Map();steps.forEach(s=>{byRef.set(s.id,s);byRef.set(s.label,s)});
       const rows=steps.map((s,i)=>{
         const deps=(Array.isArray(s.depends_on)?s.depends_on:[]).map(r=>byRef.get(r)?.label).filter(Boolean);
-        const pct=progressPct(s.progress);
-        return `<tr><td>${i+1}. ${escapeHtml(s.label)}</td><td>${deps.length?deps.map(escapeHtml).join('、'):'—'}</td><td>${stepStatusPill(s.status)}</td><td>${pct}%</td><td>${s.model_id?escapeHtml(s.model_id):'—'}</td></tr>`;
+        const pct=stepProgressText(s);
+        return `<tr><td>${i+1}. ${escapeHtml(s.label)}</td><td>${deps.length?deps.map(escapeHtml).join('、'):'—'}</td><td>${stepStatusPill(s.status)}</td><td>${pct}</td><td>${s.model_id?escapeHtml(s.model_id):'—'}</td></tr>`;
       }).join('');
       return `<details class="secondary" data-key="dag-detail" open><summary>阶段 DAG 明细（专业视图）</summary><div class="body"><div class="dag-wrap"><table class="dag-table"><caption class="sr-only">Mission 阶段依赖明细</caption><thead><tr><th scope="col">阶段</th><th scope="col">依赖</th><th scope="col">状态</th><th scope="col">进度</th><th scope="col">模型</th></tr></thead><tbody>${rows}</tbody></table></div></div></details>`;
     }
@@ -1630,7 +1635,7 @@ body.client-view #detail details[data-key="raw-events"]{display:none}
         document.querySelector('#active-count').textContent=`${list.filter(m=>m.status==='RUNNING').length} 个进行中`;
         document.querySelector('#count').textContent=`(${list.length})`;
         renderMissionCountHead(list);
-        document.querySelector('#missions').innerHTML=list.length?list.map(m=>{const pct=progressPct(m.progress);return `<button class="card mission-card ${m.id===selected?'active':''}" data-id="${escapeHtml(m.id)}" aria-label="${escapeHtml(m.title)}，${escapeHtml(statusLabel(m.status))}，进度 ${pct}%"><div class="row"><strong>${escapeHtml(m.title)}</strong>${statusPill(m.status)}</div><div class="bar ${m.status==='RUNNING'?'run':''}"><span style="width:${pct}%"></span></div><div class="mission-action">${missionAction(m)}</div><small>${pct}% · ${m.steps.length} 步 · ${m.steps.filter(s=>s.status==='COMPLETED').length} 完成 · 成本 $${Number(m.cost_total||0).toFixed(4)}</small>${workerRowsFor(m)}</button>`}).join(''):'<p class="empty">尚无任务</p>';
+        document.querySelector('#missions').innerHTML=list.length?list.map(m=>{const pct=measuredPct(m);return `<button class="card mission-card ${m.id===selected?'active':''}" data-id="${escapeHtml(m.id)}" aria-label="${escapeHtml(m.title)}，${escapeHtml(statusLabel(m.status))}，进度 ${pct}%"><div class="row"><strong>${escapeHtml(m.title)}</strong>${statusPill(m.status)}</div><div class="bar ${m.status==='RUNNING'?'run':''}"><span style="width:${pct}%"></span></div><div class="mission-action">${missionAction(m)}</div><small>${pct}% · ${m.steps.length} 步 · ${m.steps.filter(s=>s.status==='COMPLETED').length} 完成 · 成本 $${Number(m.cost_total||0).toFixed(4)}</small>${workerRowsFor(m)}</button>`}).join(''):'<p class="empty">尚无任务</p>';
         document.querySelectorAll('#missions .card').forEach(el=>el.onclick=()=>{currentStage=null;openMission(el.dataset.id)});
         updatePicker(list);
         return list;
@@ -1695,18 +1700,19 @@ body.client-view #detail details[data-key="raw-events"]{display:none}
       const error=latestStepError(step.id,current.events);
       const recent=latestStepEvent(step.id,current.events,current.mission.steps);
       const billing=billingMetrics(current.events,step.id);
-      // The backend persists integer step progress: waiting=0, active/failed=1, completed=100.
-      const stepPct=progressPct(step.progress);
+      // Active steps have no measured denominator; display their status without a fake percentage.
+      const stepPct=step.progress_measured==null?0:Number(step.progress_measured);
+      const stepText=stepProgressText(step);
       const dependencies=(layout.deps.get(step.id)||[]).map(id=>current.mission.steps.find(s=>s.id===id)?.label).filter(Boolean);
       const place=layout.places.get(step.id)||{col:1,row:index+1,order:index};
       const style=`--step-col:${place.col};--step-row:${place.row};--step-order:${place.order}`;
       const depText=dependencies.length?`依赖：${dependencies.map(escapeHtml).join('、')}`:'起点阶段';
       const showParallel=parallel&&step.status==='RUNNING';
       const stepModel=step.model_id?`<span class="parallel-chip" title="本阶段绑定模型">⚙ ${escapeHtml(step.model_id)}</span>`:'';
-      return `<button class="stage workflow-step ${escapeHtml(step.status)} ${active?'active':''} ${here?'here':''}" data-step="${escapeHtml(step.id)}" style="${style}" aria-current="${active?'true':'false'}" aria-label="阶段 ${index+1}：${escapeHtml(step.label)}，${stepStatusLabel(step.status)}${showParallel?'，并行节点':''}${step.model_id?'，模型 '+escapeHtml(step.model_id):''}，进度 ${stepPct}%，${escapeHtml(billingLine(billing))}${recent?'，最近事件：'+escapeHtml(recent.label)+(recent.detail?'，'+escapeHtml(recent.detail):''):''}">
+      return `<button class="stage workflow-step ${escapeHtml(step.status)} ${active?'active':''} ${here?'here':''}" data-step="${escapeHtml(step.id)}" style="${style}" aria-current="${active?'true':'false'}" aria-label="阶段 ${index+1}：${escapeHtml(step.label)}，${stepStatusLabel(step.status)}${showParallel?'，并行节点':''}${step.model_id?'，模型 '+escapeHtml(step.model_id):''}，进度 ${stepText}，${escapeHtml(billingLine(billing))}${recent?'，最近事件：'+escapeHtml(recent.label)+(recent.detail?'，'+escapeHtml(recent.detail):''):''}">
         <div class="node-row"><span class="node" aria-hidden="true">${step.status==='COMPLETED'?'✓':index+1}</span><span class="idx">阶段 ${index+1}</span>${showParallel?'<span class="parallel-chip">并行</span>':''}${stepModel}</div>
         <div class="label">${escapeHtml(step.label)}</div><div>${stepStatusPill(step.status)}</div>
-        <div class="meta"><span>阶段进度</span><span>${stepPct}%${timing?' · '+escapeHtml(timing):''}</span></div>
+        <div class="meta"><span>阶段进度</span><span>${stepText}${timing?' · '+escapeHtml(timing):''}</span></div>
         <div class="stage-progress" aria-hidden="true"><span style="width:${stepPct}%"></span></div>
         <div class="stage-deps">${depText}</div>
         <div class="stage-billing">${escapeHtml(billingLine(billing))} · 倍率估算 <span class="estimated-cost">${costAmounts(billing,billingMultiplier())}</span></div>
@@ -1727,7 +1733,7 @@ body.client-view #detail details[data-key="raw-events"]{display:none}
       if(!important.length)return m.steps.length?'工作流当前没有运行中的阶段。':'工作流尚未添加阶段。';
       return important.map(step=>{
         const recent=latestStepEvent(step.id,current.events,m.steps);
-        return `${step.label}：${stepStatusLabel(step.status)}，进度 ${progressPct(step.progress)}%${recent?`，最近事件：${recent.label}${recent.detail?`，${recent.detail}`:''}`:''}`;
+        return `${step.label}：${stepStatusLabel(step.status)}，进度 ${stepProgressText(step)}${recent?`，最近事件：${recent.label}${recent.detail?`，${recent.detail}`:''}`:''}`;
       }).join('；');
     }
     function clientBrief(m){
@@ -1771,7 +1777,7 @@ body.client-view #detail details[data-key="raw-events"]{display:none}
       const priced=outputPrice(metrics);
       const tile=(label,value,extra='')=>`<div class="metric-tile"><small>${label}</small><strong>${value}</strong>${extra?`<span class="muted">${extra}</span>`:''}</div>`;
       return `<div class="metrics-strip" role="group" aria-label="工作指标">
-        ${tile('总进度',progressPct(m.progress)+'%',done+'/'+m.steps.length+' 阶段')}
+        ${tile('总进度',measuredPct(m)+'%',done+'/'+m.steps.length+' 阶段')}
         ${tile('模型调用',metrics.calls+' 次',running?running+' 个阶段执行中':'空闲')}
         ${tile('Token',metrics.total!=null?metrics.total.toLocaleString():'—','输入 '+(metrics.input!=null?metrics.input.toLocaleString():'—')+' · 输出 '+(metrics.output!=null?metrics.output.toLocaleString():'—'))}
         ${tile('已记录成本',formatMoney(cost),priced!=null?'输出计价 '+formatMoney(priced):'按输出 token 计价')}
@@ -1781,14 +1787,15 @@ body.client-view #detail details[data-key="raw-events"]{display:none}
       const timing=stepTiming(step.id,current.events);
       const billing=billingMetrics(current.events,step.id);
       const error=latestStepError(step.id,current.events);
-      const stepPct=progressPct(step.progress);
+      const stepPct=step.progress_measured==null?0:Number(step.progress_measured);
+      const stepText=stepProgressText(step);
       const stepModel=step.model_id?`<span class="parallel-chip" title="本阶段绑定模型">⚙ ${escapeHtml(step.model_id)}</span>`:'';
       const cost=(billing.costs||[]).filter(c=>c.currency==='USD').reduce((a,c)=>a+c.amount,0);
       const est=costAmounts(billing,billingMultiplier());
-      return `<button class="stage workflow-step rail-step ${escapeHtml(step.status)} ${active?'active':''} ${here?'here':''}" data-step="${escapeHtml(step.id)}" aria-current="${active?'true':'false'}" aria-label="阶段 ${index+1}：${escapeHtml(step.label)}，${stepStatusLabel(step.status)}，进度 ${stepPct}%，${escapeHtml(billingLine(billing))}">
+      return `<button class="stage workflow-step rail-step ${escapeHtml(step.status)} ${active?'active':''} ${here?'here':''}" data-step="${escapeHtml(step.id)}" aria-current="${active?'true':'false'}" aria-label="阶段 ${index+1}：${escapeHtml(step.label)}，${stepStatusLabel(step.status)}，进度 ${stepText}，${escapeHtml(billingLine(billing))}">
         <span class="node" aria-hidden="true">${step.status==='COMPLETED'?'✓':(step.status==='FAILED'?'!':index+1)}</span>
         <span class="rail-main"><span class="rail-title"><b>${escapeHtml(step.label)}</b>${stepStatusPill(step.status)}${stepModel}</span>
-        <span class="rail-metrics muted">阶段 ${index+1} · 进度 ${stepPct}%${timing?' · '+escapeHtml(timing):''} · 调用 ${billing.calls} 次 · Token ${billing.total!=null?billing.total.toLocaleString():'—'}${cost?` · ${formatMoney(cost)}`:''} · 倍率估算 <span class="estimated-cost">${est}</span>${error?` · ${escapeHtml(String(error).slice(0,80))}`:''}</span>
+        <span class="rail-metrics muted">阶段 ${index+1} · 进度 ${stepText}${timing?' · '+escapeHtml(timing):''} · 调用 ${billing.calls} 次 · Token ${billing.total!=null?billing.total.toLocaleString():'—'}${cost?` · ${formatMoney(cost)}`:''} · 倍率估算 <span class="estimated-cost">${est}</span>${error?` · ${escapeHtml(String(error).slice(0,80))}`:''}</span>
         <span class="stage-progress" aria-hidden="true"><span style="width:${stepPct}%"></span></span></span>
         <span class="rail-chevron" aria-hidden="true">›</span></button>`;
     }
@@ -1799,7 +1806,7 @@ body.client-view #detail details[data-key="raw-events"]{display:none}
       // Parallel count comes straight from persisted RUNNING step statuses — never simulated.
       const runningCount=m.steps.filter(s=>s.status==='RUNNING').length;
       const parallel=runningCount>1;
-      const overview=`<button class="stage pipeline-overview ${currentStage?'':'active'}" data-step="" aria-label="Mission 总览，${done}/${m.steps.length} 阶段完成，进度 ${progressPct(m.progress)}%${parallel?`，${runningCount} 路阶段并行运行`:''}"><span class="node" aria-hidden="true">◎</span><strong>全部阶段</strong>${statusPill(m.status)}<span class="muted">${done}/${m.steps.length} 完成</span>${parallel?`<span class="parallel-chip">${runningCount} 路并行</span>`:''}<span class="overview-progress">${progressPct(m.progress)}%</span></button>`;
+      const overview=`<button class="stage pipeline-overview ${currentStage?'':'active'}" data-step="" aria-label="Mission 总览，${done}/${m.steps.length} 阶段完成，进度 ${measuredPct(m)}%${parallel?`，${runningCount} 路阶段并行运行`:''}"><span class="node" aria-hidden="true">◎</span><strong>全部阶段</strong>${statusPill(m.status)}<span class="muted">${done}/${m.steps.length} 完成</span>${parallel?`<span class="parallel-chip">${runningCount} 路并行</span>`:''}<span class="overview-progress">${measuredPct(m)}%</span></button>`;
       if(isLinearChain(m.steps)){
         // The simple run view: one vertical status rail, no edge wiring needed.
         return `<div class="pipeline pipeline-rail" id="pipeline"><div id="pipeline-announcement" class="sr-only" role="status" aria-live="polite" aria-atomic="true">${escapeHtml(workflowAnnouncement(m))}</div>${overview}<div class="rail-steps">${m.steps.map((s,i)=>railCard(s,i,s.id===currentStage,here&&s.id===here.id)).join('')}</div></div>`;
@@ -1918,7 +1925,7 @@ body.client-view #detail details[data-key="raw-events"]{display:none}
       const done=m.steps.filter(s=>s.status==='COMPLETED').length,total=m.steps.length;
       const cur=activeStep(m);
       const running=m.status==='RUNNING';
-      const pct=progressPct(m.progress);
+      const pct=measuredPct(m);
       return `<div class="row"><h2 style="margin:0">${escapeHtml(m.title)}</h2>${statusPill(m.status)}</div>
         <small>Mission ${escapeHtml(String(m.id).slice(0,8))} · ${escapeHtml(new Date(m.created_at).toLocaleString('zh-CN',{hour12:false}))}</small>
         <div class="overview" aria-label="Mission 总体概览">

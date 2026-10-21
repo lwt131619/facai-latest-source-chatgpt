@@ -1,5 +1,7 @@
 # FACAI / ICS — 当前接手入口
 
+最新实测与优先级：docs/engineering/HANDOFF_2026-10-22.md。
+
 先读AGENTS.md → FACAI_CODEX_HANDOFF.md → docs/engineering/CORE_INVARIANTS.md。
 源码、Git历史、任务登记表和实测报告优先于历史聊天及旧VPS上线描述。
 

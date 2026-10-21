@@ -82,7 +82,7 @@ def test_first_screen_progress_survives_the_theme(console_server, playwright_api
         page.wait_for_selector("#detail [role=progressbar]")
 
         # Progress is still derived from server data (1/3), visible without scrolling.
-        assert page.get_attribute("#detail [role=progressbar]", "aria-valuenow") == "33"
+        assert page.get_attribute("#detail [role=progressbar]", "aria-valuenow") == "33.33"
         box = page.eval_on_selector(
             "#detail [role=progressbar]",
             "el => { const r = el.getBoundingClientRect(); return { top: r.top, bottom: r.bottom }; }")
@@ -93,11 +93,11 @@ def test_first_screen_progress_survives_the_theme(console_server, playwright_api
             "#detail [role=progressbar] span", "el => getComputedStyle(el).backgroundImage")
         assert "gradient" in fill, f"progress fill is not a gradient: {fill}"
 
-        # The running stage shows its persisted 1% value as a static fill.
+        # Running without a work denominator has no invented percentage.
         running = page.query_selector("#detail .pipeline .stage.RUNNING")
         assert running is not None
-        assert "进度 1%" in running.get_attribute("aria-label")
-        assert running.query_selector(".stage-progress span").evaluate("el => el.style.width") == "1%"
+        assert "进度 未计量" in running.get_attribute("aria-label")
+        assert running.query_selector(".stage-progress span").evaluate("el => el.style.width") == "0%"
         assert page.query_selector("#detail .stage-activity") is None, \
             "stage progress must come from backend state, without a fake activity sweep"
         assert "开发" in page.inner_text("#detail #current-stage")

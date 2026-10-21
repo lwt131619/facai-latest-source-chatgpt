@@ -97,6 +97,17 @@ def mission_progress(completed, total, active=0):
     return max(1, min(99, (100 * completed) // total))
 
 
+def measured_mission_progress(completed, total):
+    """Return a two-decimal percentage backed only by completed step counts.
+
+    Integer basis points avoid floating point drift. An active step has no
+    measurable fraction until its runtime reports actual units of work.
+    """
+    if total <= 0:
+        return 0.0
+    return min(10000, max(0, completed) * 10000 // total) / 100
+
+
 # SQLite caps host parameters per statement (999 before SQLite 3.32), so a
 # mission list of any size must never be pasted into a single IN (...) clause.
 _ID_CHUNK = 500
@@ -867,12 +878,21 @@ class Store:
             step["progress"] = 100 if step["status"] == "COMPLETED" else \
                 (90 if step["status"] == "RUNNING" and step["id"] in checkpoint_steps
                  else 1 if step["status"] in {"RUNNING", "FAILED"} else 0)
+            step["progress_measured"] = (100.0 if step["status"] == "COMPLETED"
+                                         else 0.0 if step["status"] in {"CREATED", "WAITING"}
+                                         else None)
+            step["progress_basis"] = ("completed_step" if step["status"] == "COMPLETED"
+                                      else "unmeasured_execution" if step["status"] in {"RUNNING", "FAILED"}
+                                      else "not_started")
         done = sum(step["status"] == "COMPLETED" for step in steps)
         active = sum(step["status"] == "RUNNING" for step in steps)
         return {**dict(row), "steps": steps, "sessions": [dict(s) for s in sessions],
                 "artifacts": [dict(a) for a in artifacts],
                 "checkpoints": [dict(c) for c in checkpoints],
                 "cost_total": cost_total,
+                "progress_measured": measured_mission_progress(done, len(steps)),
+                "progress_basis": {"unit": "completed_steps", "completed": done,
+                                   "total": len(steps), "active_unmeasured": active},
                 "progress": mission_progress(done, len(steps), active)}
 
     def get(self, mission_id, owner_id=None):

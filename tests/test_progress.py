@@ -13,7 +13,34 @@ from fastapi.testclient import TestClient
 
 from facai import store as store_module
 from facai.api import create_app
-from facai.store import Store, mission_progress
+from facai.store import Store, measured_mission_progress, mission_progress
+
+
+def test_measured_progress_has_two_decimal_resolution_without_active_guess():
+    assert measured_mission_progress(1, 3) == 33.33
+    assert measured_mission_progress(2, 3) == 66.66
+    assert measured_mission_progress(0, 3) == 0.0
+    assert measured_mission_progress(3, 3) == 100.0
+    assert measured_mission_progress(0, 0) == 0.0
+
+
+def test_api_reports_progress_basis_and_unknown_active_step(tmp_path):
+    client = make_client(tmp_path)
+    mission = create(client, "可测进度", ["规划", "执行", "验收"])
+    first = mission["steps"][0]["id"]
+    assert client.patch(f"/api/v1/missions/{mission['id']}/steps/{first}",
+                        json={"status": "RUNNING"}).status_code == 200
+    running = client.get(f"/api/v1/missions/{mission['id']}").json()
+    assert running["progress_measured"] == 0.0
+    assert running["progress_basis"] == {"unit": "completed_steps", "completed": 0,
+                                         "total": 3, "active_unmeasured": 1}
+    assert running["steps"][0]["progress_measured"] is None
+    assert running["steps"][0]["progress_basis"] == "unmeasured_execution"
+    assert client.patch(f"/api/v1/missions/{mission['id']}/steps/{first}",
+                        json={"status": "COMPLETED"}).status_code == 200
+    done = client.get(f"/api/v1/missions/{mission['id']}").json()
+    assert done["progress_measured"] == 33.33
+    assert done["progress_basis"]["completed"] == 1
 
 
 def make_client(tmp_path):

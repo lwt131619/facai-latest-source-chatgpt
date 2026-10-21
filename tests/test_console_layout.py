@@ -66,8 +66,8 @@ def test_desktop_first_screen_shows_real_progress_and_pipeline(console_server, p
         page.goto(f"{base}/?mission={mission['id']}", wait_until="load")
         page.wait_for_selector("#detail [role=progressbar]")
 
-        # Real progress comes from completed steps: 1/3 -> 33%, never a fake value.
-        assert page.get_attribute("#detail [role=progressbar]", "aria-valuenow") == "33"
+        # One of three completed steps is 33.33%; active work is not guessed.
+        assert page.get_attribute("#detail [role=progressbar]", "aria-valuenow") == "33.33"
         assert "33%" in page.inner_text("#detail .overview .pct")
 
         # The complaint: progress must be on the first screen without scrolling.
@@ -117,12 +117,11 @@ def test_progress_bar_width_aria_and_label_agree(console_server, playwright_api)
             " label: bar.getAttribute('aria-label'),"
             " width: fill.style.width,"
             " text: el.querySelector('.pct').textContent }; }")
-        # Width, aria-valuenow and the visible label are the same whole number.
-        assert rendered["now"] == "33"
-        assert rendered["width"] == "33%"
-        assert "33%" in rendered["text"]
-        assert "33%" in rendered["label"]
-        assert "." not in rendered["now"], f"fractional progress leaked: {rendered['now']}"
+        # Width, aria-valuenow and the visible label share the measured basis.
+        assert rendered["now"] == "33.33"
+        assert rendered["width"] == "33.33%"
+        assert "33.33%" in rendered["text"]
+        assert "33.33%" in rendered["label"]
         browser.close()
 
 
@@ -144,16 +143,18 @@ def test_pipeline_nodes_and_integer_stage_progress_follow_backend(console_server
             "#detail .pipeline .stage:not([data-step=''])",
             "els => els.map(el => ({label: el.querySelector('.rail-title b').textContent.trim(),"
             "aria: el.getAttribute('aria-label'), node: el.querySelector('.node').textContent.trim(),"
-            "pct: el.querySelector('.rail-metrics').textContent.split('进度 ')[1].split('%')[0],"
+            "pct: el.querySelector('.rail-metrics').textContent.split('进度 ')[1].split(' · ')[0].split('%')[0],"
             "width: el.querySelector('.stage-progress span').style.width}))")
         assert len(stages) == len(backend["steps"]) == 3
         for rendered, actual in zip(stages, backend["steps"]):
-            pct = f"{actual['progress']}%"
+            pct = (f"{actual['progress_measured']:.2f}%"
+                   if actual['progress_measured'] is not None else "未计量")
             assert rendered["label"] == actual["label"]
-            assert rendered["pct"] == str(actual["progress"])
-            assert rendered["width"] == pct
+            assert rendered["pct"] == pct.removesuffix("%")
+            assert rendered["width"] == (f"{actual['progress_measured']:g}%"
+                                         if actual['progress_measured'] is not None else "0%")
             assert f"进度 {pct}" in rendered["aria"]
-        assert [stage["pct"] for stage in stages] == ["100", "1", "0"]
+        assert [stage["pct"] for stage in stages] == ["100.00", "未计量", "0.00"]
         assert stages[0]["node"] == "✓" and stages[1]["node"] == "2"
 
         # The rail runs top-to-bottom in dependency order, joined by the flow line.
@@ -279,8 +280,8 @@ def test_parallel_running_nodes_show_real_progress_and_reduced_motion(console_se
             prefersReduced: matchMedia('(prefers-reduced-motion: reduce)').matches
           };
         }""")
-        assert result["activePercent"].startswith("1%")
-        assert result["activeWidth"] == "1%"
+        assert result["activePercent"].startswith("未计量")
+        assert result["activeWidth"] == "0%"
         assert result["activeMotion"] == "facai-orbit"
         assert result["activeIndicatorMotion"] == "facai-indicator-flow"
         assert result["edgeMotion"] == "facai-edge-flow"
@@ -346,9 +347,11 @@ def test_pipeline_status_percentages_and_latest_step_events_are_truthful(console
         backend_by_label = {step["label"]: step for step in backend["steps"]}
         for label, card in by_label.items():
             actual = backend_by_label[label]
-            percent = f"{actual['progress']}%"
+            percent = (f"{actual['progress_measured']:.2f}%"
+                       if actual['progress_measured'] is not None else "未计量")
             assert card["percent"] == percent
-            assert card["width"] == percent
+            assert card["width"] == (f"{actual['progress_measured']:g}%"
+                                     if actual['progress_measured'] is not None else "0%")
             assert f"进度 {percent}" in card["aria"]
         assert [(name, by_label[name]["statusText"]) for name in
                 ("工作节点", "等待节点", "卡住节点", "失败前置")] == [
@@ -363,7 +366,7 @@ def test_pipeline_status_percentages_and_latest_step_events_are_truthful(console
         assert by_label["等待节点"]["recent"] == ""
         assert page.locator("#pipeline-announcement").get_attribute("role") == "status"
         assert page.locator("#pipeline-announcement").get_attribute("aria-live") == "polite"
-        assert "工作节点：工作中，进度 1%" in announcement
+        assert "工作节点：工作中，进度 未计量" in announcement
         assert "卡住节点：卡住" in announcement and "依赖阻塞" in announcement
         assert "失败前置：失败" in announcement
         _advance(page.request, console_server, mission["id"], failed["id"], "RUNNING")
