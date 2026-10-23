@@ -22,6 +22,10 @@ def test_intent_to_evidence_review_and_download(protected_server, playwright_api
         # Slow CI runners occasionally exceed the 30s default on browser
         # waits; patience only, assertions untouched.
         page.set_default_timeout(60000)
+        # wait_for_function defaults to requestAnimationFrame polling; a
+        # CPU-starved runner can throttle RAF indefinitely, so every wait in
+        # this file polls on a fixed interval instead. Assertions untouched.
+        polling = dict(polling=100)
         errors = []
         page.on('pageerror', lambda error: errors.append(str(error)))
         page.goto(protected_server+'/login?next=%2Fworkspace')
@@ -31,10 +35,10 @@ def test_intent_to_evidence_review_and_download(protected_server, playwright_api
         page.wait_for_url('**/workspace')
         page.fill('#request', '分析这个项目')
         page.click('#compile button')
-        page.wait_for_function("document.querySelector('#state').textContent.includes('NEED_CONTEXT')")
+        page.wait_for_function("document.querySelector('#state').textContent.includes('NEED_CONTEXT')", **polling)
         page.fill('#action', 'analyze'); page.fill('#target', '/owner/project')
         page.click('#save')
-        page.wait_for_function("document.querySelector('#revision').textContent.includes('Revision 2')")
+        page.wait_for_function("document.querySelector('#revision').textContent.includes('Revision 2')", **polling)
         page.click('#confirm')
         page.wait_for_selector('#mission:not(.hidden)')
         mission_id = page.locator('#open-mission').get_attribute('href').split('mission=')[1]
@@ -45,19 +49,19 @@ def test_intent_to_evidence_review_and_download(protected_server, playwright_api
         page.fill('#source', 'Local Owner observation, not external attestation')
         page.fill('#content', 'Local version output says 1')
         page.click('#note button')
-        page.wait_for_function("document.querySelector('#revision').textContent.includes('Revision 1')")
+        page.wait_for_function("document.querySelector('#revision').textContent.includes('Revision 1')", **polling)
         evidence_id = page.locator('#links option').first.get_attribute('value')
         page.fill('#statement', '<script>untrusted claim</script> version is 1')
         page.fill('#subject', 'project'); page.fill('#predicate', 'version'); page.fill('#value', '1')
         page.select_option('#links', evidence_id)
         page.click('#claim button')
-        page.wait_for_function("document.querySelector('#revision').textContent.includes('Revision 2')")
+        page.wait_for_function("document.querySelector('#revision').textContent.includes('Revision 2')", **polling)
         assert 'UNKNOWN' in page.locator('#claims').inner_text()
         assert page.locator('#claims script').count() == 0
         page.locator('#claims select').select_option('INFERENCE')
         page.locator('#claims input').fill('Explicit Owner review of local note; independently unverified')
         page.get_by_role('button',name='Owner 提交审查',exact=True).click()
-        page.wait_for_function("document.querySelector('#revision').textContent.includes('Revision 3')")
+        page.wait_for_function("document.querySelector('#revision').textContent.includes('Revision 3')", **polling)
         assert 'INFERENCE' in page.locator('#claims').inner_text()
         page.click('#snapshot')
         page.wait_for_selector('#proofs a.download')
