@@ -20,6 +20,10 @@ class _KeyRotation:
         self._lock = threading.Lock()
         self._cooldown = {}
         self._next = {}
+        # MODEL-001 每Key计量：按 (endpoint, 环境变量名) 记调用数/结局/tokens。
+        # 只存环境变量名与上游自报计数，绝存不进密钥值；进程内存，重启即清零，
+        # 与冷却同生命周期——跨进程聚合是登记册在记的另一个缺口。
+        self._usage = {}
 
     def candidates(self, endpoint, refs):
         with self._lock:
@@ -38,6 +42,43 @@ class _KeyRotation:
             self._cooldown[(endpoint, ref)] = (
                 time.monotonic() + (60 if status in (401, 403) else 10), status)
 
+    def record(self, endpoint, ref, status, usage=None):
+        """Meter one real upstream attempt made with this env reference.
+
+        Counters split by classified outcome (被拒率与失败原因细分的基础)；
+        token sums only ever accumulate what the provider itself reported in
+        the response body — nothing is estimated here."""
+        with self._lock:
+            entry = self._usage.setdefault((endpoint, ref), {
+                "calls": 0, "completed": 0, "rate_limited": 0,
+                "auth_failed": 0, "failed_other": 0,
+                "input_tokens": 0, "output_tokens": 0})
+            entry["calls"] += 1
+            if status == "MODEL_COMPLETED":
+                entry["completed"] += 1
+            elif status == "MODEL_RATE_LIMITED":
+                entry["rate_limited"] += 1
+            elif status == "MODEL_AUTH_FAILED":
+                entry["auth_failed"] += 1
+            else:
+                entry["failed_other"] += 1
+            if isinstance(usage, dict):
+                try:
+                    entry["input_tokens"] += int(usage.get("prompt_tokens")
+                                                 or usage.get("input_tokens") or 0)
+                    entry["output_tokens"] += int(usage.get("completion_tokens")
+                                                  or usage.get("output_tokens") or 0)
+                except (TypeError, ValueError):
+                    pass
+
+    def usage_snapshot(self, endpoint, refs):
+        """Counters for the configured refs of one endpoint (unused key = zeroed row)."""
+        with self._lock:
+            return {ref: dict(self._usage.get((endpoint, ref), {
+                "calls": 0, "completed": 0, "rate_limited": 0,
+                "auth_failed": 0, "failed_other": 0,
+                "input_tokens": 0, "output_tokens": 0})) for ref in refs}
+
     def unavailable_status(self, endpoint, refs):
         with self._lock:
             failures = [self._cooldown.get((endpoint, ref), (0, None))[1] for ref in refs]
@@ -46,6 +87,14 @@ class _KeyRotation:
 
 
 _KEY_ROTATION = _KeyRotation()
+
+
+def key_usage(endpoint, refs):
+    """Per-env-reference metering view for admin surfaces (MODEL-001).
+
+    Keys of the returned dict are environment-variable NAMES; secret values
+    are never recorded anywhere in this module."""
+    return _KEY_ROTATION.usage_snapshot(str(endpoint).rstrip("/"), refs)
 
 # The full set of upstream outcomes the gateway can report. Keeping the labels
 # explicit lets the console present the precise cause instead of a generic error.
@@ -264,10 +313,18 @@ async def complete(model, messages, client=None, timeout=30):
                 content = ((body.get("choices") or [{}])[0].get("message") or {}).get("content")
             failed = status != "MODEL_COMPLETED"
             usage = (_anthropic_usage(body) if anthropic else body.get("usage")) if isinstance(body, dict) else None
+            if rotating:
+                # 每Key计量先于冷却记账：这一把真实发生的上游调用必须留下计数，
+                # 包括压轴 key 的最后一次失败（它不再 continue，直接返回）。
+                _KEY_ROTATION.record(endpoint, ref, status, usage)
             result = _result(status, response.status_code, content,
                              upstream=body if failed else None,
                              reason=(error_text(body) or status) if failed else None,
                              usage=usage)
+            if rotating:
+                # 归因随行：调用方与展示层能说出这一步用的是哪个环境引用，
+                # 计量才对得上号（值只是变量名，不是密钥本体）。
+                result["key_env"] = ref
             if rotating and status in {"MODEL_RATE_LIMITED", "MODEL_AUTH_FAILED"}:
                 _KEY_ROTATION.penalize(endpoint, ref, response.status_code)
                 if (ref, api_key) != credentials[-1]:

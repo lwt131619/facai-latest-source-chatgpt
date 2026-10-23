@@ -139,6 +139,39 @@ def _validate_skill_metadata(key, value):
         if len(version) > 64:
             raise ValueError("Skill version must be <= 64 characters")
 
+    # SKILL-001 ⑥: dependencies name other registry skills. Shape validation
+    # only — presence is checked at routing time (conversion.assign_stage),
+    # and nothing is ever auto-installed.
+    dependencies = value.get("dependencies")
+    if dependencies is not None:
+        if not isinstance(dependencies, list):
+            raise ValueError("Skill dependencies must be a list when present")
+        if len(dependencies) > 20:
+            raise ValueError("Skill dependencies must have at most 20 entries")
+        for dep in dependencies:
+            if isinstance(dep, str):
+                if not dep.strip():
+                    raise ValueError("Skill dependency names must be non-empty")
+                continue
+            if isinstance(dep, dict):
+                if set(dep) - {"name", "version"}:
+                    raise ValueError(
+                        "Skill dependency objects accept only name/version keys")
+                name = dep.get("name")
+                if not isinstance(name, str) or not name.strip():
+                    raise ValueError(
+                        "Skill dependency entries need a non-empty name")
+                dv = dep.get("version")
+                if dv is not None and (not isinstance(dv, str) or not dv.strip()
+                                       or len(dv) > 64):
+                    raise ValueError(
+                        "Skill dependency version must be a non-empty string "
+                        "of at most 64 characters when present")
+                continue
+            raise ValueError(
+                "Skill dependency entries must be strings or {name, version} "
+                "objects")
+
     review_status = value.get("review_status", "approved")
     if not isinstance(review_status, str):
         raise ValueError(f"Skill review_status must be a string, got {type(review_status).__name__}")
@@ -239,6 +272,15 @@ class Registries:
                     or any(not isinstance(ref, str) or not re.fullmatch(
                         r"[A-Za-z_][A-Za-z0-9_]{0,63}", ref) for ref in refs)):
                 raise ValueError("api_key_envs must be 1-16 unique environment variable names")
+        # MODEL-001 每Key成本计量：单价是注册表里的显式数字，不是发明值；
+        # 不填就不估算（key-usage 端点返回 null 而不是猜一个价）。
+        for _price_field in ("price_input_per_1k", "price_output_per_1k"):
+            _price = value.get(_price_field)
+            if _price is not None and (isinstance(_price, bool)
+                                       or not isinstance(_price, (int, float))
+                                       or _price < 0):
+                raise ValueError(
+                    f"{_price_field} must be a non-negative number when present")
         if kind == "skills":
             _check_forbidden_skill_fields(value)
             if "enabled" in value and not isinstance(value["enabled"], bool):

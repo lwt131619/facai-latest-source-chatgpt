@@ -279,7 +279,7 @@
         "保留已有有效行为，相关回归及失败路径测试通过",
         "验证命令/结果/提交与外部局限写入交接记录"
       ],
-      "next_action": "池接线(①②③)与矩阵UI统计列/水位线编辑(④)与live marker(⑤)已入库：调度器reserve/report、reroute吃健康序、PoolState延迟/错误率/调用数、PUT /modelmatrix/{id}/limits管理员闸、@pytest.mark.live真实探测(FACAI_LIVE_API_KEY缺失诚实skip)。网关已接单模型多Key环境引用轮换，429与401/403自动换Key并短期冷却；配置及边界见docs/MODEL_KEY_POOL.md。仍缺CLI Agent上游请求统一接线、跨进程共享冷却、每Key配额与成本统计、真实Provider验收、被拒率与失败原因细分列。"
+      "next_action": "池接线(①②③)与矩阵UI统计列/水位线编辑(④)与live marker(⑤)已入库：调度器reserve/report、reroute吃健康序、PoolState延迟/错误率/调用数、PUT /modelmatrix/{id}/limits管理员闸、@pytest.mark.live真实探测(FACAI_LIVE_API_KEY缺失诚实skip)。网关已接单模型多Key环境引用轮换，429与401/403自动换Key并短期冷却；配置及边界见docs/MODEL_KEY_POOL.md。仍缺CLI Agent上游请求统一接线、跨进程共享冷却、真实Provider验收。每Key配额与成本统计已入库(2026-10-23):网关按(endpoint,环境变量名)记调用数与结局细分(completed/rate_limited/auth_failed/failed_other,被拒率列的数据基础)及上游自报input/output tokens,complete()结果带key_env归因;注册表可选price_input_per_1k/price_output_per_1k非负数字,GET /api/v1/modelmatrix/key-usage(仅admin/Owner)按Key报计数+tokens,仅在注册表带显式单价时计算estimated_cost,无单价返回null不发明依据;密钥值永不出现,计数进程内存重启清零(tests/test_gateway.py::test_key_usage_meters_failover_per_reference/test_key_usage_endpoint_reports_metering_with_explicit_pricing)。"
     },
     {
       "id": "SKILL-001",
@@ -307,7 +307,7 @@
         "保留已有有效行为，相关回归及失败路径测试通过",
         "验证命令/结果/提交与外部局限写入交接记录"
       ],
-      "next_action": "版本落库、禁用生效、软删tombstone及治理日志已入库。导入正文按Owner/版本/SHA存储；手动绑定及原话正向明确调用唯一Skill时冻结版本。否定句/仅提及/多Skill不自动绑定。usage区分正文交付与旧归因，不证明模型遵循。/registries/skills/{key}/update用预期版本+SHA在SQLite事务内CAS；/versions列出Owner隔离的历史版本，控制台可按精确版本+SHA查看已存指令正文（纯文本呈现、响应禁缓存，软删后仍可审查）。历史正文可凭精确版本+SHA、当前版本+SHA双重校验，在同一SQLite事务中以新版本重新发布；当前描述/启用状态保留，不伪称恢复旧frontmatter。旧/import仍是可覆盖的兼容路径。生命周期日志立即落盘，但SQLite与日志文件非同一事务。下一步:统一导入/更新冲突策略、跨存储崩溃一致性、模糊匹配Owner确认、完整元数据回滚、依赖字段与可验证效果指标。"
+      "next_action": "版本落库、禁用生效、软删tombstone及治理日志已入库。导入正文按Owner/版本/SHA存储；手动绑定及原话正向明确调用唯一Skill时冻结版本。否定句/仅提及/多Skill不自动绑定。usage区分正文交付与旧归因，不证明模型遵循。/registries/skills/{key}/update用预期版本+SHA在SQLite事务内CAS；/versions列出Owner隔离的历史版本，控制台可按精确版本+SHA查看已存指令正文（纯文本呈现、响应禁缓存，软删后仍可审查）。历史正文可凭精确版本+SHA、当前版本+SHA双重校验，在同一SQLite事务中以新版本重新发布；当前描述/启用状态保留，不伪称恢复旧frontmatter。旧/import仍是可覆盖的兼容路径。生命周期日志立即落盘，但SQLite与日志文件非同一事务。下一步:统一导入/更新冲突策略、跨存储崩溃一致性、模糊匹配Owner确认、完整元数据回滚、可验证效果指标。依赖字段已入库(2026-10-23):metadata.dependencies仅形状校验(≤20条,字符串或{name,version});路由期做存在性检查(enabled_only之后按名匹配,依赖被禁用视为缺失),assign_stage返回excluded_skills(排除原因随行、不静默丢弃、绝不自动安装),并随ASSIGNMENT_RECORDED事件载荷落库可审计;证据:tests/test_skill_lifecycle.py::TestDependencyShapeValidation/TestDependencyRoundtripInRegistry + tests/test_conversion_console.py::TestDependencyAwareRouting。"
     },
     {
       "id": "ROUTER-001",

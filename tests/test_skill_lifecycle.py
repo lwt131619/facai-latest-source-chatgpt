@@ -712,3 +712,49 @@ class TestSkillUsage:
         assert tenant.status_code == 201
         client.headers.update({"X-CSRF-Token": tenant.json()["csrf_token"]})
         assert client.get(path).status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# ⑥ 依赖字段：仅形状校验，存在性留给路由期；绝不自动安装
+# ---------------------------------------------------------------------------
+
+class TestDependencyShapeValidation:
+    def test_valid_dependency_shapes_pass(self):
+        _validate_skill_metadata("dep-ok", {
+            "name": "dep-ok", "description": "d", "license": "MIT",
+            "source_url": "https://example.com/dep-ok",
+            "dependencies": ["other-skill",
+                             {"name": "second", "version": "1.0.0"},
+                             {"name": "bare-name"}]})
+        _validate_skill_metadata("dep-none", {
+            "name": "dep-none", "description": "d", "license": "MIT",
+            "source_url": "https://example.com/dep-none",
+            "dependencies": None})
+
+    def test_dependencies_must_be_list_of_bounded_entries(self):
+        base = {"name": "bad", "description": "d", "license": "MIT",
+                "source_url": "https://example.com/bad"}
+        cases = [
+            {"dependencies": "ghost"},                                  # 非列表
+            {"dependencies": [""]},                                     # 空名字符串
+            {"dependencies": [{"version": "1.0"}]},                     # dict 缺 name
+            {"dependencies": [{"name": "x", "url": "https://..."}]},    # 越权键
+            {"dependencies": [{"name": "x", "version": ""}]},           # 空 version
+            {"dependencies": [{"name": "x", "version": 3}]},            # 非字符串 version
+            {"dependencies": [42]},                                     # 非 str/dict 条目
+            {"dependencies": ["x"] * 21},                               # 超过 20 条
+        ]
+        for extra in cases:
+            with pytest.raises(ValueError):
+                _validate_skill_metadata("bad", {**base, **extra})
+
+
+class TestDependencyRoundtripInRegistry:
+    def test_registered_dependencies_survive_storage(self):
+        regs = Registries()
+        metadata = {"name": "with-deps", "description": "d", "license": "MIT",
+                    "source_url": "https://example.com/with-deps",
+                    "dependencies": [{"name": "peer", "version": "2.0"}]}
+        regs.register("skills", "with-deps", metadata, owner_id="admin")
+        stored = regs.resolve("skills", "with-deps", owner_id="admin")
+        assert stored["dependencies"] == [{"name": "peer", "version": "2.0"}]

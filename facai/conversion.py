@@ -145,6 +145,20 @@ def _skill_score(label: str, professional: str, skill: dict) -> float:
     return len(needle & haystack) / len(needle)
 
 
+def _unsatisfied_dependencies(skill, enabled_names) -> list:
+    """Dependency entries name other registry skills; a dependency whose name
+    is absent from the enabled set leaves the skill unroutable for the stage.
+    Presence-only checking — nothing is ever auto-installed (SKILL-001 ⑥).
+    A dependency on a disabled skill counts as missing: the dependency cannot
+    run either."""
+    missing = []
+    for dep in (skill or {}).get("dependencies") or []:
+        name = dep if isinstance(dep, str) else (dep or {}).get("name")
+        if isinstance(name, str) and name and name not in enabled_names:
+            missing.append(name)
+    return missing
+
+
 def assign_stage(label: str, professional: str, agents: dict,
                  skills: dict) -> dict:
     """Who is strongest for this stage — ranked, with reasons on the record.
@@ -157,8 +171,20 @@ def assign_stage(label: str, professional: str, agents: dict,
     SKILL-001 ②: a disabled skill (``enabled is False``, absent means
     enabled for legacy rows) never participates in scoring — the operator's
     disable switch takes effect at routing time, not just in bookkeeping.
+    SKILL-001 ⑥: a skill whose declared dependencies are not among the
+    enabled skills is excluded from scoring with the missing names on the
+    record (``excluded_skills``), never silently dropped and never installed.
     """
     routable = enabled_only(skills)
+    enabled_names = set(routable)
+    excluded_skills = []
+    for skill_id, skill in routable.items():
+        missing = _unsatisfied_dependencies(skill, enabled_names)
+        if missing:
+            excluded_skills.append({"skill_id": skill_id,
+                                    "reason": "依赖缺失 " + ",".join(missing)})
+    routable = {skill_id: skill for skill_id, skill in routable.items()
+                if skill_id not in {item["skill_id"] for item in excluded_skills}}
     ranked = []
     for agent_id, entry in sorted((agents or {}).items()):
         adapter = str(entry.get("adapter", agent_id))
@@ -187,6 +213,9 @@ def assign_stage(label: str, professional: str, agents: dict,
             # 全量候选（含各自分数与 reasons）：展示层仍只读 primary/fallbacks，
             # 这份完整名单供 ASSIGNMENT_RECORDED 事件做事实源（ROUTER-001）。
             "candidates": ranked,
+            # SKILL-001 ⑥：依赖未满足而被排除出评分的技能及原因——排除永远
+            # 有据可查，不做静默丢弃，也绝不自动安装。
+            "excluded_skills": excluded_skills,
             "reviewer": {"agent_id": "facai-native", "name": "平台核（T0）",
                          "role": "阶段产物复核：越权/偏差行为由平台核拦下"}}
 
@@ -244,6 +273,8 @@ def assignment_event_payload(assignment_tree, mission_id: str = "") -> dict:
             "candidates": [_compact_candidate(cand) for cand in kept],
             "fallbacks": fallbacks,
             "excluded": excluded,
+            # SKILL-001 ⑥：依赖未满足被排除的技能（排除原因随行，审计可查）。
+            "excluded_skills": list((assignment.get("excluded_skills") or [])[:20]),
             "truncated": len(ranked) > ASSIGNMENT_EVENT_AGENT_CAP,
         })
     return {"mission_id": mission_id, "stages": stages}

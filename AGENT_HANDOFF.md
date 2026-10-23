@@ -144,3 +144,18 @@ CI暴露非root nginx -t使用系统缓存目录的问题；已将验证wrapper�
 本轮 Git 工作树全量回归在 `df7deb9` 完成：`1447 passed / 7 skipped / 0 failed`（215.04 秒，真实 Chromium）；缺真实模型密钥的 live probe 等跳过项仍保留。新开发包需另做从零解压验证，不能把工作树测试数字写成包内结果。
 
 从零解压的首轮包测试出现 1 项浏览器时序失败：`test_parallel_running_nodes_show_real_progress_and_reduced_motion` 在任意卡片出现后立即读取尚未渲染的运行连线。测试已改为等待目标并行节点和运行连线，原有进度/动效断言未改变；定向 Chromium 1 passed。此前失败的包不得称为通过，需重建并重跑最终包。
+
+## 2026-10-23 ZCode 接手检查点（基于 08097ae）
+
+- SKILL-001 ⑥ 依赖字段：metadata.dependencies 形状校验（≤20 条、字符串或
+  {name,version}）；路由期存在性检查（依赖被禁用视为缺失）；assign_stage
+  返回 excluded_skills（排除原因随行，不静默、不自动安装），随
+  ASSIGNMENT_RECORDED 事件落库。
+- MODEL-001 每Key计量：结局细分计数 + 上游自报 tokens + key_env 归因；
+  可选显式单价计算 estimated_cost；GET /api/v1/modelmatrix/key-usage 仅
+  admin/Owner。密钥值零暴露。
+- 验证状态：本地全量 1455 passed / 9 skipped（⑥ 检查点，无 Chromium；
+  CI 以远端为准），计量增量定向 29 passed，提交前再跑一次全量。
+- 接手过程：fd5232a 快进至 08097ae；本地 99 行 SKILL-001 ⑤⑥ WIP 经比对，
+  ⑤与上游 CAS update 端点方案重复已弃，⑥为登记册 next_action 缺口故重放；
+  WIP 全文存 facai-workspace/agent-reports/wip-skill-dep-fd5232a.patch。

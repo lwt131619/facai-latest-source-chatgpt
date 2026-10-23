@@ -620,3 +620,51 @@ class TestRoutingAuditEvents:
         page = client.get("/conversion")
         assert page.status_code == 200
         assert "实际执行者与展示不同" in page.text
+
+
+# ---------------------------------------------------------------------------
+# SKILL-001 ⑥：依赖未满足的技能退出评分——排除有据，绝不静默、绝不自动安装
+# ---------------------------------------------------------------------------
+
+class TestDependencyAwareRouting:
+    AGENTS = {"a1": {"adapter": "opencode", "name": "工程Agent"},
+              "a2": {"adapter": "goose", "name": "自动化Agent"}}
+
+    def _skills(self, deps):
+        return {"dep-skill": {"name": "dep", "description": "依赖技能",
+                              "enabled": True},
+                "main": {"name": "main", "description": "执行工作代码审查技能",
+                         "enabled": True, "dependencies": deps}}
+
+    def test_satisfied_dependency_stays_routable(self):
+        tree = assign_stage("执行工作", "", self.AGENTS, self._skills(["dep-skill"]))
+        assert tree["excluded_skills"] == []
+        assert any(row["matched_skill_id"] == "main" for row in tree["candidates"])
+
+    def test_missing_dependency_excludes_skill_with_reason(self):
+        tree = assign_stage("执行工作", "", self.AGENTS, self._skills(["ghost"]))
+        assert tree["excluded_skills"] == [
+            {"skill_id": "main", "reason": "依赖缺失 ghost"}]
+        assert all(row["matched_skill_id"] != "main" for row in tree["candidates"])
+
+    def test_disabled_dependency_counts_as_missing(self):
+        skills = self._skills(["dep-skill"])
+        skills["dep-skill"]["enabled"] = False
+        tree = assign_stage("执行工作", "", self.AGENTS, skills)
+        assert tree["excluded_skills"] == [
+            {"skill_id": "main", "reason": "依赖缺失 dep-skill"}]
+
+    def test_object_form_dependency_checked_by_name(self):
+        tree = assign_stage("执行工作", "", self.AGENTS,
+                            self._skills([{"name": "dep-skill", "version": "1.0"}]))
+        assert tree["excluded_skills"] == []
+
+    def test_exclusion_rides_into_durable_event_payload(self):
+        from facai.conversion import assignment_event_payload
+        tree = [{"stage": "执行工作",
+                 "assignment": assign_stage("执行工作", "", self.AGENTS,
+                                            self._skills(["ghost"]))}]
+        payload = assignment_event_payload(tree, mission_id="m-1")
+        stage = payload["stages"][0]
+        assert stage["excluded_skills"] == [
+            {"skill_id": "main", "reason": "依赖缺失 ghost"}]

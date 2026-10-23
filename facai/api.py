@@ -38,7 +38,7 @@ from .conversion import (AGENT_OVERRIDDEN_EVENT, ASSIGNMENT_EVENT,
                          build_assignment)
 from .execution import execute_mission_task, mission_attribution, opencode_model_ref
 from .evidence import build_proof
-from .gateway import complete
+from .gateway import complete, key_usage
 from .n8n import CALLBACK_STATUSES, N8nIntegration, N8nRelay
 from .notify import NOTIFY_CHANNELS, ChannelNotifier, owner_bot
 from . import secretbox
@@ -3267,6 +3267,39 @@ def create_app(data_dir=None, opencode_adapter=None, goose_adapter=None):
         return {"model_id": model_id,
                 "rate_limit_per_min": body.rate_limit_per_min,
                 "max_concurrency": body.max_concurrency}
+
+    @app.get("/api/v1/modelmatrix/key-usage")
+    def model_matrix_key_usage():
+        """MODEL-001 每Key计量：多Key模型按环境引用名的上游调用计数与tokens。
+
+        只报环境变量名与上游自报计数，密钥值不出现在任何字段；estimated_cost
+        仅当注册表带明确单价（price_input_per_1k/price_output_per_1k）才计算，
+        无单价返回 null——绝不发明估算依据。计数在服务进程内存里，重启清零，
+        跨进程聚合仍是登记册在记的独立缺口。"""
+        require_admin_owner()
+        report = []
+        for model_id, model in registries.list("models", owner_id=current_owner()).items():
+            refs = model.get("api_key_envs")
+            if not isinstance(refs, list) or not refs:
+                continue
+            endpoint = str(model.get("endpoint", "")).rstrip("/")
+            price_in = model.get("price_input_per_1k")
+            price_out = model.get("price_output_per_1k")
+            priced = (isinstance(price_in, (int, float)) and not isinstance(price_in, bool)
+                      and isinstance(price_out, (int, float)) and not isinstance(price_out, bool))
+            keys = {}
+            for ref, counters in key_usage(endpoint, refs).items():
+                row = dict(counters)
+                row["estimated_cost"] = (
+                    round(counters["input_tokens"] / 1000.0 * price_in
+                          + counters["output_tokens"] / 1000.0 * price_out, 6)
+                    if priced else None)
+                keys[ref] = row
+            report.append({"model_id": model_id, "endpoint": endpoint, "keys": keys,
+                           "pricing": {"input_per_1k": price_in if priced else None,
+                                       "output_per_1k": price_out if priced else None}})
+        return {"models": report,
+                "basis": "process-local counters, reset on restart; tokens are upstream-reported"}
 
     @app.post("/api/v1/scheduler/run")
     async def scheduler_run():

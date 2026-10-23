@@ -197,3 +197,88 @@ def test_array_body_without_object_or_scalar_body_becomes_empty_object():
                               "model": "demo"})
     assert result["status"] == "MODEL_COMPLETED"
     assert result["content"] is None
+
+
+# ---------------------------------------------------------------------------
+# MODEL-001 每Key计量：按环境引用名的调用/结局/tokens 计数，密钥值永不出现
+# ---------------------------------------------------------------------------
+
+from facai.gateway import key_usage
+
+
+def test_key_usage_meters_failover_per_reference(monkeypatch):
+    monkeypatch.setenv('FACAI_TEST_POOL_G', 'mock-pool-g')
+    monkeypatch.setenv('FACAI_TEST_POOL_H', 'mock-pool-h')
+    endpoint = 'https://pool-meter.test/v1'
+    model = {'provider': 'OpenAI-compatible', 'endpoint': endpoint,
+             'model': 'demo', 'api_key_envs': ['FACAI_TEST_POOL_G', 'FACAI_TEST_POOL_H']}
+
+    def handler(request):
+        if request.headers.get('authorization') == 'Bearer mock-pool-g':
+            return httpx.Response(429, json={'error': {'message': 'rate limited'}})
+        return httpx.Response(200, json={'choices': [{'message': {'content': 'ok'}}],
+                                         'usage': {'prompt_tokens': 7, 'completion_tokens': 5}})
+
+    result = invoke(handler, model)
+    assert result['status'] == 'MODEL_COMPLETED'
+    assert result['key_env'] == 'FACAI_TEST_POOL_H'  # 归因随行：这一步用的是 H
+    usage = key_usage(endpoint, ['FACAI_TEST_POOL_G', 'FACAI_TEST_POOL_H'])
+    assert usage['FACAI_TEST_POOL_G'] == {
+        'calls': 1, 'completed': 0, 'rate_limited': 1, 'auth_failed': 0,
+        'failed_other': 0, 'input_tokens': 0, 'output_tokens': 0}
+    assert usage['FACAI_TEST_POOL_H']['completed'] == 1
+    assert usage['FACAI_TEST_POOL_H']['input_tokens'] == 7
+    assert usage['FACAI_TEST_POOL_H']['output_tokens'] == 5
+    assert 'mock-pool-' not in str(usage)  # 只有变量名，绝无密钥值
+
+
+def test_key_usage_endpoint_reports_metering_with_explicit_pricing(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+    from facai.api import create_app
+    monkeypatch.setenv('FACAI_TEST_POOL_M', 'mock-pool-m')
+    monkeypatch.setenv('FACAI_TEST_POOL_N', 'mock-pool-n')
+    monkeypatch.setenv("FACAI_ADMIN_PASSWORD", "gateway-admin-pass")
+    monkeypatch.delenv("FACAI_COOKIE_SECURE", raising=False)
+    client = TestClient(create_app(tmp_path))
+    session = client.post("/api/v1/auth/login",
+                          json={"username": "admin", "password": "gateway-admin-pass"}).json()
+    client.headers.update({"X-CSRF-Token": session["csrf_token"]})
+
+    model = {'name': 'Metered', 'provider': 'OpenAI-compatible',
+             'endpoint': 'https://pool-meter-api.test/v1', 'model': 'demo',
+             'api_key_envs': ['FACAI_TEST_POOL_M', 'FACAI_TEST_POOL_N'],
+             'price_input_per_1k': 2.0, 'price_output_per_1k': 8.0}
+    assert client.put('/api/v1/registries/models/metered', json=model).status_code == 200
+    assert client.put('/api/v1/registries/models/metered-bad',
+                      json=dict(model, price_input_per_1k=-1)).status_code == 422
+    assert client.put('/api/v1/registries/models/unpriced',
+                      json={k: v for k, v in model.items()
+                            if not k.startswith('price_')}).status_code == 200
+
+    def handler(request):
+        if request.headers.get('authorization') == 'Bearer mock-pool-m':
+            return httpx.Response(429, json={'error': {'message': 'limited'}})
+        return httpx.Response(200, json={'choices': [{'message': {'content': 'ok'}}],
+                                         'usage': {'prompt_tokens': 500, 'completion_tokens': 250}})
+
+    assert invoke(handler, model)['status'] == 'MODEL_COMPLETED'
+
+    data = client.get('/api/v1/modelmatrix/key-usage').json()
+    assert 'mock-pool-' not in json.dumps(data)
+    metered = next(m for m in data['models'] if m['model_id'] == 'metered')
+    assert metered['keys']['FACAI_TEST_POOL_M']['rate_limited'] == 1
+    assert metered['keys']['FACAI_TEST_POOL_M']['estimated_cost'] == 0.0
+    n_row = metered['keys']['FACAI_TEST_POOL_N']
+    assert n_row['completed'] == 1 and n_row['input_tokens'] == 500
+    # 成本只用注册表显式单价计算：500/1000*2 + 250/1000*8 = 3.0
+    assert n_row['estimated_cost'] == 3.0
+    assert metered['pricing'] == {'input_per_1k': 2.0, 'output_per_1k': 8.0}
+    unpriced = next(m for m in data['models'] if m['model_id'] == 'unpriced')
+    assert unpriced['keys']['FACAI_TEST_POOL_N']['estimated_cost'] is None
+    assert unpriced['pricing'] == {'input_per_1k': None, 'output_per_1k': None}
+
+    # 租户不得读别人的 Key 台账
+    tenant = client.post("/api/v1/auth/register", json={
+        "username": "meter-tenant", "password": "meter-pass-1234"})
+    client.headers.update({"X-CSRF-Token": tenant.json()["csrf_token"]})
+    assert client.get('/api/v1/modelmatrix/key-usage').status_code == 403
