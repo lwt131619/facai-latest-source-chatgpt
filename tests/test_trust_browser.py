@@ -21,10 +21,13 @@ def test_intent_to_evidence_review_and_download(protected_server, playwright_api
         page = browser.new_page(viewport={'width': width, 'height': height}, accept_downloads=True)
         # Slow CI runners occasionally exceed the 30s default on browser
         # waits; patience only, assertions untouched.
-        page.set_default_timeout(60000)
-        # wait_for_function defaults to requestAnimationFrame polling; a
-        # CPU-starved runner can throttle RAF indefinitely, so every wait in
-        # this file polls on a fixed interval instead. Assertions untouched.
+        # Two independent slow-runner hazards, both patience-only fixes:
+        # (1) wait_for_function defaults to RAF polling, which a CPU-starved
+        #     runner can throttle indefinitely - fixed-interval polling;
+        # (2) the fixture server thread itself can be starved >60s under the
+        #     full-suite load (seen at two different waits on 9ef1be3/3e401ae)
+        #     - 120s patience. Assertions untouched.
+        page.set_default_timeout(120000)
         polling = dict(polling=100)
         errors = []
         page.on('pageerror', lambda error: errors.append(str(error)))
