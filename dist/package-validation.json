@@ -1,16 +1,18 @@
 {
-  "package_source_commit": "3f33b0e4b19e4013baa5705954941db4f1ff405e",
-  "package_files": 438,
-  "package_sha256": "2647e5a255b41b1e355b2616d468d9fba18c1f4a6ed2efbcf3f13799d6be1915",
+  "package_source_commit": "835e7da4b05716c4c273c63bb318ac18eaba3fd2",
+  "package_files": 439,
+  "package_sha256": "6ecbcca91e5d7668ad70a59850410972806bd06843934bac7e18df40d69a33da",
   "source_tree_dirty": false,
   "source_manifest_verified": true,
-  "full_tests_attempted": true,
-  "tests": 1456,
-  "skipped": 8,
-  "failures": 0,
-  "errors": 0,
-  "passed": 1448,
-  "seconds": 255.18,
-  "exit_code": 0,
-  "real_chromium_enabled": true
+  "full_tests_attempted": false,
+  "extracted_targeted_suites": {
+    "date": "2026-10-23",
+    "suites": [
+      "tests/test_gateway.py",
+      "tests/test_trust_workflow.py",
+      "tests/test_acceptance_closed_loop.py"
+    ],
+    "result": "47 passed / 0 failed",
+    "note": "run from the safely-unpacked archive copy, not the source tree"
+  }
 }
