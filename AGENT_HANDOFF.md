@@ -159,3 +159,6 @@ CI暴露非root nginx -t使用系统缓存目录的问题；已将验证wrapper�
 - 接手过程：fd5232a 快进至 08097ae；本地 99 行 SKILL-001 ⑤⑥ WIP 经比对，
   ⑤与上游 CAS update 端点方案重复已弃，⑥为登记册 next_action 缺口故重放；
   WIP 全文存 facai-workspace/agent-reports/wip-skill-dep-fd5232a.patch。
+- RUNTIME-001 A10 Agent 级计量：agent_progress() 派发归因 × 事件结局 ×
+  jobs 运行态，与 Trace 重放同源；GET /api/v1/fleet/agent-progress 仅
+  admin/Owner。上一检查点 43b9aeb 已远端 CI 绿。

@@ -1307,6 +1307,55 @@ class Store:
         with self.connect() as db:
             return db.execute("SELECT COUNT(*) FROM jobs WHERE status='RUNNING'").fetchone()[0]
 
+    def agent_progress(self):
+        """A10: per-agent metered progress, derived only from durable records.
+
+        归因来自 DISPATCH_QUEUED 事件（每任务恰好一次派发归因，稳定不漂移），结局
+        来自同一事件日志的 JOB_COMPLETED/JOB_FAILED，运行中来自 jobs 表——
+        与 Trace 重放同源，事件一致。运行中未完成的任务只压低百分比，绝不
+        发明进度；没有派发归因的排队任务不计入任何 Agent。"""
+        with self.connect() as db:
+            attributions = {}
+            for row in db.execute("SELECT payload FROM events WHERE type='DISPATCH_QUEUED'"):
+                try:
+                    payload = json.loads(row["payload"] or "{}")
+                except ValueError:
+                    continue
+                job_id, agent_id = payload.get("job_id"), payload.get("agent_id")
+                if isinstance(job_id, str) and isinstance(agent_id, str) and agent_id:
+                    attributions[job_id] = agent_id
+            completed, failed = set(), set()
+            for row in db.execute(
+                    "SELECT type, payload FROM events"
+                    " WHERE type IN ('JOB_COMPLETED','JOB_FAILED')"):
+                try:
+                    payload = json.loads(row["payload"] or "{}")
+                except ValueError:
+                    continue
+                job_id = payload.get("job_id")
+                if isinstance(job_id, str):
+                    (completed if row["type"] == "JOB_COMPLETED" else failed).add(job_id)
+            running = {r["id"] for r in db.execute(
+                "SELECT id FROM jobs WHERE status='RUNNING'")}
+        agents = {}
+        for job_id, agent_id in attributions.items():
+            row = agents.setdefault(agent_id, {"agent_id": agent_id, "assigned": 0,
+                                               "completed": 0, "failed": 0, "running": 0})
+            row["assigned"] += 1
+            if job_id in completed:
+                row["completed"] += 1
+            elif job_id in failed:
+                row["failed"] += 1
+            elif job_id in running:
+                row["running"] += 1
+        for row in agents.values():
+            row["progress_measured"] = (round(100.0 * row["completed"] / row["assigned"], 2)
+                                        if row["assigned"] else 0.0)
+            row["progress_basis"] = {"unit": "completed_jobs_of_attributed_jobs",
+                                     "completed": row["completed"],
+                                     "assigned": row["assigned"]}
+        return sorted(agents.values(), key=lambda item: item["agent_id"])
+
     def update_job_prompt(self, job_id, prompt, owner_id=None, *,
                           source_event_id=None, gate_id=None):
         """Rewrite one QUEUED job's prompt, keeping its identity.

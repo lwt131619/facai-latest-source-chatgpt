@@ -3301,6 +3301,18 @@ def create_app(data_dir=None, opencode_adapter=None, goose_adapter=None):
         return {"models": report,
                 "basis": "process-local counters, reset on restart; tokens are upstream-reported"}
 
+    @app.get("/api/v1/fleet/agent-progress")
+    def fleet_agent_progress():
+        """A10 Agent 级可计量单位：按派发归因的任务账（仅 admin/Owner）。
+
+        分子分母都来自事件/任务表，与 Trace 重放同源（事件一致）；运行中未
+        完成的任务只压低百分比，绝不发明进度。无派发归因的排队任务不计入
+        任何 Agent——没有分母的 Agent 根本不出现，而不是显示一个假数。"""
+        require_admin_owner()
+        return {"agents": app.state.store.agent_progress(),
+                "basis": "attributed jobs from the durable event log;"
+                         " no timer-derived values, station-wide"}
+
     @app.post("/api/v1/scheduler/run")
     async def scheduler_run():
         # The manual tick pumps EVERY owner's queued jobs; it is an operator

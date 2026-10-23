@@ -354,7 +354,7 @@
         "线程/CLI进程/模型并发分别计量，OpenCode默认串行不默默移除",
         "同任务分支隔离/超时/失败/取消/结果幂等有证据"
       ],
-      "next_action": "受控适配器实测+车队上限修复已入库(d28e996):24独立任务/4worker零双重认领;FACAI_MAX_RUNNING_JOBS三层确定性测试钉死。真实CLI实弹已入库(scripts/smoke_local.py 11/11两连跑;scripts/smoke_fleet.py 16/16:4真实任务并发派发6.5秒全COMPLETED,零双重认领,产物逐一精确匹配,4行成本记账)。真实CLI崩溃恢复实弹已入库(scripts/smoke_recovery.py 8/8):死worker以已过期租约认领后消失→peer恢复恰好重排一次(JOB_REQUEUED事件钉住,attempts 0→1)→真CLI补跑COMPLETED,恰好1次OPENCODE_STARTED,产物r0.txt内容精确匹配,1行成本记账。剩余:20+真实并发规模(需真实配额支撑);调度并发2/上限8/同任务3不变。"
+      "next_action": "受控适配器实测+车队上限修复已入库(d28e996):24独立任务/4worker零双重认领;FACAI_MAX_RUNNING_JOBS三层确定性测试钉死。真实CLI实弹已入库(scripts/smoke_local.py 11/11两连跑;scripts/smoke_fleet.py 16/16:4真实任务并发派发6.5秒全COMPLETED,零双重认领,产物逐一精确匹配,4行成本记账)。真实CLI崩溃恢复实弹已入库(scripts/smoke_recovery.py 8/8):死worker以已过期租约认领后消失→peer恢复恰好重排一次(JOB_REQUEUED事件钉住,attempts 0→1)→真CLI补跑COMPLETED,恰好1次OPENCODE_STARTED,产物r0.txt内容精确匹配,1行成本记账。剩余:20+真实并发规模(需真实配额支撑);调度并发2/上限8/同任务3不变。Agent级可计量单位已入库(2026-10-23):store.agent_progress()按DISPATCH_QUEUED事件归因(每任务恰好一次、稳定不漂移),结局取同一事件日志的JOB_COMPLETED/JOB_FAILED,运行中取jobs表,与Trace重放同源(事件一致);progress_measured=completed_jobs_of_attributed_jobs两位小数,运行中未完成任务只压低百分比绝不发明;无派发归因的任务不进入任何Agent的账;GET /api/v1/fleet/agent-progress仅admin/Owner,站点口径(tests/test_progress.py::test_agent_progress_is_attributed_and_measured/test_attribution_is_stable_and_completion_lands_on_dispatcher/test_fleet_agent_progress_requires_admin_session);控制台展示该口径为后续项。"
     },
     {
       "id": "OPS-001",

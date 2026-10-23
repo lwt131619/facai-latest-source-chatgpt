@@ -203,3 +203,60 @@ def test_running_step_progress_reflects_checkpoint_milestone(tmp_path):
     store.step_status(mission["id"], step_id, "COMPLETED")
     done = store.get(mission["id"])
     assert done["steps"][0]["progress"] == 100
+
+
+# --- A10: Agent 级可计量单位（派发归因 × 事件结局，零时间推演）---------------
+
+def test_agent_progress_is_attributed_and_measured(tmp_path):
+    client = make_client(tmp_path)
+    mission = create(client, "车队计量", ["规划", "执行", "验收"])
+    store = client.app.state.store
+    j1 = store.enqueue_job(mission["id"], "p1", dispatch={"agent_id": "alpha"})
+    j2 = store.enqueue_job(mission["id"], "p2", dispatch={"agent_id": "alpha"})
+    j3 = store.enqueue_job(mission["id"], "p3", dispatch={"agent_id": "beta"})
+    store.enqueue_job(mission["id"], "p4")  # 无派发归因：不进入任何 Agent 的账
+    store.finish_job(j1["id"], "COMPLETED")
+    store.finish_job(j2["id"], "FAILED")
+    claimed = store.claim_job("worker-1", 60)
+    assert claimed["id"] == j3["id"]  # beta 的任务进入 RUNNING
+
+    agents = {row["agent_id"]: row for row in store.agent_progress()}
+    assert set(agents) == {"alpha", "beta"}  # 未归因任务不制造假分母
+    assert agents["alpha"] == {
+        "agent_id": "alpha", "assigned": 2, "completed": 1, "failed": 1,
+        "running": 0, "progress_measured": 50.0,
+        "progress_basis": {"unit": "completed_jobs_of_attributed_jobs",
+                           "completed": 1, "assigned": 2}}
+    assert agents["beta"]["assigned"] == 1 and agents["beta"]["running"] == 1
+    assert agents["beta"]["progress_measured"] == 0.0  # 运行中只压低，不发明
+
+
+def test_attribution_is_stable_and_completion_lands_on_dispatcher(tmp_path):
+    client = make_client(tmp_path)
+    mission = create(client, "归因稳定", ["执行", "复核"])
+    store = client.app.state.store
+    job = store.enqueue_job(mission["id"], "p", dispatch={"agent_id": "goose"})
+    store.enqueue_job(mission["id"], "p2", dispatch={"agent_id": "opencode"})
+    store.finish_job(job["id"], "COMPLETED")
+    agents = {row["agent_id"]: row for row in store.agent_progress()}
+    # 每个任务只有一次 DISPATCH_QUEUED 归因：结局记在派发者名下，不漂移
+    assert agents["goose"]["completed"] == 1
+    assert agents["opencode"]["assigned"] == 1
+    assert agents["opencode"]["completed"] == 0  # 仍在队列，不得预支完成数
+
+
+def test_fleet_agent_progress_requires_admin_session(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+    from facai.api import create_app
+    monkeypatch.setenv("FACAI_ADMIN_PASSWORD", "fleet-admin-pass")
+    monkeypatch.delenv("FACAI_COOKIE_SECURE", raising=False)
+    client = TestClient(create_app(tmp_path))
+    session = client.post("/api/v1/auth/login",
+                          json={"username": "admin", "password": "fleet-admin-pass"}).json()
+    client.headers.update({"X-CSRF-Token": session["csrf_token"]})
+    assert client.get("/api/v1/fleet/agent-progress").status_code == 200
+    tenant = client.post("/api/v1/auth/register", json={
+        "username": "fleet-tenant", "password": "fleet-pass-1234"})
+    assert tenant.status_code == 201
+    client.headers.update({"X-CSRF-Token": tenant.json()["csrf_token"]})
+    assert client.get("/api/v1/fleet/agent-progress").status_code == 403
