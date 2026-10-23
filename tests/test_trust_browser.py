@@ -29,6 +29,23 @@ def test_intent_to_evidence_review_and_download(protected_server, playwright_api
         #     - 120s patience. Assertions untouched.
         page.set_default_timeout(120000)
         polling = dict(polling=100)
+
+        def wait_for(expression):
+            # CI-only timeouts on this test left no page-side evidence; dump the
+            # live page state (#message carries the API error text) so the next
+            # failure explains itself instead of costing another blind rerun.
+            try:
+                page.wait_for_function(expression, **polling)
+            except Exception:
+                dump = {}
+                for field in ('#message', '#revision', '#state'):
+                    try:
+                        dump[field] = page.locator(field).inner_text(timeout=2000)
+                    except Exception:
+                        dump[field] = '<unavailable>'
+                print(f'TIMEOUT EVIDENCE {expression!r} page={dump} js_errors={errors}',
+                      flush=True)
+                raise
         errors = []
         page.on('pageerror', lambda error: errors.append(str(error)))
         page.goto(protected_server+'/login?next=%2Fworkspace')
@@ -38,10 +55,10 @@ def test_intent_to_evidence_review_and_download(protected_server, playwright_api
         page.wait_for_url('**/workspace')
         page.fill('#request', '分析这个项目')
         page.click('#compile button')
-        page.wait_for_function("document.querySelector('#state').textContent.includes('NEED_CONTEXT')", **polling)
+        wait_for("document.querySelector('#state').textContent.includes('NEED_CONTEXT')")
         page.fill('#action', 'analyze'); page.fill('#target', '/owner/project')
         page.click('#save')
-        page.wait_for_function("document.querySelector('#revision').textContent.includes('Revision 2')", **polling)
+        wait_for("document.querySelector('#revision').textContent.includes('Revision 2')")
         page.click('#confirm')
         page.wait_for_selector('#mission:not(.hidden)')
         mission_id = page.locator('#open-mission').get_attribute('href').split('mission=')[1]
@@ -52,19 +69,19 @@ def test_intent_to_evidence_review_and_download(protected_server, playwright_api
         page.fill('#source', 'Local Owner observation, not external attestation')
         page.fill('#content', 'Local version output says 1')
         page.click('#note button')
-        page.wait_for_function("document.querySelector('#revision').textContent.includes('Revision 1')", **polling)
+        wait_for("document.querySelector('#revision').textContent.includes('Revision 1')")
         evidence_id = page.locator('#links option').first.get_attribute('value')
         page.fill('#statement', '<script>untrusted claim</script> version is 1')
         page.fill('#subject', 'project'); page.fill('#predicate', 'version'); page.fill('#value', '1')
         page.select_option('#links', evidence_id)
         page.click('#claim button')
-        page.wait_for_function("document.querySelector('#revision').textContent.includes('Revision 2')", **polling)
+        wait_for("document.querySelector('#revision').textContent.includes('Revision 2')")
         assert 'UNKNOWN' in page.locator('#claims').inner_text()
         assert page.locator('#claims script').count() == 0
         page.locator('#claims select').select_option('INFERENCE')
         page.locator('#claims input').fill('Explicit Owner review of local note; independently unverified')
         page.get_by_role('button',name='Owner 提交审查',exact=True).click()
-        page.wait_for_function("document.querySelector('#revision').textContent.includes('Revision 3')", **polling)
+        wait_for("document.querySelector('#revision').textContent.includes('Revision 3')")
         assert 'INFERENCE' in page.locator('#claims').inner_text()
         page.click('#snapshot')
         page.wait_for_selector('#proofs a.download')
