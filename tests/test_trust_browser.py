@@ -45,9 +45,23 @@ def test_intent_to_evidence_review_and_download(protected_server, playwright_api
                         dump[field] = '<unavailable>'
                 print(f'TIMEOUT EVIDENCE {expression!r} page={dump} js_errors={errors}',
                       flush=True)
+                print(f'TIMEOUT EVIDENCE intents_traffic={traffic}',
+                      flush=True)
+                print(f'TIMEOUT EVIDENCE navigations={navigations}', flush=True)
                 raise
         errors = []
         page.on('pageerror', lambda error: errors.append(str(error)))
+        # CI-only failure forensics v2: every /intents response (status + body
+        # head) and any frame navigation - distinguishes 403/409/200-with-
+        # revision-1/reload without another blind rerun.
+        traffic = []
+        page.on('response', lambda response: traffic.append(
+            f'{response.status} {response.url[-40:]} '
+            + (response.text()[:120] if response.url.endswith('/intents')
+               or '/intents/' in response.url else '')) if '/intents' in response.url else None)
+        navigations = []
+        page.on('framenavigated', lambda frame: navigations.append(frame.url)
+                if frame == page.main_frame else None)
         page.goto(protected_server+'/login?next=%2Fworkspace')
         page.fill('input[name="username"]', 'admin')
         page.fill('input[name="password"]', 'mobile-pass')
