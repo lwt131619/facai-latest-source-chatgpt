@@ -67,6 +67,11 @@ TRUST_SCHEMA_STATEMENTS = (
          id TEXT PRIMARY KEY, mission_id TEXT NOT NULL REFERENCES missions(id),
          document TEXT NOT NULL, created_at TEXT NOT NULL)''',
     'CREATE INDEX IF NOT EXISTS trust_claims_mission ON trust_claims(mission_id)',
+    '''CREATE TABLE IF NOT EXISTS trust_adjudications (
+         id TEXT PRIMARY KEY, mission_id TEXT NOT NULL REFERENCES missions(id),
+         left_claim_id TEXT NOT NULL, right_claim_id TEXT NOT NULL,
+         document TEXT NOT NULL, created_at TEXT NOT NULL)''',
+    'CREATE INDEX IF NOT EXISTS trust_adjudications_mission ON trust_adjudications(mission_id)',
     '''CREATE TABLE IF NOT EXISTS trust_reviews (
          id TEXT PRIMARY KEY, mission_id TEXT NOT NULL REFERENCES missions(id),
          claim_id TEXT NOT NULL REFERENCES trust_claims(id),
@@ -351,6 +356,86 @@ class TrustStore:
             self._event(db, mission_id, 'TRUST_CLAIM_REVIEWED', owner, claim_id=claim_id, verdict=verdict)
         return {'review': record, 'revision': revision + 1}
 
+    ADJUDICATION_OUTCOMES = ('CONTEXT_DIFFERENCE', 'OWNER_RESOLVED')
+
+    def adjudicate(self, owner, mission_id, revision, left_claim_id, right_claim_id,
+                   outcome, note):
+        """TRUST-001: the explicit human exit for a DISPUTED pair.
+
+        DISPUTED 保持纯派生状态（同题断言不同值且未撤回），人工不直接把某条
+        断言写成 DISPUTED；Owner 的出口是对“这一对冲突”记一次裁决：
+        CONTEXT_DIFFERENCE＝语境不同不是真分歧；OWNER_RESOLVED＝Owner 复核
+        两边证据后记录取舍，落败一方仍应由 Owner 显式撤回（retract 保留历史）
+        或改判——裁决不替代这两条纪律，只是让冲突不再把双方钉死在 DISPUTED。
+        验收闸不因裁决放松：active claims 仍须逐条有 FACT/INFERENCE 审查。"""
+        if outcome not in self.ADJUDICATION_OUTCOMES:
+            raise TrustError(422, 'Adjudication outcome must be one of '
+                                   + ', '.join(self.ADJUDICATION_OUTCOMES))
+        text(note, 'note')
+        with self._change(owner, mission_id, revision) as db:
+            self._capacity(db, 'trust_adjudications', mission_id, 200)
+            pair = []
+            for claim_id in (left_claim_id, right_claim_id):
+                row = db.execute('SELECT document FROM trust_claims WHERE id=? AND mission_id=?',
+                                 (claim_id, mission_id)).fetchone()
+                if row is None:
+                    raise TrustError(404, 'Claim not found')
+                pair.append(json.loads(row['document']))
+            if classify_conflict(pair[0], pair[1]) is None:
+                raise TrustError(422, 'Adjudication requires a real conflict pair')
+            record = {'id': uuid4().hex, 'left_claim_id': left_claim_id,
+                      'right_claim_id': right_claim_id, 'outcome': outcome,
+                      'note': note, 'adjudicator': owner, 'created_at': now(),
+                      'values': {left_claim_id: pair[0]['value'],
+                                 right_claim_id: pair[1]['value']}}
+            db.execute('INSERT INTO trust_adjudications VALUES (?,?,?,?,?,?)',
+                       (record['id'], mission_id, left_claim_id, right_claim_id,
+                        canonical(record), now()))
+            self._event(db, mission_id, 'TRUST_ADJUDICATION_RECORDED', owner,
+                        adjudication_id=record['id'], outcome=outcome,
+                        left_claim_id=left_claim_id, right_claim_id=right_claim_id)
+        return {'adjudication': record, 'revision': revision + 1}
+
+    def cross_mission_conflicts(self, owner, limit=50):
+        """TRUST-001: same (subject, predicate), different values, across the
+        owner's missions. Retracted claims never participate. Bounded pairs;
+        within-mission pairs stay in each mission's own conflicts list."""
+        if not 1 <= limit <= 200:
+            raise TrustError(422, 'Invalid limit')
+        with self.store.connect() as db:
+            claims, retracted = [], set()
+            for row in db.execute(
+                    'SELECT c.document, c.mission_id, r.claim_id AS retracted'
+                    ' FROM trust_claims c JOIN missions m ON m.id=c.mission_id'
+                    ' LEFT JOIN trust_retractions r ON r.claim_id=c.id'
+                    ' WHERE m.owner_id=?', (owner,)):
+                document = json.loads(row['document'])
+                if row['retracted']:
+                    retracted.add(document['id'])
+                claims.append((document, row['mission_id']))
+        active = [item for item in claims if item[0]['id'] not in retracted]
+        groups = {}
+        for document, mission_id in active:
+            groups.setdefault((document['subject'], document['predicate']), []).append(
+                (document, mission_id))
+        conflicts = []
+        for members in groups.values():
+            for i, (left, left_mission) in enumerate(members):
+                for right, right_mission in members[i+1:]:
+                    if left_mission == right_mission:
+                        continue  # 同使命内的冲突由该使命自己的 conflicts 呈现
+                    result = classify_conflict(left, right)
+                    if result:
+                        conflicts.append({
+                            'left': {'claim_id': left['id'], 'mission_id': left_mission,
+                                     'value': left['value'], 'context': left['context']},
+                            'right': {'claim_id': right['id'], 'mission_id': right_mission,
+                                      'value': right['value'], 'context': right['context']},
+                            **result})
+                        if len(conflicts) >= limit:
+                            return conflicts
+        return conflicts
+
     def retract(self, owner, mission_id, revision, claim_id, reason):
         """Withdraw applicability, not history or a conflicting source's existence."""
         text(reason, 'reason')
@@ -425,14 +510,28 @@ class TrustStore:
         last_review = {review['claim_id']: review for review in reviews}
         retractions = {row['claim_id']: json.loads(row['document']) for row in db.execute(
             'SELECT claim_id,document FROM trust_retractions WHERE mission_id=?', (mission_id,))}
+        adjudications = [json.loads(row['document']) for row in db.execute(
+            'SELECT document FROM trust_adjudications WHERE mission_id=? ORDER BY rowid', (mission_id,))]
+        adjudicated_pairs = {frozenset((a['left_claim_id'], a['right_claim_id'])): a
+                             for a in adjudications}
         conflicts = []
         for i, left in enumerate(claims):
             for right in claims[i+1:]:
                 conflict = classify_conflict(left, right)
                 if conflict:
+                    active = left['id'] not in retractions and right['id'] not in retractions
+                    record = adjudicated_pairs.get(frozenset((left['id'], right['id'])))
                     conflicts.append({'left': left['id'], 'right': right['id'],
-                                      'active': left['id'] not in retractions and right['id'] not in retractions, **conflict})
-        disputed = {id for c in conflicts if c['active'] and c['classification'] in {'DIRECT_CONFLICT', 'REVIEW'}
+                                      'active': active, **conflict,
+                                      'adjudicated': bool(record),
+                                      **({'adjudication': {
+                                          'outcome': record['outcome'], 'note': record['note'],
+                                          'adjudicator': record['adjudicator'],
+                                          'created_at': record['created_at']}} if record else {})})
+        # TRUST-001：已裁决的冲突对不再强制 DISPUTED——Owner 的人工出口在案
+        # （理由、时间、裁决人），断言状态回落到各自的 review verdict。
+        disputed = {id for c in conflicts if c['active'] and not c['adjudicated']
+                    and c['classification'] in {'DIRECT_CONFLICT', 'REVIEW'}
                     for id in (c['left'], c['right'])}
         for claim in claims:
             review = last_review.get(claim['id'])
@@ -494,6 +593,7 @@ class TrustStore:
         return {'schema_version': 1, 'mission_id': mission_id, 'trace_id': mission_id,
                 'revision': revision, 'snapshot_token': token, 'evidence': evidence,
                 'claims': claims, 'reviews': reviews, 'conflicts': conflicts,
+                'adjudications': adjudications,
                 'source_trust': {'schema_version': 1, 'tiers': tiers, 'registry': registry,
                                  'notice': 'Annotation only; source tiers derive from the latest human verification '
                                            'record, never from automated fetching, and never affect verdicts, '

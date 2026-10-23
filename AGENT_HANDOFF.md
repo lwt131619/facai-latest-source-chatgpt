@@ -169,3 +169,6 @@ CI暴露非root nginx -t使用系统缓存目录的问题；已将验证wrapper�
 - MODEL-001 跨进程共享冷却：`model_key_cooldowns` SQLite 表 + 每 app 自持
   `KeyRotation(store)`（内存快路径 + 后端诚实合并）；CLI 统一接线与真实
   Provider 验收仍缺。
+- TRUST-001：DISPUTED 人工裁决出口（trust_adjudications + adjudicate，
+  冲突对裁决后不再强制 DISPUTED，验收闸不放松）+ 跨 Mission 冲突检测
+  （cross_mission_conflicts + GET /api/v1/trust/conflicts）。

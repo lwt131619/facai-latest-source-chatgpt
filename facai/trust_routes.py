@@ -43,6 +43,13 @@ class VerificationBody(Revision):
     note: str = Field(default='', max_length=2000)
 
 
+class AdjudicateBody(Revision):
+    left_claim_id: str = Field(min_length=1, max_length=100)
+    right_claim_id: str = Field(min_length=1, max_length=100)
+    outcome: str = Field(min_length=1, max_length=50)
+    note: str = Field(min_length=1, max_length=2000)
+
+
 class AcceptBody(BaseModel):
     sha256: str = Field(pattern=r'^[0-9a-f]{64}$')
     reason: str = Field(min_length=1, max_length=2000)
@@ -124,6 +131,17 @@ def router_for(store, owner, require_mission, human_writer):
     @router.post('/api/v1/missions/{mission_id}/trust/proofs', status_code=201)
     def proof(mission_id: str, body: Revision):
         return call(service.snapshot, owner(), mission_id, body.expected_revision)
+
+    @router.post('/api/v1/missions/{mission_id}/trust/adjudications', status_code=201)
+    def adjudicate(mission_id: str, body: AdjudicateBody, request: Request):
+        # 同 Owner 审查门：自动化键不得冒充 Owner 的冲突裁决。
+        human_writer(request)
+        return call(service.adjudicate, owner(), mission_id, body.expected_revision,
+                    body.left_claim_id, body.right_claim_id, body.outcome, body.note)
+
+    @router.get('/api/v1/trust/conflicts')
+    def cross_mission_conflicts(limit: int = Query(default=50, ge=1, le=200)):
+        return {'conflicts': call(service.cross_mission_conflicts, owner(), limit)}
 
     @router.post('/api/v1/missions/{mission_id}/trust/claims/{claim_id}/retract', status_code=201)
     def retract(mission_id: str, claim_id: str, body: RetractBody, request: Request):

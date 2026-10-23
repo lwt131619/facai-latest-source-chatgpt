@@ -25,12 +25,12 @@ def mission(tmp_path, owner='alice'):
     return store, TrustStore(store), id
 
 
-def claim(service, id, revision, evidence_ids=(), **changes):
+def claim(service, id, revision, evidence_ids=(), owner='alice', **changes):
     fields = {'statement': '版本为 1', 'subject': 'project', 'predicate': 'version', 'value': '1',
               'context': {'time': '2026-10-16', 'scope': 'core', 'environment': 'local', 'definition': 'release'},
               'evidence_ids': evidence_ids}
     fields.update(changes)
-    return service.add_claim('alice', id, revision, **fields)
+    return service.add_claim(owner, id, revision, **fields)
 
 
 def reviewed(service, id):
@@ -492,3 +492,155 @@ def test_auto_and_manual_collection_coexist(tmp_path):
         service.add_evidence('alice', id, state['revision'], event_id=auto_id)
     final = service.get('alice', id)
     assert len(final['evidence']) == 2 and final['revision'] == state['revision']
+
+
+# ---------------------------------------------------------------------------
+# TRUST-001：DISPUTED 人工裁决出口 + 跨 Mission 冲突检测
+# ---------------------------------------------------------------------------
+
+class TestAdjudication:
+    def _disputed_mission(self, tmp_path, owner='alice'):
+        store = Store(tmp_path)
+        intents = IntentWorkspace(store)
+        intent = intents.compile(owner, '分析项目\n', {
+            'action': 'analyze', 'target': '/p', 'purpose': '评估',
+            'scope': 'comprehensive', 'constraints': []})
+        mission_id = intents.confirm(owner, intent['id'], 1)['mission_id']
+        service = TrustStore(store)
+        revision = service.get(owner, mission_id)['revision']
+        e1 = service.add_evidence(owner, mission_id, revision,
+                                  content='观测一：version=1', source='Owner')
+        e2 = service.add_evidence(owner, mission_id, revision + 1,
+                                  content='观测二：version=2', source='Owner')
+        left = claim(service, mission_id, service.get(owner, mission_id)['revision'],
+                     value='1', evidence_ids=[e1['evidence']['id']])
+        right = claim(service, mission_id, service.get(owner, mission_id)['revision'],
+                      value='2', statement='版本为 2', evidence_ids=[e2['evidence']['id']])
+        return store, service, mission_id, left['claim']['id'], right['claim']['id']
+
+    def test_adjudication_frees_disputed_pair_with_record(self, tmp_path):
+        store, service, mission_id, left_id, right_id = self._disputed_mission(tmp_path)
+        state = service.get('alice', mission_id)
+        both = {c['id']: c for c in state['claims']}
+        assert both[left_id]['status'] == 'DISPUTED' == both[right_id]['status']
+        assert state['conflicts'] and state['conflicts'][0]['adjudicated'] is False
+
+        revision = state['revision']
+        service.review('alice', mission_id, revision, left_id,
+                       verdict='INFERENCE', reason='本地观测，无外部来源')
+        service.review('alice', mission_id, revision + 1, right_id,
+                       verdict='INFERENCE', reason='另一时点观测，无外部来源')
+        still = service.get('alice', mission_id)
+        both = {c['id']: c for c in still['claims']}
+        assert both[left_id]['status'] == 'DISPUTED'  # 冲突未裁决，审查也解不开
+
+        done = service.adjudicate('alice', mission_id, still['revision'], left_id,
+                                  right_id, 'CONTEXT_DIFFERENCE',
+                                  '两次观测的 time/scope 语境不同，不是同一命题')
+        assert done['adjudication']['outcome'] == 'CONTEXT_DIFFERENCE'
+        freed = service.get('alice', mission_id)
+        both = {c['id']: c for c in freed['claims']}
+        assert both[left_id]['status'] == 'INFERENCE'  # 回落到各自审查结论
+        assert both[right_id]['status'] == 'INFERENCE'
+        conflict = next(c for c in freed['conflicts']
+                        if {c['left'], c['right']} == {left_id, right_id})
+        assert conflict['adjudicated'] is True
+        assert conflict['adjudication']['outcome'] == 'CONTEXT_DIFFERENCE'
+        assert freed['adjudications'] and freed['adjudications'][0]['note']
+        types = [e['type'] for e in store.events(mission_id)]
+        assert 'TRUST_ADJUDICATION_RECORDED' in types
+
+    def test_adjudication_requires_a_real_conflict_pair(self, tmp_path):
+        store, service, mission_id, left_id, right_id = self._disputed_mission(tmp_path)
+        evidence = service.add_evidence('alice', mission_id, service.get('alice', mission_id)['revision'],
+                                        content='无冲突证据', source='Owner')
+        third = claim(service, mission_id,
+                      service.get('alice', mission_id)['revision'], value='9',
+                      statement='无关断言', subject='other', predicate='kind')
+        with pytest.raises(TrustError) as error:
+            service.adjudicate('alice', mission_id, service.get('alice', mission_id)['revision'],
+                               left_id, third['claim']['id'], 'OWNER_RESOLVED', '并非冲突对')
+        assert error.value.status == 422
+
+
+class TestCrossMissionConflicts:
+    def _two_missions(self, tmp_path):
+        store = Store(tmp_path)
+        intents = IntentWorkspace(store)
+        service = TrustStore(store)
+        ids = []
+        for title in ('一号', '二号'):
+            intent = intents.compile('alice', f'{title}\n', {
+                'action': 'analyze', 'target': '/p', 'purpose': '评估',
+                'scope': 'comprehensive', 'constraints': []})
+            ids.append(intents.confirm('alice', intent['id'], 1)['mission_id'])
+        claim(service, ids[0], service.get('alice', ids[0])['revision'],
+              value='1', statement='版本 1')
+        claim(service, ids[1], service.get('alice', ids[1])['revision'],
+              value='2', statement='版本 2')
+        return store, service, ids
+
+    def test_same_owner_cross_mission_pair_is_detected(self, tmp_path):
+        store, service, ids = self._two_missions(tmp_path)
+        conflicts = service.cross_mission_conflicts('alice')
+        assert len(conflicts) == 1
+        pair = {conflicts[0]['left']['mission_id'], conflicts[0]['right']['mission_id']}
+        assert pair == set(ids)
+        assert {conflicts[0]['left']['value'], conflicts[0]['right']['value']} == {'1', '2'}
+
+    def test_other_owner_sees_nothing_and_retracted_leaves(self, tmp_path):
+        store, service, ids = self._two_missions(tmp_path)
+        assert service.cross_mission_conflicts('bob') == []
+        state = service.get('alice', ids[1])
+        losing = next(c for c in state['claims'] if c['value'] == '2')
+        service.retract('alice', ids[1], state['revision'], losing['id'],
+                        '以一号任务为准，二号观测作废')
+        assert service.cross_mission_conflicts('alice') == []
+
+
+class TestAdjudicationRoutes:
+    def test_endpoints_gates_and_shapes(self, tmp_path, monkeypatch):
+        from fastapi.testclient import TestClient
+        from facai.api import create_app
+        monkeypatch.setenv('FACAI_ADMIN_PASSWORD', 'adj-admin-pass')
+        monkeypatch.delenv('FACAI_COOKIE_SECURE', raising=False)
+        client = TestClient(create_app(tmp_path))
+        session = client.post('/api/v1/auth/login',
+                              json={'username': 'admin', 'password': 'adj-admin-pass'}).json()
+        client.headers.update({'X-CSRF-Token': session['csrf_token']})
+
+        created = client.post('/api/v1/missions', json={
+            'title': '裁决', 'original_input': '裁决', 'steps': ['执行']})
+        mission_id = created.json()['id']
+        store = client.app.state.store
+        service = TrustStore(store)
+        revision = service.get('admin', mission_id)['revision']
+        ev = service.add_evidence('admin', mission_id, revision,
+                                  content='观测：version=1', source='Owner')
+        left = claim(service, mission_id, service.get('admin', mission_id)['revision'],
+                     value='1', owner='admin', evidence_ids=[ev['evidence']['id']])
+        right = claim(service, mission_id, service.get('admin', mission_id)['revision'],
+                      value='2', statement='版本 2', owner='admin',
+                      evidence_ids=[ev['evidence']['id']])
+
+        listing = client.get('/api/v1/trust/conflicts')
+        assert listing.status_code == 200 and listing.json()['conflicts'] == []
+
+        revision = service.get('admin', mission_id)['revision']
+        posted = client.post(f'/api/v1/missions/{mission_id}/trust/adjudications', json={
+            'expected_revision': revision,
+            'left_claim_id': left['claim']['id'], 'right_claim_id': right['claim']['id'],
+            'outcome': 'OWNER_RESOLVED', 'note': '以 value=1 为准，2 为误读'})
+        assert posted.status_code == 201, posted.text
+        state = service.get('admin', mission_id)
+        assert state['conflicts'][0]['adjudicated'] is True
+
+        tenant = client.post('/api/v1/auth/register', json={
+            'username': 'adj-tenant', 'password': 'adj-pass-1234'})
+        assert tenant.status_code == 201
+        client.headers.update({'X-CSRF-Token': tenant.json()['csrf_token']})
+        foreign = client.post(f'/api/v1/missions/{mission_id}/trust/adjudications', json={
+            'expected_revision': state['revision'],
+            'left_claim_id': left['claim']['id'], 'right_claim_id': right['claim']['id'],
+            'outcome': 'OWNER_RESOLVED', 'note': 'x'})
+        assert foreign.status_code in (403, 404)
