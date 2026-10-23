@@ -735,3 +735,47 @@ def test_mobile_me_tab_keeps_channel_binding_form_an_honest_static_demo():
     # apiRequest 层（登录/下单/进度/绑定），真实端点字面量由 test_mobile_surface 钉住。
     assert "apiRequest(" in html
 
+
+
+def test_command_center_pins_real_metering_fields_and_honest_empty_states():
+    """MODEL-001 每Key计量 + A10 车队计量：抽屉面板字段必须钉在真实 API 快照
+    字段上（key-usage / fleet agent-progress），空态诚实（无分母不显示数），
+    口径文案写明计数来源；成本无单价显示 —，不发明估价。"""
+    html = (Path(__file__).resolve().parents[1] / "facai" / "static" /
+            "command-center.html").read_text(encoding="utf-8")
+    assert '"/api/v1/modelmatrix/key-usage"' in html
+    assert '"/api/v1/fleet/agent-progress"' in html
+    for field in ("calls", "completed", "rate_limited", "auth_failed",
+                  "input_tokens", "output_tokens", "estimated_cost",
+                  "assigned", "failed", "running", "progress_measured"):
+        assert field in html, f"missing metering field: {field}"
+    assert "进程内计数，重启清零" in html
+    assert "tokens 为上游自报" in html
+    assert "completed_jobs_of_attributed_jobs" in html
+    assert "没有分母的 Agent 不显示" in html
+    assert "没有每Key分母就不显示数" in html
+    assert 'estimated_cost == null ? "—"' in html
+
+
+def test_command_center_drawer_renders_metering_blocks(console_server, playwright_api):
+    """抽屉实开：车队计量与每Key计量两块真实渲染；受控环境无归因任务时
+    空态口径文案可见，绝不编造进度或每Key计数。"""
+    with playwright_api.sync_playwright() as p:
+        browser = _launch(p)
+        page = browser.new_page(viewport={"width": 1440, "height": 900})
+        page.goto(console_server + "/command-center", wait_until="load")
+        # Slow CI runners: drawer fetches several APIs before render.
+        page.set_default_timeout(60000)
+        page.locator("#reg").click()
+        # 77055f0 教训：wait_for_function 默认 RAF 轮询会被慢 runner 饿死，
+        # 新增等待一律固定间隔轮询。
+        page.wait_for_function(
+            "() => document.getElementById('regdrawer').innerText.includes('车队计量')",
+            polling=100)
+        text = page.locator("#regdrawer").inner_text()
+        assert "每Key计量" in text
+        assert "没有分母的 Agent 不显示" in text
+        assert "没有每Key分母就不显示数" in text
+        assert "进程内计数" in text
+        assert "completed_jobs_of_attributed_jobs" in text
+        browser.close()

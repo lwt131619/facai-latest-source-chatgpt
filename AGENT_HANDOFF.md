@@ -162,3 +162,7 @@ CI暴露非root nginx -t使用系统缓存目录的问题；已将验证wrapper�
 - RUNTIME-001 A10 Agent 级计量：agent_progress() 派发归因 × 事件结局 ×
   jobs 运行态，与 Trace 重放同源；GET /api/v1/fleet/agent-progress 仅
   admin/Owner。上一检查点 43b9aeb 已远端 CI 绿。
+- A26 闭环结构 e2e（tests/test_acceptance_closed_loop.py）：同一使命同一
+  Trace 全链 + 重启恢复 + 全局事件流逐字节重放一致；受控 runner，A26 仍
+  NOT_VERIFIED。控制台抽屉新增「车队计量」「每Key计量」两块（字段钉死 +
+  真 Chromium 实开）。77055f0 起主线 CI 绿。

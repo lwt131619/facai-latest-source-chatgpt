@@ -184,7 +184,7 @@ Users/Owner/Agents/Skills/Missions/Executions/Events/Evidence/Claims/Artifacts/K
 - 保留已有有效行为，相关回归及失败路径测试通过
 - 验证命令/结果/提交与外部局限写入交接记录
 
-**下一步**：池接线(①②③)与矩阵UI统计列/水位线编辑(④)与live marker(⑤)已入库：调度器reserve/report、reroute吃健康序、PoolState延迟/错误率/调用数、PUT /modelmatrix/{id}/limits管理员闸、@pytest.mark.live真实探测(FACAI_LIVE_API_KEY缺失诚实skip)。网关已接单模型多Key环境引用轮换，429与401/403自动换Key并短期冷却；配置及边界见docs/MODEL_KEY_POOL.md。仍缺CLI Agent上游请求统一接线、跨进程共享冷却、真实Provider验收。每Key配额与成本统计已入库(2026-10-23):网关按(endpoint,环境变量名)记调用数与结局细分(completed/rate_limited/auth_failed/failed_other,被拒率列的数据基础)及上游自报input/output tokens,complete()结果带key_env归因;注册表可选price_input_per_1k/price_output_per_1k非负数字,GET /api/v1/modelmatrix/key-usage(仅admin/Owner)按Key报计数+tokens,仅在注册表带显式单价时计算estimated_cost,无单价返回null不发明依据;密钥值永不出现,计数进程内存重启清零(tests/test_gateway.py::test_key_usage_meters_failover_per_reference/test_key_usage_endpoint_reports_metering_with_explicit_pricing)。
+**下一步**：池接线(①②③)与矩阵UI统计列/水位线编辑(④)与live marker(⑤)已入库：调度器reserve/report、reroute吃健康序、PoolState延迟/错误率/调用数、PUT /modelmatrix/{id}/limits管理员闸、@pytest.mark.live真实探测(FACAI_LIVE_API_KEY缺失诚实skip)。网关已接单模型多Key环境引用轮换，429与401/403自动换Key并短期冷却；配置及边界见docs/MODEL_KEY_POOL.md。仍缺CLI Agent上游请求统一接线、跨进程共享冷却、真实Provider验收。每Key配额与成本统计已入库(2026-10-23):网关按(endpoint,环境变量名)记调用数与结局细分(completed/rate_limited/auth_failed/failed_other,被拒率列的数据基础)及上游自报input/output tokens,complete()结果带key_env归因;注册表可选price_input_per_1k/price_output_per_1k非负数字,GET /api/v1/modelmatrix/key-usage(仅admin/Owner)按Key报计数+tokens,仅在注册表带显式单价时计算estimated_cost,无单价返回null不发明依据;密钥值永不出现,计数进程内存重启清零(tests/test_gateway.py::test_key_usage_meters_failover_per_reference/test_key_usage_endpoint_reports_metering_with_explicit_pricing)。控制台「每Key计量 · KEY USAGE」块已入库(2026-10-23):按环境引用名展示调用/结局细分/tokens/成本,无单价显示—不发明估价,无多Key模型时空态如实;同一抽屉测试覆盖。
 
 ## SKILL-001 — Skill全生命周期
 
@@ -226,7 +226,7 @@ Users/Owner/Agents/Skills/Missions/Executions/Events/Evidence/Claims/Artifacts/K
 - 线程/CLI进程/模型并发分别计量，OpenCode默认串行不默默移除
 - 同任务分支隔离/超时/失败/取消/结果幂等有证据
 
-**下一步**：受控适配器实测+车队上限修复已入库(d28e996):24独立任务/4worker零双重认领;FACAI_MAX_RUNNING_JOBS三层确定性测试钉死。真实CLI实弹已入库(scripts/smoke_local.py 11/11两连跑;scripts/smoke_fleet.py 16/16:4真实任务并发派发6.5秒全COMPLETED,零双重认领,产物逐一精确匹配,4行成本记账)。真实CLI崩溃恢复实弹已入库(scripts/smoke_recovery.py 8/8):死worker以已过期租约认领后消失→peer恢复恰好重排一次(JOB_REQUEUED事件钉住,attempts 0→1)→真CLI补跑COMPLETED,恰好1次OPENCODE_STARTED,产物r0.txt内容精确匹配,1行成本记账。剩余:20+真实并发规模(需真实配额支撑);调度并发2/上限8/同任务3不变。Agent级可计量单位已入库(2026-10-23):store.agent_progress()按DISPATCH_QUEUED事件归因(每任务恰好一次、稳定不漂移),结局取同一事件日志的JOB_COMPLETED/JOB_FAILED,运行中取jobs表,与Trace重放同源(事件一致);progress_measured=completed_jobs_of_attributed_jobs两位小数,运行中未完成任务只压低百分比绝不发明;无派发归因的任务不进入任何Agent的账;GET /api/v1/fleet/agent-progress仅admin/Owner,站点口径(tests/test_progress.py::test_agent_progress_is_attributed_and_measured/test_attribution_is_stable_and_completion_lands_on_dispatcher/test_fleet_agent_progress_requires_admin_session);控制台展示该口径为后续项。
+**下一步**：受控适配器实测+车队上限修复已入库(d28e996):24独立任务/4worker零双重认领;FACAI_MAX_RUNNING_JOBS三层确定性测试钉死。真实CLI实弹已入库(scripts/smoke_local.py 11/11两连跑;scripts/smoke_fleet.py 16/16:4真实任务并发派发6.5秒全COMPLETED,零双重认领,产物逐一精确匹配,4行成本记账)。真实CLI崩溃恢复实弹已入库(scripts/smoke_recovery.py 8/8):死worker以已过期租约认领后消失→peer恢复恰好重排一次(JOB_REQUEUED事件钉住,attempts 0→1)→真CLI补跑COMPLETED,恰好1次OPENCODE_STARTED,产物r0.txt内容精确匹配,1行成本记账。剩余:20+真实并发规模(需真实配额支撑);调度并发2/上限8/同任务3不变。Agent级可计量单位已入库(2026-10-23):store.agent_progress()按DISPATCH_QUEUED事件归因(每任务恰好一次、稳定不漂移),结局取同一事件日志的JOB_COMPLETED/JOB_FAILED,运行中取jobs表,与Trace重放同源(事件一致);progress_measured=completed_jobs_of_attributed_jobs两位小数,运行中未完成任务只压低百分比绝不发明;无派发归因的任务不进入任何Agent的账;GET /api/v1/fleet/agent-progress仅admin/Owner,站点口径(tests/test_progress.py::test_agent_progress_is_attributed_and_measured/test_attribution_is_stable_and_completion_lands_on_dispatcher/test_fleet_agent_progress_requires_admin_session);控制台展示已入库(2026-10-23):command-center能力库抽屉新增「车队计量 · AGENT PROGRESS」块(agent_id/已完成c/assigned/失败/运行中/计量进度%,口径文案completed_jobs_of_attributed_jobs),无归因任务时空态诚实(没有分母的Agent不显示);tests/test_console_layout.py静态字段钉死+真Chromium抽屉实开断言。
 
 ## OPS-001 — Command Center与实时流水线
 
@@ -408,4 +408,4 @@ FACAI Core总控，Shannon执行附属，工具库独立子系统
 - 外部阻塞和native/browser未验证项明确保留
 - GitHub备份与正式安装包可复现，不假报Production完成
 
-**下一步**：按验收矩阵逐项实测；未通过项不删除、不用单元测试总数替代最终交付
+**下一步**：按验收矩阵逐项实测；未通过项不删除、不用单元测试总数替代最终交付。A26 闭环结构已钉住(2026-10-23):tests/test_acceptance_closed_loop.py 在同一使命同一Trace上全链通过:自然语言→修订→确认(原话保留)→独立授权→每步骤真实执行路径(OpenCodeAdapter+受控runner,不调模型)→执行事件同事务自动采集为证据→Owner补充证据+独立复核→断言未审UNKNOWN→Owner审查INFERENCE→证据快照→Owner验收(验收待办为空)→下载ZIP→知识收录→重启恢复→全局事件流重启前后逐字节一致。受控runner不等于真实Provider执行:矩阵A26保持NOT_VERIFIED,直至真实链路与真实界面验收通过。
