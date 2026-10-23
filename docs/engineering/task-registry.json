@@ -608,7 +608,7 @@
         "保留已有有效行为，相关回归及失败路径测试通过",
         "验证命令/结果/提交与外部局限写入交接记录"
       ],
-      "next_action": "先适配器合约/来源/版本/可用性/权限/证据接入，再实测，不能接管Owner"
+      "next_action": "先适配器合约/来源/版本/可用性/权限/证据接入，再实测，不能接管OwnerARTEX 0.3.12已收录为首个附属引擎(2026-10-23):facai/artex.py HTTP适配器(一步一任务,goal=提示词,seed_first_intent开,终态done/failed/timeout映射OPENCODE_*词汇,goose同款诚实归因);权限模型按Owner指令本地/Owner最高:ARTEX内置审批门整体旁路(规则逐条禁用保留记录+拦截工具面清空+judge永不配置),唯一裁断权在FACAI Owner授权链;未配ARTEX_BASE_URL诚实失败;绑定走注册表agents adapter=artex;受控假ARTEX 6例钉死契约(tests/test_artex_adapter.py),真实实例部署与实弹未验证(需PG+Go构建,建议VPS /opt/artex);文档docs/ENGINES_ARTEX.md。"
     },
     {
       "id": "SEC-001",

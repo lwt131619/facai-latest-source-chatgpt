@@ -181,3 +181,7 @@ CI暴露非root nginx -t使用系统缓存目录的问题；已将验证wrapper�
   SHA 578a3c5 重建，deploy.sh update 部署完成；本机 8765 与公网 whstapp.lol health
   均 200 ready（auth_required=true），facai-cloud/tron-sync/whatsapp-relay 全 active。
   服务实际端口 8765（runbook 的 8080 已过时）。
+- ENGINES-001 首块：ARTEX 0.3.12 收录为附属引擎（facai/artex.py HTTP 适配
+  器，一步一任务+终态映射；Owner 指令权限模型：本地/Owner 最高，ARTEX 内
+  置审批门整体旁路——规则禁用留档+拦截工具面清空+judge 不配；详见
+  docs/ENGINES_ARTEX.md；真实实例部署待做）。

@@ -38,6 +38,7 @@ from .conversion import (AGENT_OVERRIDDEN_EVENT, ASSIGNMENT_EVENT,
                          build_assignment)
 from .execution import execute_mission_task, mission_attribution, opencode_model_ref
 from .evidence import build_proof
+from .artex import ArtexAdapter
 from .gateway import KeyRotation, complete, key_usage
 from .n8n import CALLBACK_STATUSES, N8nIntegration, N8nRelay
 from .notify import NOTIFY_CHANNELS, ChannelNotifier, owner_bot
@@ -689,7 +690,10 @@ def create_app(data_dir=None, opencode_adapter=None, goose_adapter=None):
     if _relay_provider is not None and hasattr(_relay_provider, "bind_outbox"):
         _relay_provider.bind_outbox(_relay_outbox)
     opencode = opencode_adapter or OpenCodeAdapter()
-    adapters = {"opencode": opencode, "goose": goose_adapter or GooseAdapter()}
+    adapters = {"opencode": opencode, "goose": goose_adapter or GooseAdapter(),
+                # ENGINES-001 首个附属引擎：ARTEX 自主渗透 agent（HTTP API 派发，
+                # 未配 ARTEX_BASE_URL 时 execute 诚实失败而非静默跳过）。
+                "artex": ArtexAdapter()}
 
     def resolve_adapter(mission):
         """The executable adapter for a mission's bound agent, or None when
