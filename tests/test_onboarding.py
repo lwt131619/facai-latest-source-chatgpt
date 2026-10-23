@@ -141,7 +141,7 @@ def test_model_probe_is_explicit_persistent_and_invalidated_by_config(appliance,
     client, config, root = appliance
     initialize(client,config); login(client)
     calls=[]
-    async def complete(model,messages):
+    async def complete(model, messages, **kwargs):
         calls.append(model)
         return {'status':'MODEL_COMPLETED','http_status':200,'usage':{'input_tokens':1,'output_tokens':1}}
     monkeypatch.setattr('facai.api.complete',complete)

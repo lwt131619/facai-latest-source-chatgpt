@@ -38,7 +38,7 @@ from .conversion import (AGENT_OVERRIDDEN_EVENT, ASSIGNMENT_EVENT,
                          build_assignment)
 from .execution import execute_mission_task, mission_attribution, opencode_model_ref
 from .evidence import build_proof
-from .gateway import complete, key_usage
+from .gateway import KeyRotation, complete, key_usage
 from .n8n import CALLBACK_STATUSES, N8nIntegration, N8nRelay
 from .notify import NOTIFY_CHANNELS, ChannelNotifier, owner_bot
 from . import secretbox
@@ -910,6 +910,12 @@ def create_app(data_dir=None, opencode_adapter=None, goose_adapter=None):
             for error in exc.errors()]})
 
     app.state.store = store
+
+    # MODEL-001 跨进程共享冷却：本 app 自持一个挂了 SQLite 后端的 Key 轮换器，
+
+    # 多进程部署读到同一份冷却；进程级默认实例不再被写脏（测试互不串）。
+
+    app.state.key_rotation = KeyRotation(store)
     app.state.registries = registries
     app.state.boundary = boundary_governor
     app.state.conversion = console
@@ -1863,7 +1869,8 @@ def create_app(data_dir=None, opencode_adapter=None, goose_adapter=None):
         cooldown = reserve_model_probe(owner)
         if cooldown is not None:
             raise HTTPException(429, f"连接测试冷却中，请 {int(cooldown)+1} 秒后重试")
-        result = await complete(model, [{"role": "user", "content": MODEL_TEST_PROMPT}])
+        result = await complete(model, [{"role": "user", "content": MODEL_TEST_PROMPT}],
+                                rotation=app.state.key_rotation)
         return {"status": result.get("status"), "label": result.get("label"),
                 "http_status": result.get("http_status"),
                 "usage": result.get("usage"), "model": row["name"]}
@@ -3055,7 +3062,8 @@ def create_app(data_dir=None, opencode_adapter=None, goose_adapter=None):
                                 headers={"Retry-After": str(seconds)})
         started = time.perf_counter()
         try:
-            result = await complete(model, [{"role": "user", "content": MODEL_TEST_PROMPT}])
+            result = await complete(model, [{"role": "user", "content": MODEL_TEST_PROMPT}],
+                                rotation=app.state.key_rotation)
         except (ValueError, KeyError) as exc:
             # Exception text can carry upstream hosts, headers or credentials, so
             # only a fixed generic message and the exception type are exposed.
@@ -3288,7 +3296,8 @@ def create_app(data_dir=None, opencode_adapter=None, goose_adapter=None):
             priced = (isinstance(price_in, (int, float)) and not isinstance(price_in, bool)
                       and isinstance(price_out, (int, float)) and not isinstance(price_out, bool))
             keys = {}
-            for ref, counters in key_usage(endpoint, refs).items():
+            for ref, counters in key_usage(endpoint, refs,
+                                           rotation=app.state.key_rotation).items():
                 row = dict(counters)
                 row["estimated_cost"] = (
                     round(counters["input_tokens"] / 1000.0 * price_in
@@ -3394,7 +3403,8 @@ def create_app(data_dir=None, opencode_adapter=None, goose_adapter=None):
         if body.step_id and body.step_id not in {step["id"] for step in mission["steps"]}:
             raise HTTPException(404, "Step not found")
         try:
-            result = await complete(model, body.messages)
+            result = await complete(model, body.messages,
+                                    rotation=app.state.key_rotation)
         except (ValueError, KeyError) as exc:
             raise HTTPException(422, str(exc)) from None
         runtime = registries.resolve("runtimes", mission["runtime_id"], owner_id=owner)

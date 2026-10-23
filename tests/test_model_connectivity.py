@@ -32,7 +32,7 @@ def _login(client):
 
 
 def _fake_complete(result, captured=None):
-    async def fake(model, messages, client=None):
+    async def fake(model, messages, client=None, **kwargs):
         if captured is not None:
             captured.append({"model": model, "messages": messages})
         return result
@@ -175,7 +175,7 @@ def test_probe_is_not_run_on_page_load_or_registry_listing(tmp_path, monkeypatch
 def test_exception_text_is_sanitized_to_generic_422(tmp_path, monkeypatch, caplog, raised):
     app = _app(tmp_path, monkeypatch)
 
-    async def boom(model, messages, client=None):
+    async def boom(model, messages, client=None, **kwargs):
         raise raised
 
     monkeypatch.setattr("facai.api.complete", boom)

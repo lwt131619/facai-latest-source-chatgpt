@@ -306,7 +306,7 @@ def test_model_complete_tokens_spend_the_budget(tmp_path, monkeypatch):
     client.put(f"/api/v1/missions/{mission['id']}/binding",
                json={"agent_id": "opencode", "model_id": "deepseek-flash"})
 
-    async def fake_complete(model, messages, client=None, timeout=30):
+    async def fake_complete(model, messages, client=None, timeout=30, **kwargs):
         return {"status": "MODEL_COMPLETED", "label": "上游模型已完成", "http_status": 200,
                 "content": "hi", "upstream": None, "reason": None,
                 "usage": {"prompt_tokens": 2_000_000, "completion_tokens": 1_000_000,
@@ -397,7 +397,7 @@ def test_relay_webhook_over_budget_gates_before_the_conversion_model(tmp_path, m
 
     calls = []
 
-    async def spy_complete(model, messages, client=None, timeout=30):
+    async def spy_complete(model, messages, client=None, timeout=30, **kwargs):
         calls.append(model)
         return {"status": "MODEL_COMPLETED", "label": "不应到达", "http_status": 200,
                 "content": "hi", "upstream": None, "reason": None, "usage": None}

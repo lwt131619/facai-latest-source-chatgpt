@@ -14,16 +14,29 @@ import time
 
 
 class _KeyRotation:
-    """Short-lived per-endpoint/env-reference cooldowns; never stores secrets."""
+    """Short-lived per-endpoint/env-reference cooldowns; never stores secrets.
 
-    def __init__(self):
+    MODEL-001 跨进程共享冷却：可选挂一个 Store 后端（SQLite）。内存字典仍是
+    快路径（本进程的 monotonic 时钟）；落盘行走墙钟 epoch，其他进程读同一行
+    即可看到同一份冷却。计量计数仍只在进程内存（口径不变，重启清零）。"""
+
+    def __init__(self, store=None):
         self._lock = threading.Lock()
         self._cooldown = {}
         self._next = {}
+        self._store = store
         # MODEL-001 每Key计量：按 (endpoint, 环境变量名) 记调用数/结局/tokens。
-        # 只存环境变量名与上游自报计数，绝存不进密钥值；进程内存，重启即清零，
-        # 与冷却同生命周期——跨进程聚合是登记册在记的另一个缺口。
+        # 只存环境变量名与上游自报计数，绝存不进密钥值；进程内存，重启即清零
+        # （与冷却不同生命周期：冷却是跨进程共享的，计量是进程内的）。
         self._usage = {}
+
+    def _shared(self, endpoint, refs):
+        """Split refs by the shared SQLite backend, if attached: (ready, statuses)."""
+        if self._store is None:
+            return list(refs), {}
+        rows = self._store.key_cooldown_map(endpoint, refs)
+        ready = [ref for ref in refs if rows.get(ref) is None]
+        return ready, {ref: row[1] for ref, row in rows.items() if row}
 
     def candidates(self, endpoint, refs):
         with self._lock:
@@ -33,14 +46,20 @@ class _KeyRotation:
                 return []
             start = self._next.get(endpoint, 0) % len(ready)
             self._next[endpoint] = start + 1
-            return ready[start:] + ready[:start]
+            ordered = ready[start:] + ready[:start]
+        # Backend merge outside the lock: one indexed SQLite read per request.
+        shared_ready, _ = self._shared(endpoint, ordered)
+        return shared_ready
 
     def penalize(self, endpoint, ref, status):
+        ttl = 60 if status in (401, 403) else 10
         with self._lock:
             # 429 is temporary quota pressure; an auth failure needs a longer
             # pause before the same bad key is retried on another request.
-            self._cooldown[(endpoint, ref)] = (
-                time.monotonic() + (60 if status in (401, 403) else 10), status)
+            self._cooldown[(endpoint, ref)] = (time.monotonic() + ttl, status)
+        if self._store is not None:
+            # Wall-clock epoch for other processes; memory keeps monotonic.
+            self._store.key_cooldown_set(endpoint, ref, time.time() + ttl, status)
 
     def record(self, endpoint, ref, status, usage=None):
         """Meter one real upstream attempt made with this env reference.
@@ -82,19 +101,26 @@ class _KeyRotation:
     def unavailable_status(self, endpoint, refs):
         with self._lock:
             failures = [self._cooldown.get((endpoint, ref), (0, None))[1] for ref in refs]
+        if self._store is not None:
+            _, shared = self._shared(endpoint, refs)
+            failures = [shared.get(ref) if shared.get(ref) is not None else mem
+                        for ref, mem in zip(refs, failures)]
         return ("MODEL_AUTH_FAILED" if failures and all(s in (401, 403) for s in failures)
                 else "MODEL_RATE_LIMITED")
 
 
 _KEY_ROTATION = _KeyRotation()
+# Public alias: apps construct their own rotation with a shared cooldown backend.
+KeyRotation = _KeyRotation
 
 
-def key_usage(endpoint, refs):
+
+def key_usage(endpoint, refs, rotation=None):
     """Per-env-reference metering view for admin surfaces (MODEL-001).
 
     Keys of the returned dict are environment-variable NAMES; secret values
     are never recorded anywhere in this module."""
-    return _KEY_ROTATION.usage_snapshot(str(endpoint).rstrip("/"), refs)
+    return (rotation or _KEY_ROTATION).usage_snapshot(str(endpoint).rstrip("/"), refs)
 
 # The full set of upstream outcomes the gateway can report. Keeping the labels
 # explicit lets the console present the precise cause instead of a generic error.
@@ -250,7 +276,11 @@ def _result(status, http_status, content=None, upstream=None, reason=None, usage
             "upstream": upstream, "reason": reason, "usage": usage}
 
 
-async def complete(model, messages, client=None, timeout=30):
+async def complete(model, messages, client=None, timeout=30, rotation=None):
+    """Route one completion. ``rotation`` lets an app instance own its key
+    pool state (shared cooldown backend included) instead of the process
+    global default."""
+    rotation = rotation if rotation is not None else _KEY_ROTATION
     endpoint = model.get("endpoint", "").rstrip("/")
     if not endpoint.startswith(("http://", "https://")):
         raise ValueError("Model endpoint must be HTTP(S)")
@@ -266,10 +296,10 @@ async def complete(model, messages, client=None, timeout=30):
     rotating = bool(refs) and not model.get("api_key")
     if rotating:
         configured = [ref for ref in refs if os.getenv(ref)]
-        names = _KEY_ROTATION.candidates(endpoint, configured)
+        names = rotation.candidates(endpoint, configured)
         if not names:
             return _result("MODEL_AUTH_FAILED" if not configured else
-                           _KEY_ROTATION.unavailable_status(endpoint, configured), None,
+                           rotation.unavailable_status(endpoint, configured), None,
                            reason="Configured model keys unavailable or cooling down")
         credentials = [(name, os.getenv(name)) for name in names]
     else:
@@ -316,7 +346,7 @@ async def complete(model, messages, client=None, timeout=30):
             if rotating:
                 # 每Key计量先于冷却记账：这一把真实发生的上游调用必须留下计数，
                 # 包括压轴 key 的最后一次失败（它不再 continue，直接返回）。
-                _KEY_ROTATION.record(endpoint, ref, status, usage)
+                rotation.record(endpoint, ref, status, usage)
             result = _result(status, response.status_code, content,
                              upstream=body if failed else None,
                              reason=(error_text(body) or status) if failed else None,
@@ -326,7 +356,7 @@ async def complete(model, messages, client=None, timeout=30):
                 # 计量才对得上号（值只是变量名，不是密钥本体）。
                 result["key_env"] = ref
             if rotating and status in {"MODEL_RATE_LIMITED", "MODEL_AUTH_FAILED"}:
-                _KEY_ROTATION.penalize(endpoint, ref, response.status_code)
+                rotation.penalize(endpoint, ref, response.status_code)
                 if (ref, api_key) != credentials[-1]:
                     continue
             return result

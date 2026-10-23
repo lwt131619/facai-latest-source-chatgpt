@@ -4,6 +4,7 @@ import hashlib
 import json
 import math
 import sqlite3
+import time
 from contextlib import nullcontext
 from contextvars import ContextVar
 from datetime import datetime, timezone, timedelta
@@ -356,6 +357,12 @@ CREATE TABLE IF NOT EXISTS pending_approvals (
 CREATE INDEX IF NOT EXISTS pending_approvals_by_owner
  ON pending_approvals(owner_id, status, expires_at);
 CREATE INDEX IF NOT EXISTS pending_approvals_by_mission ON pending_approvals(mission_id);
+-- MODEL-001 跨进程共享冷却：网关的 (endpoint, 环境变量名) 冷却落盘，多个服务
+-- 进程（或未来走网关的 CLI 进程）读到同一份；过期行在写入/读取时顺手清理。
+CREATE TABLE IF NOT EXISTS model_key_cooldowns (
+ endpoint TEXT NOT NULL, ref TEXT NOT NULL,
+ until_epoch REAL NOT NULL, status INTEGER NOT NULL,
+ PRIMARY KEY(endpoint, ref));
 """
 
 
@@ -1306,6 +1313,27 @@ class Store:
     def count_running_jobs(self):
         with self.connect() as db:
             return db.execute("SELECT COUNT(*) FROM jobs WHERE status='RUNNING'").fetchone()[0]
+
+    def key_cooldown_set(self, endpoint, ref, until_epoch, status):
+        """Persist one gateway key cooldown for cross-process visibility (epoch clock)."""
+        with self.connect() as db:
+            db.execute("DELETE FROM model_key_cooldowns WHERE until_epoch<=?",
+                       (time.time(),))
+            db.execute("INSERT INTO model_key_cooldowns VALUES (?,?,?,?)"
+                       " ON CONFLICT(endpoint, ref) DO UPDATE SET"
+                       " until_epoch=excluded.until_epoch, status=excluded.status",
+                       (endpoint, ref, float(until_epoch), int(status)))
+
+    def key_cooldown_map(self, endpoint, refs):
+        """Unexpired cooldowns for these refs: {ref: (until_epoch, status)}.
+
+        Absent refs map to None — the caller treats None as ready. Reads prune
+        nothing (writers prune), keeping the read path a single indexed query."""
+        with self.connect() as db:
+            rows = {row["ref"]: (row["until_epoch"], row["status"]) for row in db.execute(
+                "SELECT ref,until_epoch,status FROM model_key_cooldowns"
+                " WHERE endpoint=? AND until_epoch>?", (endpoint, time.time()))}
+        return {ref: rows.get(ref) for ref in refs}
 
     def agent_progress(self):
         """A10: per-agent metered progress, derived only from durable records.

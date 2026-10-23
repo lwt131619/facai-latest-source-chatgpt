@@ -7,13 +7,13 @@ import pytest
 from facai.gateway import complete
 
 
-def invoke(handler, model):
+def invoke(handler, model, rotation=None):
     async def go():
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
             return await complete(model, [
                 {"role": "system", "content": "Be concise."},
                 {"role": "user", "content": "Hello"},
-            ], client)
+            ], client, rotation=rotation)
     return asyncio.run(go())
 
 
@@ -261,7 +261,8 @@ def test_key_usage_endpoint_reports_metering_with_explicit_pricing(tmp_path, mon
         return httpx.Response(200, json={'choices': [{'message': {'content': 'ok'}}],
                                          'usage': {'prompt_tokens': 500, 'completion_tokens': 250}})
 
-    assert invoke(handler, model)['status'] == 'MODEL_COMPLETED'
+    assert invoke(handler, model,
+                  rotation=client.app.state.key_rotation)['status'] == 'MODEL_COMPLETED'
 
     data = client.get('/api/v1/modelmatrix/key-usage').json()
     assert 'mock-pool-' not in json.dumps(data)
@@ -282,3 +283,63 @@ def test_key_usage_endpoint_reports_metering_with_explicit_pricing(tmp_path, mon
         "username": "meter-tenant", "password": "meter-pass-1234"})
     client.headers.update({"X-CSRF-Token": tenant.json()["csrf_token"]})
     assert client.get('/api/v1/modelmatrix/key-usage').status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# MODEL-001 跨进程共享冷却：两个 rotation 实例 + 同一 SQLite 后端 = 两个进程
+# ---------------------------------------------------------------------------
+
+import time as _time
+
+from facai.gateway import KeyRotation
+from facai.store import Store
+
+
+def test_shared_cooldown_visible_across_rotation_instances(tmp_path):
+    store = Store(tmp_path)
+    process_a = KeyRotation(store)
+    process_b = KeyRotation(store)
+    endpoint, refs = 'https://shared.test/v1', ['K_A', 'K_B']
+
+    process_a.penalize(endpoint, 'K_A', 403)
+    # 进程 B 没有内存态，但读同一 SQLite：K_A 不可用，只剩 K_B
+    assert process_b.candidates(endpoint, refs) == ['K_B']
+    assert process_a.candidates(endpoint, refs) == ['K_B']
+    # 认证失败口径跨进程一致：两个 key 都是 auth 失败才报 AUTH（混合 429 报 RATE）
+    process_b.penalize(endpoint, 'K_B', 401)
+    assert process_a.unavailable_status(endpoint, refs) == 'MODEL_AUTH_FAILED'
+    assert process_b.unavailable_status(endpoint, refs) == 'MODEL_AUTH_FAILED'
+    assert process_a.candidates(endpoint, refs) == []
+
+    # 过期即恢复：把行改成已过期的 epoch。B 本就无内存态，直接恢复；
+    # A 的内存冷却还在（同进程内存盖不过 DB 过期——诚实合并），模拟 A
+    # 重启（内存清空）后同样从后端读到已过期、两把都 ready。
+    with store.connect() as db:
+        db.execute('UPDATE model_key_cooldowns SET until_epoch=?',
+                   (_time.time() - 1,))
+    assert sorted(process_b.candidates(endpoint, refs)) == ['K_A']  # B 的内存 K_B 还在冷却
+    process_c = KeyRotation(store)  # 新进程：无内存态，纯读后端
+    assert sorted(process_c.candidates(endpoint, refs)) == ['K_A', 'K_B']
+    # 无后端的实例（旧默认路径）不受 SQLite 影响，也不写后端
+    loner = KeyRotation()
+    loner.penalize(endpoint, 'K_A', 429)
+    assert loner.candidates(endpoint, refs) == ['K_B']
+    with store.connect() as db:
+        assert db.execute('SELECT count(*) FROM model_key_cooldowns').fetchone()[0] == 2
+    # 过期行在下次写入时被顺手清理：写一把新冷却，表里只剩这一行
+    process_c.penalize(endpoint, 'K_C', 429)
+    with store.connect() as db:
+        rows = db.execute('SELECT ref FROM model_key_cooldowns').fetchall()
+    assert [row['ref'] for row in rows] == ['K_C']
+
+
+def test_app_owns_its_rotation_with_shared_backend(tmp_path):
+    from fastapi.testclient import TestClient
+    from facai.api import create_app
+    client = TestClient(create_app(tmp_path))
+    rotation = client.app.state.key_rotation
+    assert rotation is not None and rotation._store is client.app.state.store
+    # 同一 Store 的第二个实例（= 另一进程）能看到本 app 写下的冷却
+    peer = KeyRotation(client.app.state.store)
+    rotation.penalize('https://peer.test/v1', 'K_P', 429)
+    assert peer.candidates('https://peer.test/v1', ['K_P', 'K_Q']) == ['K_Q']

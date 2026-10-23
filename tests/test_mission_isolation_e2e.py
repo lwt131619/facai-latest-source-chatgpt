@@ -241,7 +241,7 @@ def test_model_refusal_is_attributed_only_to_its_own_mission(tmp_path, monkeypat
     app.put(f"/api/v1/missions/{b['id']}/binding", json={
         'agent_id': 'opencode', 'model_id': 'local-model', 'runtime_id': 'gpu-eu'})
 
-    async def refused(model, messages):
+    async def refused(model, messages, **kwargs):
         return {'status': 'MODEL_REFUSED', 'label': '上游模型拒绝回答', 'http_status': 200,
                 'content': None, 'upstream': {'choices': [{'message': {'refusal': 'no'}}]},
                 'reason': 'refusal', 'usage': None}

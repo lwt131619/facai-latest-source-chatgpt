@@ -171,7 +171,7 @@ def bind_mission(client, title="计费"):
 
 
 def complete_with(client, monkeypatch, usage):
-    async def fake_complete(model, messages, client=None, timeout=30):
+    async def fake_complete(model, messages, client=None, timeout=30, **kwargs):
         return {"status": "MODEL_COMPLETED", "label": "上游模型已完成", "http_status": 200,
                 "content": "hi", "upstream": None, "reason": None, "usage": usage}
     monkeypatch.setattr("facai.api.complete", fake_complete)

@@ -166,3 +166,6 @@ CI暴露非root nginx -t使用系统缓存目录的问题；已将验证wrapper�
   Trace 全链 + 重启恢复 + 全局事件流逐字节重放一致；受控 runner，A26 仍
   NOT_VERIFIED。控制台抽屉新增「车队计量」「每Key计量」两块（字段钉死 +
   真 Chromium 实开）。77055f0 起主线 CI 绿。
+- MODEL-001 跨进程共享冷却：`model_key_cooldowns` SQLite 表 + 每 app 自持
+  `KeyRotation(store)`（内存快路径 + 后端诚实合并）；CLI 统一接线与真实
+  Provider 验收仍缺。

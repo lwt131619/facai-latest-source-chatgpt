@@ -60,7 +60,7 @@ def test_opencode_task_events_carry_provider_model_runtime_and_cost(tmp_path):
 
 
 def test_model_complete_records_attribution_and_tokens(tmp_path, monkeypatch):
-    async def fake_complete(model, messages):
+    async def fake_complete(model, messages, **kwargs):
         return {'status': 'MODEL_COMPLETED', 'label': '上游模型已完成', 'http_status': 200,
                 'content': 'hi', 'upstream': None, 'reason': None,
                 'usage': {'total_tokens': 77}}
@@ -84,7 +84,7 @@ def test_model_complete_records_attribution_and_tokens(tmp_path, monkeypatch):
 
 
 def test_upstream_failure_keeps_its_own_identity(tmp_path, monkeypatch):
-    async def refused(model, messages):
+    async def refused(model, messages, **kwargs):
         return {'status': 'MODEL_REFUSED', 'label': '上游模型拒绝回答', 'http_status': 200,
                 'content': None, 'upstream': {'choices': [{'message': {'refusal': 'no'}}]},
                 'reason': 'refusal', 'usage': None}
