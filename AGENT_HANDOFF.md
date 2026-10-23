@@ -175,3 +175,9 @@ CI暴露非root nginx -t使用系统缓存目录的问题；已将验证wrapper�
 - 打包（835e7da 源）：development ZIP 439 文件、manifest/哈希核验通过；从解压
   副本定向复测 gateway/trust/closed-loop 47 通过（记录在
   dist/package-validation.json）。full-tests 以 CI 为准。
+- VPS 实机（2026-10-23）：SSH 恢复（id_ed25519 → root@77.221.148.118）；清理
+  僵尸 crontab×2（指向已删的 /opt/facai-dev，备份在 /root/crontab-backup-20261023.bak）、
+  /opt/facai-panel-src(51MB)、坏 facai-staging、facai-ops、/tmp 旧包×3；staging 按
+  SHA 578a3c5 重建，deploy.sh update 部署完成；本机 8765 与公网 whstapp.lol health
+  均 200 ready（auth_required=true），facai-cloud/tron-sync/whatsapp-relay 全 active。
+  服务实际端口 8765（runbook 的 8080 已过时）。
