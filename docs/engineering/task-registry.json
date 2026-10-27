@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_date": "2026-10-21",
+  "updated_date": "2026-10-28",
   "timezone": "Asia/Shanghai",
   "product": "FACAI / ICS Production Platform v1.0",
   "source_baseline_commit": "933b431",
@@ -400,7 +400,7 @@
         "采集时间/来源/环境/哈希真实，无执行证据不标语义验证",
         "legacy verified不偷换，新完整性/语义验证字段独立"
       ],
-      "next_action": "来源验证记录+信任图v0(①②)与事件侧自动采集/产物漂移钩子(③④)已入库：trust_source_verifications、trust_sources(owner隔离)、RUNTIME_TYPES同事务自动采集(FACAI_TRUST_AUTO_COLLECT默认开,幂等,失败不阻断)、TRUST_ARTIFACT_DRIFT留痕。独立来源验证的外部凭证面仍缺。confidence保持null。DISPUTED人工裁决出口与跨mission冲突检测已入库(2026-10-23):trust_adjudications表+TrustStore.adjudicate(outcome∈CONTEXT_DIFFERENCE/OWNER_RESOLVED,note必填,校验真冲突对,TRUST_ADJUDICATION_RECORDED事件);DISPUTED保持纯派生,已裁决对不再强制DISPUTED(状态回落各自review verdict,验收闸不放松);conflicts列表带adjudicated标注与裁决记录;cross_mission_conflicts(owner)同(subject,predicate)不同value跨mission检测(撤回不参与,owner隔离,限界);路由POST /trust/adjudications(Owner会话门)+GET /api/v1/trust/conflicts(tests/test_trust_workflow.py::TestAdjudication/TestCrossMissionConflicts/TestAdjudicationRoutes)。 URL公开体检的证据/评级/报告领取接入先按docs/PASSIVE_SITE_ASSESSMENT_UPSTREAM.md实施；开源选型已核验，采集器和站点控制权验证尚未实现。"
+      "next_action": "来源验证记录+信任图v0(①②)与事件侧自动采集/产物漂移钩子(③④)已入库：trust_source_verifications、trust_sources(owner隔离)、RUNTIME_TYPES同事务自动采集(FACAI_TRUST_AUTO_COLLECT默认开,幂等,失败不阻断)、TRUST_ARTIFACT_DRIFT留痕。独立来源验证的外部凭证面仍缺。confidence保持null。DISPUTED人工裁决出口与跨mission冲突检测已入库(2026-10-23):trust_adjudications表+TrustStore.adjudicate(outcome∈CONTEXT_DIFFERENCE/OWNER_RESOLVED,note必填,校验真冲突对,TRUST_ADJUDICATION_RECORDED事件);DISPUTED保持纯派生,已裁决对不再强制DISPUTED(状态回落各自review verdict,验收闸不放松);conflicts列表带adjudicated标注与裁决记录;cross_mission_conflicts(owner)同(subject,predicate)不同value跨mission检测(撤回不参与,owner隔离,限界);路由POST /trust/adjudications(Owner会话门)+GET /api/v1/trust/conflicts(tests/test_trust_workflow.py::TestAdjudication/TestCrossMissionConflicts/TestAdjudicationRoutes)。 URL公开体检的证据/评级/报告领取接入先按docs/PASSIVE_SITE_ASSESSMENT_UPSTREAM.md实施；开源选型已核验，Owner会话的站点控制权验证与单站点HTTPS首页配置观察已落地；详见docs/SITE_ASSESSMENT_DEPLOY.md。仍缺Artifact/Proof绑定、公开预览领取、交互页、生产限流与真实域名验收。"
     },
     {
       "id": "CONFLICT-001",

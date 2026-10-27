@@ -4650,6 +4650,8 @@ def create_app(data_dir=None, opencode_adapter=None, goose_adapter=None):
             raise HTTPException(403, 'Owner review requires an authenticated console session')
 
     app.include_router(trust_router(store, current_owner, require_mission, require_human_review))
+    from .site_assessment_routes import router_for as site_assessment_router
+    app.include_router(site_assessment_router(store, current_owner, require_human_review))
     from .setup_routes import router_for as setup_router
     from .mission_spec import digest as specification_digest
 

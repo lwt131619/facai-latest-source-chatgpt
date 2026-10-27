@@ -127,6 +127,14 @@ CI暴露非root nginx -t使用系统缓存目录的问题；已将验证wrapper�
 
 ## 2026-10-18 续接检查点
 
+## 2026-10-28 单站点被动体检检查点
+
+新增 Owner 会话保护的站点认领、HTTPS 验证文件、单次首页响应配置观察及持久报告。
+实现见 `facai/site_assessment.py`、`facai/site_assessment_routes.py`；部署验收见
+`docs/SITE_ASSESSMENT_DEPLOY.md`。定向回归为 21 passed / 0 failed；真实域名和 VPS
+部署未验证。下一步是控制台交互页、报告 Artifact/Proof 绑定、公开预览领取、
+限流与生产域名验收；不要把当前首页配置观察描述成 PHP 漏洞扫描完成。
+
 最新代码已推送 `main` 至 `b4f88dc`。本轮补齐 Skill 正文导入后的来源版本历史、CAS 更新、按 Owner 隔离的版本列表及控制台展示；手动绑定和用户原话明确正向调用唯一已安装 Skill 时冻结版本，并为否定、仅提及、多 Skill 语句保留不自动绑定边界。详情及剩余缺口以 `docs/engineering/REQUIREMENTS_TRACEABILITY.md` 的 SKILL-001 为准。
 
 控制台早期点击竞态已修复：`go`、回车、能力库入口在异步启动请求前绑定。真实 Chromium 用人为延迟的 session 请求验证能力库仍可打开，控制台浏览器文件 14 passed。全量回归 `1438 passed / 7 skipped / 0 failed`（246.13 秒，`FACAI_TEST_CHROMIUM=/usr/bin/chromium .venv/bin/python -m pytest -q -rs`）；跳过项为 deploy-now 不在树中、真实模型密钥未配置、vendor authority manifests 本机缺失。此结果不表示 Production 验收通过。
