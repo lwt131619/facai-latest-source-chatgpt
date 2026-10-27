@@ -1,5 +1,7 @@
 # FACAI / ICS — 当前接手入口
 
+7×24 VPS 通用智能工作站的现状映射与实施顺序：docs/VPS_24X7_WORKSTATION.md。
+
 最新实测与优先级：docs/engineering/HANDOFF_2026-10-22.md。
 
 先读AGENTS.md → FACAI_CODEX_HANDOFF.md → docs/engineering/CORE_INVARIANTS.md。

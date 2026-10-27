@@ -377,7 +377,7 @@
         "0.01%来源于可测基数；不可测时不编造精确小数",
         "缺模型/CLI/权限显示真实等待或错误"
       ],
-      "next_action": "已新增完成步骤计数驱动的两位小数 progress_measured 与 progress_basis；控制台总体/阶段显示采用可测值，运行中无计量分母显示未计量，旧 progress 字段保留兼容。剩余：Agent 级真实工作量计量、事件与进度一致性、20+ 并发及跨端实测；A10 仍 NOT_VERIFIED。"
+      "next_action": "Mission/Agent计量与控制台显示已入库。下一步依 docs/VPS_24X7_WORKSTATION.md 做VPS健康、积压、模型/预算、备份告警实测；A10仍须跨端及真实并发事件一致性验收。"
     },
     {
       "id": "TRUST-001",
@@ -566,7 +566,7 @@
         "保留已有有效行为，相关回归及失败路径测试通过",
         "验证命令/结果/提交与外部局限写入交接记录"
       ],
-      "next_action": "已补本地backup.sh/backup.bat、私有不可覆盖SQLite快照、隔离恢复演练与退出码；在线变化与恢复错误分开，新增表纳入核对。继续完整数据/密钥/工作区一致恢复和更新失败回滚，Windows/macOS未验收。VPS部署已实测(2026-10-23):SSH通道恢复(id_ed25519->root@77.221.148.118),清残留(僵尸crontab两条指向已删的/opt/facai-dev已移除并备份/root/crontab-backup-20261023.bak;/opt/facai-panel-src 51MB旧面板源码、坏的facai-staging、孤儿facai-ops、/tmp三个旧包已删;保留facai-cloud运行实例/whatsapp-relay会话/tron-sync/var-backups),staging按SHA固定重建于578a3c5,deploy.sh update完成(secrets保留/providers四env未动,nginx TLS重装,自动备份已打),验证:本机8765与公网https://whstapp.lol/api/v1/health均200（status=ready,phase=2,auth_required=true）,三服务active;浏览器登录冒烟与真实链路验收仍待(端口已从旧文档8080变为8765,runbook相应过时)。"
+      "next_action": "已补本地backup.sh/backup.bat、私有不可覆盖SQLite快照、隔离恢复演练与退出码；在线变化与恢复错误分开，新增表纳入核对。继续完整数据/密钥/工作区一致恢复和更新失败回滚，Windows/macOS未验收。VPS部署已实测(2026-10-23):SSH通道恢复(id_ed25519->root@77.221.148.118),清残留(僵尸crontab两条指向已删的/opt/facai-dev已移除并备份/root/crontab-backup-20261023.bak;/opt/facai-panel-src 51MB旧面板源码、坏的facai-staging、孤儿facai-ops、/tmp三个旧包已删;保留facai-cloud运行实例/whatsapp-relay会话/tron-sync/var-backups),staging按SHA固定重建于578a3c5,deploy.sh update完成(secrets保留/providers四env未动,nginx TLS重装,自动备份已打),验证:本机8765与公网https://whstapp.lol/api/v1/health均200（status=ready,phase=2,auth_required=true）,三服务active;浏览器登录冒烟与真实链路验收仍待(端口已从旧文档8080变为8765,runbook相应过时)。 7×24 VPS低成本实施顺序与分阶段证据见docs/VPS_24X7_WORKSTATION.md；当前GitHub main 411b125不等于2026-10-23记录的VPS部署578a3c5，线上版本需重新核验。"
     },
     {
       "id": "RUST-001",

@@ -531,3 +531,14 @@ A second complete suite was not run; full regression status is partial.
 
 The second complete suite on commit 7512c4d passed: 1449 passed / 7 skipped /
 0 failed in 202.25 seconds with real Chromium. External acceptance remains open.
+
+## 7×24 VPS workstation integration plan (2026-10-27)
+
+Fast-forwarded clean local tree from 08097ae to GitHub main 411b125, then mapped
+existing systemd/nginx/SQLite/worker/model/backup paths into
+`docs/VPS_24X7_WORKSTATION.md`. This is a source-backed deployment plan only:
+VPS last documented deployment was 578a3c5, and this environment's HTTPS
+CONNECT was denied by its proxy (403), so current live SHA/health was not
+verified. No production service or credentials were changed. Handoff registry
+render and validation passed for 27 directions; application tests were not
+rerun because runtime code was unchanged.
