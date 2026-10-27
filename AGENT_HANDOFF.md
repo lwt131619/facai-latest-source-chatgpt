@@ -129,6 +129,11 @@ CI暴露非root nginx -t使用系统缓存目录的问题；已将验证wrapper�
 
 ## 2026-10-28 单站点被动体检检查点
 
+最终接手路线与双域名部署风险：`docs/SITE_ASSESSMENT_NEXT_AGENT.md`。
+后续同轮增量：`/site-assessment` 认领/验证/报告页面、跨进程每 Owner 每分钟
+一次运行限额，独立新域名 Nginx/证书安装脚本（尚未在 VPS 执行）。
+本增量定向 47 passed；此前 1488 全量结果不覆盖这些后续变更，需重新跑全量。
+
 新增 Owner 会话保护的站点认领、HTTPS 验证文件、单次首页响应配置观察及持久报告。
 实现见 `facai/site_assessment.py`、`facai/site_assessment_routes.py`；部署验收见
 `docs/SITE_ASSESSMENT_DEPLOY.md`。定向身份/安全回归 47 passed；完整工作树回归

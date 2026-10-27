@@ -11,6 +11,7 @@ import json
 import secrets
 import socket
 import ssl
+import time
 from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
@@ -83,6 +84,8 @@ class SiteAssessments:
                 id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, host TEXT NOT NULL,
                 challenge_hash TEXT NOT NULL, verified_at TEXT,
                 report_json TEXT, created_at TEXT NOT NULL)''')
+            db.execute('''CREATE TABLE IF NOT EXISTS site_assessment_rate (
+                owner_id TEXT PRIMARY KEY, last_started REAL NOT NULL)''')
 
     def create(self, owner, url):
         host = normalize_site(url)
@@ -126,6 +129,18 @@ class SiteAssessments:
                 not secrets.compare_digest(hashlib.sha256(challenge['body'].strip()).hexdigest(),
                                            row['challenge_hash'])):
             raise SiteAssessmentError('Site control verification has expired')
+        # Cross-worker, per-owner limit. Reserve before the outbound request so
+        # concurrent API workers cannot each start a scan for the same owner.
+        with self.store.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            previous = db.execute('SELECT last_started FROM site_assessment_rate WHERE owner_id=?',
+                                  (owner,)).fetchone()
+            now = time.time()
+            if previous is not None and now - previous['last_started'] < 60:
+                raise SiteAssessmentError('Assessment rate limit: one run per owner per minute')
+            db.execute('INSERT INTO site_assessment_rate(owner_id,last_started) VALUES (?,?) '
+                       'ON CONFLICT(owner_id) DO UPDATE SET last_started=excluded.last_started',
+                       (owner, now))
         response = self.fetch(row['host'], '/')
         headers = {key.lower(): value for key, value in response['headers'].items()}
         checks = [

@@ -46,6 +46,9 @@ def test_claim_verify_assess_owner_isolation_and_restart(tmp_path, monkeypatch):
     result = other.post('/api/v1/auth/register', json={'username': 'otherowner', 'password': 'otherowner-pass'})
     assert result.status_code == 201
     other.headers.update({'X-CSRF-Token': result.json()['csrf_token']})
+    page = owner.get('/site-assessment')
+    assert page.status_code == 200
+    assert '生成验证文件' in page.text
 
     claim = owner.post('/api/v1/site-assessments', json={'url': 'https://example.org/'})
     assert claim.status_code == 201, claim.text
@@ -61,6 +64,7 @@ def test_claim_verify_assess_owner_isolation_and_restart(tmp_path, monkeypatch):
     assert report.json()['php_vulnerabilities'] == 'UNKNOWN'
     assert report.json()['findings'][0]['result'] == 'PRESENT'
     assert report.json()['findings'][1]['result'] == 'MISSING_ON_ROOT_RESPONSE'
+    assert owner.post(f'/api/v1/site-assessments/{claim_id}/run').status_code == 429
     assert other.post(f'/api/v1/site-assessments/{claim_id}/run').status_code == 404
     reloaded = SiteAssessments(app.state.store, fetch=fetch)
     assert reloaded.get('siteowner', claim_id)['report']['evidence_sha256'] == report.json()['evidence_sha256']

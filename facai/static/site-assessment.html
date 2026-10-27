@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FACAI · 站点配置体检</title><style>
+:root{font-family:system-ui,"Microsoft YaHei",sans-serif;color-scheme:dark;background:#0b111b;color:#e9eff7}*{box-sizing:border-box}body{margin:0}header{padding:20px 5vw;border-bottom:1px solid #29384a}a{color:#83d9c7}main{max-width:900px;margin:28px auto;padding:0 18px}section{background:#121c2a;border:1px solid #29384a;border-radius:12px;padding:22px;margin:16px 0}h1{font-size:28px}p{color:#b1c0d1;line-height:1.6}label{display:block;margin:12px 0 6px}input{width:100%;background:#0b1421;color:#e9eff7;border:1px solid #36485d;border-radius:7px;padding:11px;font:inherit}button{min-height:44px;border:1px solid #45605e;border-radius:7px;padding:11px 15px;background:#25453e;color:#c3ffec;font:inherit;cursor:pointer;margin:8px 8px 0 0}button:disabled{opacity:.45}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px}code{overflow-wrap:anywhere}#message{color:#f2cd8c;min-height:24px}
+</style></head><body><header><strong>FACAI / ICS</strong> · <a href="/command-center">指挥中心</a> · <a href="/evidence-center">Evidence</a></header>
+<main><h1>站点 HTTPS 配置体检</h1><p>提交你管理的 HTTPS 域名，放置验证文件后检查首页响应。结果只描述实际观察到的配置；PHP 代码漏洞保持 UNKNOWN。</p>
+<p id="message" role="status" aria-live="polite"></p>
+<section><h2>1 · 认领站点</h2><form id="claim-form"><label for="url">站点根地址</label><input id="url" type="url" placeholder="https://example.org/" required><button>生成验证文件</button></form></section>
+<section id="challenge" hidden><h2>2 · 证明管理权</h2><p>在站点公开提供以下文件，内容只放这一行。保留文件，运行前会再次核验。</p><p>路径：<code id="path"></code></p><pre id="token"></pre><button id="verify">验证站点</button></section>
+<section id="results" hidden><h2>3 · 查看结果</h2><button id="run">运行只读检查</button><button id="reload">重新读取报告</button><pre id="report"></pre></section>
+</main><script>
+'use strict';
+const $=id=>document.getElementById(id);let csrf='',claimId='';
+function message(value){$('message').textContent=value}
+async function api(path,method='GET',body){const headers={};if(csrf)headers['X-CSRF-Token']=csrf;if(body)headers['Content-Type']='application/json';const response=await fetch(path,{method,headers,credentials:'same-origin',body:body?JSON.stringify(body):undefined});const data=await response.json();if(!response.ok)throw Error(typeof data.detail==='string'?data.detail:'请求失败：'+response.status);return data}
+function showClaim(data){claimId=data.id;history.replaceState(null,'','?id='+encodeURIComponent(claimId));$('path').textContent=data.challenge_path;$('token').textContent=data.challenge_value;$('challenge').hidden=false;$('results').hidden=false;message('请先放置验证文件，再点击验证站点')}
+async function action(fn){try{message('执行中…');await fn()}catch(error){message(error.message)}}
+$('claim-form').onsubmit=event=>{event.preventDefault();action(async()=>showClaim(await api('/api/v1/site-assessments','POST',{url:$('url').value})))};
+$('verify').onclick=()=>action(async()=>{const result=await api('/api/v1/site-assessments/'+encodeURIComponent(claimId)+'/verify','POST');message('站点已验证：'+result.verified_at)});
+$('run').onclick=()=>action(async()=>{const result=await api('/api/v1/site-assessments/'+encodeURIComponent(claimId)+'/run','POST');$('report').textContent=JSON.stringify(result,null,2);message('检查完成；仅表示首页 HTTPS 配置观察')});
+$('reload').onclick=()=>action(async()=>{const result=await api('/api/v1/site-assessments/'+encodeURIComponent(claimId));$('report').textContent=result.report?JSON.stringify(result.report,null,2):'尚无报告';message(result.status)});
+(async()=>{try{const session=await api('/api/v1/auth/session');if(session.auth_required&&!session.authenticated){location.href='/login?next='+encodeURIComponent(location.pathname+location.search);return}csrf=session.csrf_token||'';const id=new URL(location.href).searchParams.get('id');if(id){claimId=id;$('results').hidden=false;await $('reload').onclick()}}catch(error){message(error.message)}})();
+</script></body></html>

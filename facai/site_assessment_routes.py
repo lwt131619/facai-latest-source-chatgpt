@@ -1,6 +1,8 @@
 """Authenticated, owner-scoped site-control and assessment API."""
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
+from pathlib import Path
 
 from .site_assessment import SiteAssessmentError, SiteAssessments
 
@@ -13,11 +15,16 @@ def router_for(store, owner, human_writer):
     service = SiteAssessments(store)
     router = APIRouter()
 
+    @router.get('/site-assessment')
+    def page():
+        return FileResponse(Path(__file__).parent / 'static/site-assessment.html')
+
     def call(fn, *args):
         try:
             return fn(*args)
         except SiteAssessmentError as exc:
-            raise HTTPException(400 if str(exc) != 'Site claim not found' else 404, str(exc)) from None
+            code = 404 if str(exc) == 'Site claim not found' else 429 if str(exc).startswith('Assessment rate limit:') else 400
+            raise HTTPException(code, str(exc)) from None
 
     @router.post('/api/v1/site-assessments', status_code=201)
     def create(body: SiteClaim, request: Request):
