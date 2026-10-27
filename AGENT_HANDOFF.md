@@ -1,5 +1,7 @@
 # FACAI / ICS — 当前接手入口
 
+URL 被动体检开源选型与接入边界：docs/PASSIVE_SITE_ASSESSMENT_UPSTREAM.md。
+
 记录源/ZCode版本与智能路由完整配置：docs/WORKSTATION_ROUTING_STORAGE.md。
 
 7×24 VPS 通用智能工作站的现状映射与实施顺序：docs/VPS_24X7_WORKSTATION.md。

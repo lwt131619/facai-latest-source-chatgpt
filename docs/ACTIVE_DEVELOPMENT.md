@@ -557,3 +557,13 @@ Production route quality optimization and VPS/Provider acceptance remain open.
 Full worktree regression on commit 0924836 with real Chromium:
 1479 passed / 7 skipped / 0 failed in 222.95 seconds. This verifies the
 routing increment against existing code, not real Provider/VPS performance.
+
+## URL passive assessment upstream review (2026-10-28)
+
+Cloned and inspected upstream Scrapy 5c7886a (BSD-3-Clause), current MDN HTTP
+Observatory 2776308 (MPL-2.0), and the deprecated Mozilla predecessor
+8b59e6e (MPL-2.0). Selection, source provenance, FACAI integration points,
+claim/report access and bounded passive acceptance are recorded in
+`docs/PASSIVE_SITE_ASSESSMENT_UPSTREAM.md`. This is an upstream review and
+implementation contract, not an implemented scanner; no live target was
+scanned and no third-party source was copied into FACAI.
