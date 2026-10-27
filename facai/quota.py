@@ -206,8 +206,13 @@ class QuotaPools:
     # ——— 路由面：健康度预排序 -------------------------------------------------
     def ranked(self) -> list[str]:
         """Model ids ordered by routed preference: paused/cooling last
-        (in cooldown-remaining order), then by minute-budget headroom,
-        then by owner weight (desc), then id for determinism."""
+        (in cooldown-remaining order), then pools that can reserve now,
+        then by minute-budget headroom, owner weight (desc), and id.
+
+        A pool at its concurrency watermark must not outrank one with a free
+        slot merely because it has more minute requests left. ``reserve``
+        remains the authoritative atomic check after this advisory ranking.
+        """
         with self._lock:
             now = time.monotonic()
             rows = []
@@ -219,13 +224,15 @@ class QuotaPools:
                 cooling = state.cooldown_until > now
                 paused = model_id in self._paused
                 headroom = (minute_limit - len(state.minute_hits)) / max(1, minute_limit)
-                rows.append((paused, cooling,
+                saturated = (len(state.minute_hits) >= minute_limit
+                             or state.inflight >= concurrency_limit)
+                rows.append((paused, cooling, saturated,
                              state.cooldown_until if cooling else 0.0,
                              -headroom,
                              -self._weights.get(model_id, DEFAULT_WEIGHT),
                              model_id))
             rows.sort()
-            return [row[5] for row in rows]
+            return [row[6] for row in rows]
 
     def matrix(self) -> dict:
         """The visualization feed: per-pool limits, live state, owner knobs."""

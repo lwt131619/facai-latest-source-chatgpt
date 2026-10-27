@@ -46,6 +46,18 @@ class TestPools:
         pools.report("m", ok=True)
         assert pools.reserve("m") is True                       # 释放后可再入
 
+    def test_rank_prefers_a_free_slot_over_more_minute_headroom(self):
+        pools = QuotaPools({"busy": {"rate_limit_per_min": 100,
+                                     "max_concurrency": 1},
+                            "free": {"rate_limit_per_min": 2,
+                                     "max_concurrency": 2}})
+        assert pools.reserve("busy") is True
+        assert pools.reserve("free") is True
+        # busy has 99% minute headroom but zero concurrency headroom.
+        assert pools.ranked()[0] == "free"
+        assert pools.reserve("busy") is False
+        assert pools.reserve("free") is True
+
     def test_429_enters_exponential_cooldown_and_ok_halves_it(self):
         pools = QuotaPools(MODELS)
         pools.report("qwen", ok=False, rate_limited=True)

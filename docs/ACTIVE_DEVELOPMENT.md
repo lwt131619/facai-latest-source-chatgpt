@@ -542,3 +542,15 @@ CONNECT was denied by its proxy (403), so current live SHA/health was not
 verified. No production service or credentials were changed. Handoff registry
 render and validation passed for 27 directions; application tests were not
 rerun because runtime code was unchanged.
+
+## Workstation storage and routing baseline (2026-10-28)
+
+Compared latest facai-latest-source-chatgpt main 2c3aadf with old facai-agent
+master e4f74eb (snapshot 17a1d5a). ZCode's own local data is not mounted in
+this environment; no ZCode record or private storage was inspected. The FACAI
+SQLite Store and TrustStore remain the source of truth. New source-backed
+inventory/configuration and acceptance order: docs/WORKSTATION_ROUTING_STORAGE.md.
+QuotaPools.ranked now sinks pools at the concurrency watermark behind pools
+that can actually reserve even when the saturated pool has more minute budget;
+reserve remains authoritative. Focused quota/router regression: 31 passed.
+Production route quality optimization and VPS/Provider acceptance remain open.
