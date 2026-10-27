@@ -86,3 +86,10 @@ Artifact/交接包只可出现引用名。VPS 生产入口是 nginx HTTPS →
 每完成一步运行相关测试、更新 `task-registry.json`、普通提交推送并核对远端 SHA。
 VPS 与真实 Provider 的外部验收必须记录命令、时间、退出码和 Trace；无法访问时
 保持 NOT_VERIFIED。
+
+## 本轮验证结果
+
+2026-10-28：模型池并发槽位预排序的定向 quota/router 测试 31 passed；
+提交 `0924836` 的完整 Git 工作树以真实 Chromium 运行 pytest：1479 passed、
+7 skipped、0 failed，222.95 秒。ZCode 本地记录、真实 Provider、VPS 线上
+版本与 20+ 并发尚未核验；这些缺口不能由本地回归代替。

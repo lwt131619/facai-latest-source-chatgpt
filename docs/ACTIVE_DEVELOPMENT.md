@@ -554,3 +554,6 @@ QuotaPools.ranked now sinks pools at the concurrency watermark behind pools
 that can actually reserve even when the saturated pool has more minute budget;
 reserve remains authoritative. Focused quota/router regression: 31 passed.
 Production route quality optimization and VPS/Provider acceptance remain open.
+Full worktree regression on commit 0924836 with real Chromium:
+1479 passed / 7 skipped / 0 failed in 222.95 seconds. This verifies the
+routing increment against existing code, not real Provider/VPS performance.
