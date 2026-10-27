@@ -132,7 +132,11 @@ CI暴露非root nginx -t使用系统缓存目录的问题；已将验证wrapper�
 最终接手路线与双域名部署风险：`docs/SITE_ASSESSMENT_NEXT_AGENT.md`。
 后续同轮增量：`/site-assessment` 认领/验证/报告页面、跨进程每 Owner 每分钟
 一次运行限额，独立新域名 Nginx/证书安装脚本（尚未在 VPS 执行）。
-本增量定向 47 passed；此前 1488 全量结果不覆盖这些后续变更，需重新跑全量。
+本增量定向 47 passed；随后已重跑全量。
+本增量全量已重跑：`1488 passed / 7 skipped / 0 failed`（真实 Chromium，
+2026-10-28，223.19 秒）。跳过原因仍为 deploy-now.py 不在树 5、真实模型密钥
+未配置 1、vendor authority manifests 缺失 1；新域名脚本只做 `bash -n` 和源码
+校验，尚未在 VPS 上运行。`openingcode.top` 未进行实站检查，不能写成已检出漏洞。
 
 新增 Owner 会话保护的站点认领、HTTPS 验证文件、单次首页响应配置观察及持久报告。
 实现见 `facai/site_assessment.py`、`facai/site_assessment_routes.py`；部署验收见
