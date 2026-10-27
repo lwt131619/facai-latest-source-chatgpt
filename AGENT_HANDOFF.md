@@ -131,9 +131,21 @@ CI暴露非root nginx -t使用系统缓存目录的问题；已将验证wrapper�
 
 新增 Owner 会话保护的站点认领、HTTPS 验证文件、单次首页响应配置观察及持久报告。
 实现见 `facai/site_assessment.py`、`facai/site_assessment_routes.py`；部署验收见
-`docs/SITE_ASSESSMENT_DEPLOY.md`。定向回归为 21 passed / 0 failed；真实域名和 VPS
-部署未验证。下一步是控制台交互页、报告 Artifact/Proof 绑定、公开预览领取、
-限流与生产域名验收；不要把当前首页配置观察描述成 PHP 漏洞扫描完成。
+`docs/SITE_ASSESSMENT_DEPLOY.md`。定向身份/安全回归 47 passed；完整工作树回归
+`1488 passed / 7 skipped / 0 failed`（真实 Chromium，2026-10-28），跳过项是
+deploy-now.py 不在树中 5、真实模型密钥未配置 1、vendor authority manifests 缺失 1。
+真实域名、VPS 部署和公开产品验收未执行。下一步是控制台交互页、报告 Artifact/Proof
+绑定、公开预览领取、限流与生产域名验收；不要把当前首页配置观察描述成 PHP 漏洞扫描完成。
+
+下一 Agent 接手命令：`git clone https://github.com/lwt131619/facai-latest-source-chatgpt.git`
+（已有克隆则 `git fetch origin main` 并核对 SHA）；先读 `AGENTS.md`、
+`FACAI_CODEX_HANDOFF.md`、本文件、`docs/engineering/REQUIREMENTS_TRACEABILITY.md`、
+`docs/SITE_ASSESSMENT_DEPLOY.md`。检查 `git status --short`，不能用旧 ZIP 覆盖主线。
+先做站点体检 UI 与 Owner 领取闭环；测试跨 Owner、控制权失效、报告证据和重启恢复；
+然后在已授权真实域名做上线验收。每个可运行断点更新注册表/交接、运行相关测试、
+用 `scripts/checkpoint.py` 提交推送并核对 `remote_verified`。VPS 当前代码版本未知，
+请先核实再按 `docs/VPS_24X7_WORKSTATION.md` 备份、部署和回滚；不得把 GitHub 同步
+写成 VPS 已升级。
 
 最新代码已推送 `main` 至 `b4f88dc`。本轮补齐 Skill 正文导入后的来源版本历史、CAS 更新、按 Owner 隔离的版本列表及控制台展示；手动绑定和用户原话明确正向调用唯一已安装 Skill 时冻结版本，并为否定、仅提及、多 Skill 语句保留不自动绑定边界。详情及剩余缺口以 `docs/engineering/REQUIREMENTS_TRACEABILITY.md` 的 SKILL-001 为准。
 
