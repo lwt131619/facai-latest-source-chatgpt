@@ -362,17 +362,26 @@ def attack(host, findings=None, pool=None, budget_seconds=45, php_hint=False):
         return result
     result['chain'].append({'step': 'fingerprint', 'signals': len(fp['evidence'].get('signals') or [])})
 
-    sweep = sweep_exposures(host, pool)
+    # The four independent stages (exposure sweep, RCE probe, target
+    # discovery, WP user enum) are I/O bound and share no state: run them in
+    # parallel so the PHP stage costs one proxy round trip, not four.
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as stage_pool:
+        sweep_future = stage_pool.submit(sweep_exposures, host, pool)
+        rce_future = stage_pool.submit(test_phpunit_rce, host, pool)
+        targets_future = stage_pool.submit(discover_targets, host, pool)
+        wp_future = stage_pool.submit(test_wp_users, host, pool)
+        sweep = sweep_future.result()
+        rce = rce_future.result()
+        targets = targets_future.result()
+        wp = wp_future.result()
+
     result['exposures'] = sweep['hits']
     result['chain'].append({'step': 'exposure-sweep', 'hits': len(sweep['hits']),
                             'failed': len(sweep['failed'])})
-
-    rce = test_phpunit_rce(host, pool)
     if rce:
         result['confirmed'].append({'kind': 'RCE', **rce})
         result['chain'].append({'step': 'phpunit-rce', 'hit': True})
 
-    targets = discover_targets(host, pool)
     result['targets'] = [{'path': item['path'], 'params': item['params']} for item in targets[:6]]
     lfi_found = False
     deadline = started + max(6.0, min(budget_seconds, 12.0))
@@ -403,7 +412,6 @@ def attack(host, findings=None, pool=None, budget_seconds=45, php_hint=False):
             result['chain'].append({'step': 'php-filter', 'path': target['path']})
             break
 
-    wp = test_wp_users(host, pool)
     if wp:
         result['confirmed'].append({'kind': 'USER_ENUM', **wp})
         result['chain'].append({'step': 'wp-users', 'users': len(wp['users'])})
