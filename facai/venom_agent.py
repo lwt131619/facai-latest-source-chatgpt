@@ -203,7 +203,14 @@ def discover_targets(host, pool=None):
         action = re.search(r'action=["\']([^"\']*)', block)
         method = (re.search(r'method=["\']([^"\']*)', block) or [None, 'get'])[1] or 'get'
         inputs = re.findall(r'<input[^>]+name=["\']([^"\']+)', block)
-        add((action.group(1) if action else '/') or '/', method.upper(), inputs[:10], 'form')
+        # Form actions are frequently absolute; the request layer needs a path,
+        # not a URL (an absolute action would become https://host/https://...).
+        action_path = '/'
+        if action:
+            parsed = urlsplit(urljoin(f'https://{host}/', action.group(1) or '/'))
+            if not parsed.netloc or parsed.netloc.lower() == host:
+                action_path = parsed.path or '/'
+        add(action_path, method.upper(), inputs[:10], 'form')
         if len(targets) >= 40:
             break
     # PHP sinks are usually addressed directly even when not linked from the
@@ -246,7 +253,7 @@ def test_lfi(host, path, params, pool=None, deadline=None):
             query = f'{quote(name)}={quote(payload, safe="")}'
             full = f'{path}?{query}' if '?' not in path else f'{path}&{query}'
             try:
-                response = _get(host, full, timeout=10)
+                response = _get(host, full, timeout=6)
             except Exception:  # noqa: BLE001
                 continue
             if response.get('error'):
@@ -273,7 +280,7 @@ def test_filter_chain(host, path, params, pool=None, deadline=None):
             query = f'{quote(name)}={quote(payload, safe="")}'
             full = f'{path}?{query}' if '?' not in path else f'{path}&{query}'
             try:
-                response = _get(host, full, timeout=10)
+                response = _get(host, full, timeout=6)
             except Exception:  # noqa: BLE001
                 continue
             if response.get('error'):

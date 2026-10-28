@@ -169,3 +169,14 @@ def test_php_hint_overrides_strict_fingerprint(routes):
     assert result['fingerprint']['evidence']['hint'] == 'recon: PHP 栈指纹'
     assert result['verdict'] != 'NO_PHP'
     assert result['chain'][0]['step'] == 'php-hint'
+
+
+def test_form_action_is_normalized_to_a_path(routes):
+    """An absolute form action must not become https://host/https://host/..."""
+    routes['/'] = _resp(200, '<form action="https://t/submit.php" method="post">'
+                            '<input name="q"></form>')
+    routes['/index.php'] = _resp(404)
+    targets = venom_agent.discover_targets('t')
+    assert targets, targets
+    assert all(item['path'].startswith('/') for item in targets), targets
+    assert any(item['path'] == '/submit.php' for item in targets), targets
