@@ -359,3 +359,28 @@ Owner 要求：VPS 上把出口伪装、IP 轮换、工具调用、SQL 注入打
   `mode=pinned exit=isp.decodo.com:10002`，2.09s 完成。
 - 待办（下一步）：sqlmap 深挖路径已在生产就绪（VPS 有 /usr/bin/sqlmap），尚未对
   真实确认注入的目标跑过一次端到端 `_deep_enumerate`；代理池月度流量配额监控。
+
+## 2026-10-28 第四轮（交付日收口）：sqlmap 端到端实证 + 武器库 + 任务流水
+
+- **sqlmap 解析器假阳性修复**：`"does not seem to be injectable"` 里的
+  "injectable" 曾被当命中。现改为正向模式匹配（is vulnerable / identified the
+  following injection point / confirmed the injection）且负向模式存在即否决；
+  标签行允许括号（"current database (equivalent to schema on PostgreSQL):"）；
+  dump 模式从 `--dbs --stop` 改为 `--dump --stop`（--dbs 在 SQLite 后端报错）。
+- **真靶场端到端实证（VPS 本地）**：临时 SQLite 拼接注入服务（users 表 3 行含
+  明文密码 + secrets 表含 API key）。经驱动跑 sqlmap：
+  - 确认阶段 15.5s：`injectable: True, dbms: SQLite, banner: '3.37.2'`（真实版本）
+  - 取数阶段：**两表全量拉出**——users(id/email/password/username 3 行，
+    S3cretPass/op2024/guest123)与 secrets(API key ×2)，CSV 落盘。
+  上一轮"待实证"项已闭合。
+- **武器库 `facai/arsenal.py`**：统一注册/调度/统计。每工具声明 probe（可用性
+  真相）、invoke 契约、预算、`requires_confirmation` 闸（重工具必须先有快筛
+  确认）、uses_egress。`snapshot()` 让报告如实展示本机能力；未装工具明确报
+  not installed 不冒充已跑。已注册 sqlmap（确认闸开）与 nmap（预留占位，
+  未接线——快路径刻意不做全端口扫描）。
+- **任务流水**：`GET /api/v1/quick-scans/recent`（只读摘要列，不展开全报告）；
+  `/scan` 页新增任务流水面板（评级徽章/主机/耗时/出口线/注入已实证标记，
+  点击回看报告），每次新扫描后自动刷新；报告头部新增武器库安装状态行。
+- 测试：test_arsenal.py 6 例 + test_sqlmap_driver.py 5 例（负向不误判为核心）
+  + test_quick_scan.py 16 例（武器库在测试中桩死——本机 sec-toolkit 真装有
+  sqlmap，CONFIRMED 分支曾真启动外部工具把测试挂死 5 分钟，此坑已记）。

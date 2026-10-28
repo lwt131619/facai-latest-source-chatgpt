@@ -66,6 +66,10 @@ code{overflow-wrap:anywhere;font-size:12.5px;background:#0b1421;padding:1px 5px;
 </section>
 
 <section id="report" class="hidden"></section>
+<section id="missions" class="hidden">
+<h2>任务流水</h2><p style="color:#8fa3b8;font-size:12.5px">最近 25 次检测：评级、耗时、出口线、注入确认。</p>
+<div id="missions-list"></div>
+</section>
 </main>
 <script>
 'use strict';
@@ -161,6 +165,7 @@ function render(data){
     <p>${chips}${data.cached?'<span class="badge">10 分钟内缓存</span>':''}</p>
     <p style="color:#8fa3b8;font-size:12.5px">采集 ${esc(r.collected_at)} · 总分 ${s.score} ·
       总耗时 ${esc(t.total_ms??'—')}ms（侦察 ${esc(t.recon_ms??'—')}ms / 攻击 ${esc(t.attack_ms??'—')}ms）</p>
+    ${(r.arsenal||[]).length?`<p style="color:#8fa3b8;font-size:12.5px">武器库：${r.arsenal.map(x=>`${esc(x.title)} ${x.installed?'✓':'✗'}`).join(' · ')}</p>`:''}
     ${r.egress?`<p style="color:#8fa3b8;font-size:12.5px">出口：${r.egress.mode==='pinned'?'固定 '+(r.egress.exit||'直连(自有域名)'):'轮换'} · 池 ${r.egress.pool_size} 条（健康 ${r.egress.pool_healthy??'—'}） · 本线 ${r.egress.exit_healthy?'正常':'异常'}</p>`:''}
     ${trig?'<p>攻击触发信号：'+trig+'</p>':''}
     ${r.attack_skipped?'<p style="color:#8fa3b8">'+esc(r.attack_skipped)+'</p>':''}
@@ -217,12 +222,33 @@ $('scan-form').onsubmit=async ev=>{
     clearInterval(tick);dots.forEach(d=>d.classList.add('on'));
     render(data);
     if(data.id)history.replaceState(null,'','?id='+encodeURIComponent(data.id));
+    loadMissions();
     msg('完成'+(data.cached?'（命中 10 分钟内缓存）':''));
   }catch(err){clearInterval(tick);msg(err.message)}
   finally{$('go').disabled=false}
 };
 
+async function loadMissions(){
+  try{
+    const data=await api('/api/v1/quick-scans/recent?limit=25');
+    const list=data.missions||[];
+    if(!list.length)return;
+    $('missions').classList.remove('hidden');
+    $('missions-list').innerHTML=list.map(m=>`
+      <div class="finding" style="cursor:pointer" data-id="${esc(m.id)}">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span class="grade ${gradeClass(m.grade||'?')}" style="font-size:16px;min-width:40px;padding:2px 8px">${esc(m.grade||'?')}</span>
+          <b>${esc(m.host)}</b>
+          ${m.confirmed_injection?'<span class="badge sev-CRITICAL">注入已实证</span>':''}
+          <span class="cat">${esc(m.created_at||'')} · ${m.findings} 项 · ${m.total_ms?Math.round(m.total_ms)+'ms':'—'} · 出口 ${esc(m.egress_exit||'—')}</span>
+        </div>
+      </div>`).join('');
+    for(const el of document.querySelectorAll('#missions-list .finding'))
+      el.onclick=async()=>{try{msg('读取报告…');render({report:(await api('/api/v1/quick-scans/'+encodeURIComponent(el.dataset.id))).report,cached:false});msg('历史报告')}catch(err){msg(err.message)}};
+  }catch(err){/* history is non-essential */}
+}
 (async()=>{
+  loadMissions();
   const id=new URL(location.href).searchParams.get('id');
   if(!id)return;
   try{msg('读取历史报告…');render({report:(await api('/api/v1/quick-scans/'+encodeURIComponent(id))).report,cached:false});msg('历史报告')}

@@ -20,7 +20,7 @@ import threading
 import time
 from datetime import datetime, timezone
 
-from . import attack_agent, egress, recon, sqlmap_driver
+from . import arsenal, attack_agent, egress, recon
 from .net_client import TransportError
 from .site_assessment import SiteAssessmentError, normalize_site
 
@@ -587,6 +587,7 @@ class QuickScans:
             'attack_triggers': triggers,
             'attack_skipped': attack_skipped,
             'egress': pool.snapshot(),
+            'arsenal': arsenal.shared().snapshot(),
             'timing': {'total_ms': round((time.perf_counter() - started) * 1000, 1),
                        'recon_ms': (recon_results.get('_meta') or {}).get('elapsed_ms'),
                        'attack_ms': (attack_result or {}).get('elapsed_ms')},
@@ -605,23 +606,52 @@ class QuickScans:
         return report
 
     def _deep_enumerate(self, host, attack_result, pool):
-        """Hand a confirmed injection point to sqlmap, bounded and time-capped."""
-        if not sqlmap_driver.available():
-            return {'ok': False, 'error': 'sqlmap not installed',
-                    'hint': 'install sqlmap on the host to enable deep enumeration'}
+        """Hand a confirmed injection point to the arsenal's sqlmap tool."""
         confirmed = attack_result.get('confirmed') or []
         point = next((item for item in confirmed if item.get('param') and item.get('path')), None)
         if point is None:
             return {'ok': False, 'error': 'no parameterised injection point to enumerate'}
         url = f'https://{host}{point["path"]}'
-        result = sqlmap_driver.enumerate_injection(
-            url, params=[point['param']], proxy=pool.proxy if pool else None)
-        return sqlmap_driver.as_evidence(result)
+        return arsenal.shared().dispatch(
+            'sqlmap', url, params=[point['param']],
+            proxy=pool.proxy if pool else None)
 
     def get(self, scan_id):
         with self.store.connect() as db:
             row = db.execute('SELECT report_json FROM quick_scans WHERE id=?', (scan_id,)).fetchone()
         return json.loads(row['report_json']) if row else None
+
+    def recent(self, limit=25):
+        """Mission flow: the last scans with the fields the board needs.
+
+        Only summary columns are read out of the stored JSON — never the full
+        report — so the history view stays cheap regardless of report size.
+        """
+        with self.store.connect() as db:
+            rows = db.execute(
+                'SELECT id, host, created_at, report_json FROM quick_scans '
+                'ORDER BY created_at DESC LIMIT ?', (int(limit),)).fetchall()
+        missions = []
+        for row in rows:
+            try:
+                report = json.loads(row['report_json'])
+            except (ValueError, TypeError):
+                continue
+            timing = report.get('timing') or {}
+            egress = report.get('egress') or {}
+            missions.append({
+                'id': row['id'], 'host': row['host'], 'created_at': row['created_at'],
+                'grade': (report.get('summary') or {}).get('grade'),
+                'score': (report.get('summary') or {}).get('score'),
+                'severity_counts': (report.get('summary') or {}).get('severity_counts'),
+                'findings': len(report.get('findings') or []),
+                'confirmed_injection': bool((report.get('attack') or {}).get('verdict')
+                                            == 'CONFIRMED_INJECTION'),
+                'attack_triggers': report.get('attack_triggers') or [],
+                'total_ms': timing.get('total_ms'),
+                'egress_exit': egress.get('exit'),
+                'collected_at': report.get('collected_at')})
+        return missions
 
 
 def _attack_findings(attack_result):

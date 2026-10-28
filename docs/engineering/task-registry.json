@@ -677,11 +677,14 @@
         "facai/static/scan.html",
         "tests/test_quick_scan.py",
         "tests/test_attack_integration.py",
-        "requirements.txt"
+        "requirements.txt",
+        "facai/arsenal.py",
+        "tests/test_arsenal.py",
+        "tests/test_sqlmap_driver.py"
       ],
       "goal": "Owner 2026-10-28：对标 Web-Check（44 检查项）与 Obscura（反检测浏览器）的优势能力，做最快检测；侦察出高危信号后自动派发后端攻击 Agent 真发载荷、差分验证、能取数就取数。弃掉拖慢速度的检查（端口扫描/traceroute/截图/第三方情报 API/CT 子域），保留覆盖面。",
       "acceptance": "17 项检查并发完成（实测 example.org 1.4–3.1s）；攻击链在真实 SQLite 注入靶场上 error-based + boolean 双确认并自动发现参数；VPS 生产环境同代码复现 CONFIRMED_INJECTION；公网 /scan 200；全量回归 1505 通过。",
-      "next_action": "已上线（2026-10-28）：main=本 checkpoint，VPS 已 deploy.sh update。后续可选：UNION 取数扩展（多表/列名枚举）、POST 表单注入、盲注提速（并行位提取）、报告 Artifact 绑定。"
+      "next_action": "交付收口（2026-10-28）：sqlmap 端到端已实证（真靶场确认+dbms+两表全量取数）；武器库 arsenal.py 注册调度上线（sqlmap+nmap 占位）；任务流水 recent API+UI 上线；解析器假阳性已修并有负向测试。生产 /scan 可用。后续可选：UNION 盲注并行位提取、POST 表单注入、nmap 受限变体接线。"
     }
   ],
   "latest_validation": {

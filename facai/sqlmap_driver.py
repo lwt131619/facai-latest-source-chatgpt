@@ -74,9 +74,11 @@ def enumerate_injection(url, *, params=None, proxy=None, timeout=DEFAULT_TIMEOUT
     if params:
         command += ['-p', ','.join(params)]
     if dump:
-        command += ['--dbs', f'--stop={max_tables}']
+        # --dump (current-db tables) works on both schema DBMSs and SQLite;
+        # --dbs alone is a no-op error on file-backed backends.
+        command += ['--dump', f'--stop={max_tables}']
     else:
-        command += ['--banner', '--current-db', '--current-user']
+        command += ['--banner', '--current-db', '--current-user', '--dbs']
 
     started = time.perf_counter()
     try:
@@ -99,21 +101,33 @@ def enumerate_injection(url, *, params=None, proxy=None, timeout=DEFAULT_TIMEOUT
 
 
 def _parse(stdout):
-    """Extract the facts sqlmap actually proved, never guess beyond them."""
+    """Extract the facts sqlmap actually proved, never guess beyond them.
+
+    Positive signals must be matched specifically: the phrase "injectable"
+    also appears in the *negative* verdicts ("does not seem to be
+    injectable"), which once produced a false CONFIRMED result.
+    """
     lowered = stdout.lower()
     result = {'injectable': False, 'techniques': [], 'dbms': None, 'banner': None,
               'current_db': None, 'current_user': None, 'databases': [], 'dumps': []}
-    if 'is vulnerable' in lowered or 'injectable' in lowered:
+    positive = ('is vulnerable', 'identified the following injection point',
+                'the back-end dbms is', 'confirmed the injection')
+    negative = ('does not seem to be injectable', 'do not appear to be injectable',
+                'all tested parameters do not appear')
+    if any(marker in lowered for marker in positive) and not any(
+            marker in lowered for marker in negative):
         result['injectable'] = True
     for label, key in (('back-end dbms', 'dbms'), ('banner', 'banner'),
                        ('current database', 'current_db'),
                        ('current user', 'current_user')):
-        match = re.search(rf'{label}:\s*(.+)', stdout, re.I)
+        # sqlmap appends parentheticals, e.g. "current database (equivalent
+        # to schema on PostgreSQL): 'acuart'" — allow text before the colon.
+        match = re.search(rf'{label}(?:\s*\([^)]*\))?:\s*(.+)', stdout, re.I)
         if match:
             value = match.group(1).strip().split('\n')[0][:160]
             if value and not value.startswith('['):
                 result[key] = value
-    techniques = re.findall(r'Type:\s*([A-Z][A-Za-z\s-]+)', stdout)
+    techniques = re.findall(r'Type:\s*([A-Za-z][A-Za-z\s-]+)', stdout)
     result['techniques'] = sorted({item.strip() for item in techniques})[:8]
     # "available databases [n]:" followed by a bracketed list
     dbs_block = re.search(r'available databases \[\d+\]:\s*\n((?:\[\*\]\s*.+\n?)+)', stdout)

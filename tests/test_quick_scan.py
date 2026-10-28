@@ -39,12 +39,19 @@ class _StubPool:
 
 @pytest.fixture(autouse=True)
 def stub_egress(monkeypatch):
-    """Every scan in this module runs with a pinned stub exit."""
+    """Every scan in this module runs with a pinned stub exit and a cold
+    arsenal: the host may really have sqlmap installed (sec-toolkit), and a
+    CONFIRMED verdict in a test must never launch a real external tool."""
     import facai.egress as eg
+    from facai import arsenal as ar
     monkeypatch.setattr(eg, 'for_scan', lambda host=None: _StubPool())
     eg.reset_shared()
+    registry = ar.Arsenal()
+    monkeypatch.setattr(ar, 'shared', lambda: registry)
+    monkeypatch.setattr('facai.quick_scan.arsenal.shared', lambda: registry)
     yield
     eg.reset_shared()
+    ar.reset_shared()
 
 # ------------------------------------------------------------------ analyzers
 

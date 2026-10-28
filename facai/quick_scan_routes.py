@@ -46,6 +46,10 @@ def router_for(store):
             raise HTTPException(429, '当前扫描队列繁忙，请稍后再试')
         return {'id': result.get('id'), 'cached': result['cached'], 'report': result['report']}
 
+    @router.get('/api/v1/quick-scans/recent')
+    def recent(limit: int = 25):
+        return {'missions': service.recent(min(limit, 100))}
+
     @router.get('/api/v1/quick-scans/{scan_id}')
     def get(scan_id: str):
         report = service.get(scan_id)
