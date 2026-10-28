@@ -537,6 +537,12 @@ def is_public_path(path):
         # service worker outside any session (install prompts, lock-screen
         # refresh). They carry no data — static shell and icons only.
         return True
+    if path == "/scan" or path.startswith("/api/v1/quick-scans"):
+        # Login-free quick scan (Owner directive 2026-10-28): paste a URL, get
+        # a bounded read-only report. No session credential is involved, so
+        # there is nothing to CSRF; abuse is bounded by per-IP/per-host rate
+        # gates and the scan concurrency cap inside the service.
+        return True
     return path.startswith("/api/v1/channels/") and path.endswith("/webhook")
 
 
@@ -4652,6 +4658,8 @@ def create_app(data_dir=None, opencode_adapter=None, goose_adapter=None):
     app.include_router(trust_router(store, current_owner, require_mission, require_human_review))
     from .site_assessment_routes import router_for as site_assessment_router
     app.include_router(site_assessment_router(store, current_owner, require_human_review))
+    from .quick_scan_routes import router_for as quick_scan_router
+    app.include_router(quick_scan_router(store))
     from .setup_routes import router_for as setup_router
     from .mission_spec import digest as specification_digest
 

@@ -5,13 +5,14 @@
   "product": "FACAI / ICS Production Platform v1.0",
   "source_baseline_commit": "933b431",
   "last_full_regression": {
-    "commit": "0924836",
+    "commit": "pending-this-checkpoint",
     "scope": "git_worktree",
-    "passed": 1479,
-    "skipped": 7,
-    "seconds": 222.95,
-    "real_browser_enabled": true,
-    "production_acceptance": false
+    "passed": 1493,
+    "skipped": 9,
+    "seconds": 355.14,
+    "real_browser_enabled": false,
+    "production_acceptance": false,
+    "note": "1493 passed / 9 skipped / 0 failed; quick_scan adds 7 cases; 2 env-dependent cases skipped this run"
   },
   "last_package_regression": {
     "commit": "938ebe53f3379a049bcce5709e3be1630e4af8e0",
@@ -660,6 +661,23 @@
         "GitHub备份与正式安装包可复现，不假报Production完成"
       ],
       "next_action": "按验收矩阵逐项实测；未通过项不删除、不用单元测试总数替代最终交付。A26 闭环结构已钉住(2026-10-23):tests/test_acceptance_closed_loop.py 在同一使命同一Trace上全链通过:自然语言→修订→确认(原话保留)→独立授权→每步骤真实执行路径(OpenCodeAdapter+受控runner,不调模型)→执行事件同事务自动采集为证据→Owner补充证据+独立复核→断言未审UNKNOWN→Owner审查INFERENCE→证据快照→Owner验收(验收待办为空)→下载ZIP→知识收录→重启恢复→全局事件流重启前后逐字节一致。受控runner不等于真实Provider执行:矩阵A26保持NOT_VERIFIED,直至真实链路与真实界面验收通过。"
+    },
+    {
+      "id": "QA-001",
+      "title": "免登录快速体检 quick scan（贴 URL → 多栈证据报告）",
+      "status": "DONE_LOCAL_VPS_IN_PROGRESS",
+      "priority": "high",
+      "depends_on": [],
+      "source_files": [
+        "facai/quick_scan.py",
+        "facai/quick_scan_routes.py",
+        "facai/static/scan.html",
+        "tests/test_quick_scan.py",
+        "facai/api.py"
+      ],
+      "goal": "Owner 2026-10-28 死命令：免登录贴 URL，最快产出逐项有证据的多技术栈风险报告；能力对标开源注入面检测首层；授权直达 VPS 部署发布。",
+      "acceptance": "免登录 POST /api/v1/quick-scans 返回带 evidence/tags/severity 的报告；单轮 1 握手+8 只读 GET；每 IP 60s/每主机 600s 限流与缓存语义；测试全绿；VPS whstapp.lol/scan 公网实测通过。",
+      "next_action": "VPS staging git pull + deploy.sh update + 公网验收；实测结果回填本条目。"
     }
   ],
   "latest_validation": {

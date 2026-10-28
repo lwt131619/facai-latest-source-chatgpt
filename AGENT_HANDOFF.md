@@ -220,3 +220,26 @@ deploy-now.py 不在树中 5、真实模型密钥未配置 1、vendor authority 
   器，一步一任务+终态映射；Owner 指令权限模型：本地/Owner 最高，ARTEX 内
   置审批门整体旁路——规则禁用留档+拦截工具面清空+judge 不配；详见
   docs/ENGINES_ARTEX.md；真实实例部署待做）。
+
+## 2026-10-28 免登录快速体检（quick scan）上线（ZCode 窗口）
+
+- Owner 死命令：免登录贴 URL → 最快速度产出真实有效的多栈风险报告，能力对标
+  开源注入面检测器，授权开发直达 VPS 部署发布。
+- 新增 `facai/quick_scan.py`（引擎）+ `facai/quick_scan_routes.py`（公开路由）+
+  `facai/static/scan.html`（免登录页 `/scan`）。复用 site_assessment 的 SSRF 防线
+  （公网地址 pinning、仅 HTTPS、字节预算），单轮预算=1 次 TLS 握手 + 8 次只读
+  GET：根、/.git/HEAD、/.env、/robots.txt、金丝雀反射探针、SQL 错误回显探针、
+  /admin、/phpmyadmin。分析器管线：传输/证书、安全响应头、Cookie 旗标、被动
+  技术栈指纹（INFERENCE，不声称 CVE）、敏感暴露（FACT）、注入面（无害单发
+  载荷回显判定，对标 sqlmap error-based 回显与反射 XSS 首层）。全部 finding
+  带 evidence/tags/nuclei 风格分级与修复建议，报告含 evidence_sha256。
+- 滥用防线：每 IP 60s 一次 + 每主机 600s 冷却（失败也冷却，防反复敲不可达
+  目标）+ 并发信号量 4 + 同主机 10 分钟内返回缓存报告（免烧配额秒回）。
+  `/scan` 与 `/api/v1/quick-scans*` 注册进 `is_public_path`（无会话凭证，
+  无 CSRF 面；滥用由服务内限流闸约束）。
+- 测试 `tests/test_quick_scan.py`（7 用例：分析器分级、指纹 INFERENCE 语义、
+  免登录全流程、缓存语义、按 IP 限流、危险 URL 拒绝、不可达目标冷却）。
+  全量回归结果见本轮 checkpoint 记录。
+- VPS 部署：/opt/facai-staging git pull → `deploy/deploy.sh update`（自动备份
+  + rsync 受管路径 + 重启 facai-cloud），公网 whstapp.lol/scan 验收；结果以
+  dist/checkpoint-status.json 与实测 curl 为准，未验证不写已完成。

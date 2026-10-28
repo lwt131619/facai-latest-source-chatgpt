@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FACAI · 免登录快速体检</title><style>
+:root{font-family:system-ui,"Microsoft YaHei",sans-serif;color-scheme:dark;background:#0b111b;color:#e9eff7}*{box-sizing:border-box}body{margin:0}header{padding:20px 5vw;border-bottom:1px solid #29384a}a{color:#83d9c7}main{max-width:960px;margin:28px auto;padding:0 18px}section{background:#121c2a;border:1px solid #29384a;border-radius:12px;padding:22px;margin:16px 0}h1{font-size:28px}p{color:#b1c0d1;line-height:1.6}label{display:block;margin:12px 0 6px}input{width:100%;background:#0b1421;color:#e9eff7;border:1px solid #36485d;border-radius:7px;padding:11px;font:inherit}button{min-height:44px;border:1px solid #45605e;border-radius:7px;padding:11px 15px;background:#25453e;color:#c3ffec;font:inherit;cursor:pointer;margin:8px 8px 0 0}button:disabled{opacity:.45}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px;background:#0b1421;border:1px solid #29384a;border-radius:7px;padding:10px}code{overflow-wrap:anywhere}#message{color:#f2cd8c;min-height:24px}
+.grade{display:inline-block;min-width:52px;text-align:center;font-size:30px;font-weight:700;border-radius:9px;padding:4px 12px;margin-right:12px;vertical-align:middle}
+.CRITICAL{color:#ffb3b3}.HIGH{color:#ffb36b}.MEDIUM{color:#f2cd8c}.LOW{color:#b1c0d1}.INFO{color:#83d9c7}
+.badge{display:inline-block;border-radius:6px;padding:1px 8px;font-size:12px;margin-right:8px;border:1px solid #36485d}
+.finding{border:1px solid #29384a;border-radius:9px;padding:12px 14px;margin:10px 0}
+.finding summary{cursor:pointer;line-height:1.5}
+.sev{font-weight:700}
+.cat{color:#8fa3b8;font-size:12px}
+details.evidence{margin-top:8px}
+meta{color:#8fa3b8;font-size:12px}
+</style></head><body><header><strong>FACAI / ICS</strong> · <a href="/login">控制台登录</a> · 深度认领体检见 <a href="/site-assessment">站点认领体检</a></header>
+<main><h1>免登录快速体检</h1>
+<p>贴一个 HTTPS 域名根地址，无需账号与验证文件。检测为只读：1 次 TLS 握手 + 4 次同域 GET（首页、<code>/.git/HEAD</code>、<code>/.env</code>、<code>/robots.txt</code>）。逐条结论附原始观察证据；技术栈识别为被动推断，不声称已证实任何 CVE。</p>
+<section><form id="scan-form"><label for="url">目标站点（你自己管理的域名）</label><input id="url" type="url" placeholder="https://example.org/" required><button id="go">开始体检</button></form><p id="message" role="status" aria-live="polite"></p></section>
+<section id="report" hidden></section>
+</main><script>
+'use strict';
+const $=id=>document.getElementById(id);
+function message(value){$('message').textContent=value}
+async function api(path,method,body){const response=await fetch(path,{method,headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});const data=await response.json().catch(()=>({}));if(!response.ok)throw Error(typeof data.detail==='string'?data.detail:'请求失败：'+response.status);return data}
+const SEV_ORDER=['CRITICAL','HIGH','MEDIUM','LOW','INFO'],CAT_NAMES={transport:'传输与证书',headers:'安全响应头',cookies:'Cookie 安全',fingerprint:'技术栈指纹',exposure:'敏感暴露'};
+function esc(value){return String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function toMarkdown(report){const lines=['# FACAI 快速体检报告 — '+report.host,'','采集时间：'+report.collected_at+'　评级：'+report.summary.grade+'（'+report.summary.score+' 分）',''];for(const item of report.findings){lines.push('## ['+item.severity+'] '+item.title,'- 类别：'+(CAT_NAMES[item.category]||item.category)+'　确定性：'+item.certainty,'- 证据：'+item.evidence,'- 建议：'+item.recommendation,'')}lines.push('---',report.scope,report.limitations,'evidence_sha256: '+report.evidence_sha256);return lines.join('\n')}
+function render(report,cached){const box=$('report');box.hidden=false;const counts=report.summary.severity_counts;const chips=SEV_ORDER.filter(s=>counts[s]).map(s=>`<span class="badge ${s}">${s} ×${counts[s]}</span>`).join('');let html=`<h2 style="margin:0"><span class="grade ${report.summary.grade.startsWith('A')?'INFO':report.summary.grade.startsWith('F')?'CRITICAL':report.summary.grade==='D'?'HIGH':'MEDIUM'}">${esc(report.summary.grade)}</span>${esc(report.host)}</h2><p>${chips}${cached?'<span class="badge INFO">10 分钟内缓存结果</span>':''}</p><p class="cat">采集于 ${esc(report.collected_at)} · TLS ${esc(report.tls.tls_version||report.tls.error||'未知')} · 出站请求 ${report.request_count} 次</p>`;
+for(const item of report.findings){html+=`<div class="finding"><div><span class="sev ${item.severity}">[${item.severity}]</span> ${esc(item.title)} <span class="cat">· ${(CAT_NAMES[item.category]||item.category)} · ${item.certainty==='FACT'?'已验证事实':'指纹推断'}</span></div><details class="evidence"><summary>证据与建议</summary><pre>${esc(item.evidence)}</pre><p>建议：${esc(item.recommendation)}</p></details></div>`}
+if(!report.findings.length){html+='<p>预算内未发现配置类风险项。</p>'}
+html+=`<details class="evidence"><summary>范围与限制</summary><pre>${esc(report.scope)}\n${esc(report.limitations)}</pre><p>evidence_sha256: <code>${esc(report.evidence_sha256)}</code></p></details>`;
+html+='<button id="copy-md">复制 Markdown 报告</button><button id="copy-json">复制 JSON</button>';
+box.innerHTML=html;
+$('copy-md').onclick=()=>navigator.clipboard.writeText(toMarkdown(report)).then(()=>message('Markdown 已复制'));
+$('copy-json').onclick=()=>navigator.clipboard.writeText(JSON.stringify(report,null,2)).then(()=>message('JSON 已复制'));}
+$('scan-form').onsubmit=async event=>{event.preventDefault();$('go').disabled=true;message('扫描中…（约 5–20 秒，单轮预算：1 次握手 + 4 次只读 GET）');try{const result=await api('/api/v1/quick-scans','POST',{url:$('url').value.trim()});render(result.report,result.cached);if(result.id)history.replaceState(null,'','?id='+encodeURIComponent(result.id));message('体检完成'+(result.cached?'（命中 10 分钟内缓存）':''))}catch(error){message(error.message)}finally{$('go').disabled=false}};
+(async()=>{const id=new URL(location.href).searchParams.get('id');if(!id)return;try{message('读取历史报告…');const result=await api('/api/v1/quick-scans/'+encodeURIComponent(id));render(result.report,false);message('历史报告')}catch(error){message(error.message)}})();
+</script></body></html>
