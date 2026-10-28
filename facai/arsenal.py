@@ -116,6 +116,21 @@ def _nmap_invoke(*args, **_):
             'excluded from the fast path; register a bounded variant before use'}
 
 
+def _venom_probe():
+    # VENOM is pure in-process HTTP probing; it is always runnable.
+    return True
+
+
+def _venom_invoke(host, *, pool=None, **_):
+    from . import venom_agent
+    result = venom_agent.attack(host, pool=pool)
+    return {'ok': True, 'verdict': result.get('verdict'),
+            'confirmed': result.get('confirmed') or [],
+            'exposures': result.get('exposures') or [],
+            'targets': result.get('targets') or [],
+            'elapsed_ms': result.get('elapsed_ms')}
+
+
 _arsenal = None
 _arsenal_lock = threading.Lock()
 
@@ -130,6 +145,10 @@ def shared():
                 'sqlmap', 'sqlmap 深度枚举', _sqlmap_probe, _sqlmap_invoke,
                 budget_s=300, requires_confirmation=True, uses_egress=True,
                 category='sqli'))
+            registry.register(Tool(
+                'venom', 'VENOM · PHP 全自动扫描注入', _venom_probe, _venom_invoke,
+                budget_s=60, requires_confirmation=False, uses_egress=True,
+                category='php'))
             registry.register(Tool(
                 'nmap', 'nmap 端口测绘（预留）', _nmap_probe, _nmap_invoke,
                 budget_s=120, requires_confirmation=False, uses_egress=False,

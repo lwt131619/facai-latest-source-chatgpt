@@ -149,10 +149,41 @@ function sqlmapHtml(s){
   if((s.techniques||[]).length)rows.push(['技术', s.techniques.join(', ')]);
   if((s.databases||[]).length)rows.push(['库列表', s.databases.join(', ')]);
   const cards=rows.map(([k,v])=>`<div class="kv"><b>${esc(k)}</b>${esc(v)}</div>`).join('');
-  const dumps=(s.dumps||[]).map(d=>`<div class="kv" style="margin:6px 0"><b>${esc(d.database)} / ${esc(d.table)}</b>${d.row_count} 行<pre>${esc((d.sample||[]).join('
-'))}</pre></div>`).join('');
+  const dumps=(s.dumps||[]).map(d=>`<div class="kv" style="margin:6px 0"><b>${esc(d.database)} / ${esc(d.table)}</b>${d.row_count} 行<pre>${esc((d.sample||[]).join('\n'))}</pre></div>`).join('');
   return `<h3>深度枚举（sqlmap · ${esc(s.elapsed_s??'—')}s）</h3>
     <div class="grid">${cards}</div>${dumps}`;
+}
+
+function venomHtml(v){
+  if(!v)return '';
+  const ok=(v.verdict==='CONFIRMED_PHP_RCE'||v.verdict==='CONFIRMED_LFI');
+  const fp=v.fingerprint||{};
+  const sig=((fp.evidence||{}).signals||[]).map(x=>`<span class="badge">${esc(x)}</span>`).join('');
+  const confirmed=(v.confirmed||[]).map(c=>`<div class="kv" style="margin:6px 0">
+    <b>${esc(c.kind)} · ${esc(c.technique||'')}</b>
+    ${c.path?esc(c.path):''}${c.param?'?'+esc(c.param):''}
+    ${c.payload?'<br>载荷：<code>'+esc(c.payload)+'</code>':''}
+    ${c.target_file?'<br>读回文件：'+esc(c.target_file):''}
+    ${c.evidence?'<br>证据：<code>'+esc(String(c.evidence).slice(0,220))+'</code>':''}
+    ${(c.users||[]).length?'<br>账号：'+esc((c.users||[]).map(u=>u.slug).join(', ')):''}
+  </div>`).join('');
+  const exposures=(v.exposures||[]).map(e=>`<div class="phase"><span class="dot hot"></span>
+    ${esc(e.path)} · ${esc(e.label)} · HTTP ${esc(e.status)} · ${esc(e.length)}B</div>`).join('');
+  const chain=(v.chain||[]).map(s=>`<div class="phase"><span class="dot ${s.hits||s.hit?'hot':'on'}"></span>
+    ${esc(s.step)}${s.hits?' · 命中 '+s.hits:''}${s.path?' · '+esc(s.path):''}</div>`).join('');
+  return `<section class="attack ${ok?'confirmed':''}">
+    <h2>VENOM · PHP 全自动扫描注入 · ${ok?'<span class="CRITICAL">已实证</span>':esc(v.verdict||'无结论')}</h2>
+    <p style="color:#8fa3b8">耗时 ${esc(v.elapsed_ms??'—')}ms · 入口 ${(v.targets||[]).length} 个 · 暴露文件 ${(v.exposures||[]).length} 个</p>
+    ${sig?'<p style="font-size:12.5px">PHP 指纹：'+sig+'</p>':''}
+    ${chain}${exposures}${confirmed}
+    ${v.verdict==='NO_CONFIRMED_PHP'?'<p style="color:#8fa3b8">已跑暴露面/LFI/过滤器/执行链，未读回可自证内容。</p>':''}
+  </section>`;
+}
+
+function agentsHtml(agents){
+  if(!(agents||[]).length)return '';
+  const items=agents.map(a=>`<span class="badge sev-${String(a.verdict||'').startsWith('CONFIRMED')?'CRITICAL':'INFO'}">${esc(a.name)} · ${esc(a.verdict||'')}${a.confirmed?' · 实锤 '+a.confirmed:''}</span>`).join('');
+  return `<p>Agent 编队：${items}</p>`;
 }
 
 function render(data){
@@ -164,13 +195,15 @@ function render(data){
     <h2><span class="grade ${gradeClass(s.grade)}">${esc(s.grade)}</span>${esc(r.host)}</h2>
     <p>${chips}${data.cached?'<span class="badge">10 分钟内缓存</span>':''}</p>
     <p style="color:#8fa3b8;font-size:12.5px">采集 ${esc(r.collected_at)} · 总分 ${s.score} ·
-      总耗时 ${esc(t.total_ms??'—')}ms（侦察 ${esc(t.recon_ms??'—')}ms / 攻击 ${esc(t.attack_ms??'—')}ms）</p>
+      总耗时 ${esc(t.total_ms??'—')}ms（侦察 ${esc(t.recon_ms??'—')}ms / SQLi ${esc(t.attack_ms??'—')}ms / PHP ${esc(t.venom_ms??'—')}ms）</p>
     ${(r.arsenal||[]).length?`<p style="color:#8fa3b8;font-size:12.5px">武器库：${r.arsenal.map(x=>`${esc(x.title)} ${x.installed?'✓':'✗'}`).join(' · ')}</p>`:''}
     ${r.egress?`<p style="color:#8fa3b8;font-size:12.5px">出口：${r.egress.mode==='pinned'?'固定 '+(r.egress.exit||'直连(自有域名)'):'轮换'} · 池 ${r.egress.pool_size} 条（健康 ${r.egress.pool_healthy??'—'}） · 本线 ${r.egress.exit_healthy?'正常':'异常'}</p>`:''}
     ${trig?'<p>攻击触发信号：'+trig+'</p>':''}
+    ${agentsHtml(r.agents)}
     ${r.attack_skipped?'<p style="color:#8fa3b8">'+esc(r.attack_skipped)+'</p>':''}
   </section>
   ${attackHtml(r.attack)}
+  ${venomHtml(r.venom)}
   <section><h2>侦察详情</h2>${reconHtml(r.recon)}</section>
   <section><h2>风险项（${(r.findings||[]).length}）</h2>
     ${(r.findings||[]).map(findingHtml).join('')||'<p>未发现配置类风险项。</p>'}
@@ -198,6 +231,10 @@ function toMarkdown(r){
   const lines=[`# FACAI 检测报告 — ${r.host}`,'',
     `采集：${r.collected_at}　评级：**${r.summary.grade}**（${r.summary.score} 分）`,
     `耗时：${r.timing?.total_ms??'—'}ms（侦察 ${r.timing?.recon_ms??'—'}ms / 攻击 ${r.timing?.attack_ms??'—'}ms）`,''];
+  if(r.venom){lines.push(`## VENOM · PHP：${r.venom.verdict}`,'');
+    for(const c of r.venom.confirmed||[])lines.push(`- **${c.kind}** ${c.path||''}${c.param?'?'+c.param:''}${c.payload?' · '+c.payload:''}`);
+    for(const e of r.venom.exposures||[])lines.push(`- 暴露 ${e.path} (${e.label})`);
+    lines.push('');}
   if(r.attack){lines.push(`## 攻击阶段：${r.attack.verdict}`,'');
     for(const c of r.attack.confirmed||[])lines.push(`- **${c.technique}** ${c.path}${c.param?'?'+c.param:''}${c.db_marker?' · '+c.db_marker:''}`);
     lines.push('');}

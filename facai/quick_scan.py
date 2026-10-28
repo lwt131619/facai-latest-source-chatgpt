@@ -13,6 +13,7 @@ signal (a parameter that reflects, a DB error, an exposed secret file, an admin
 surface), and its results are marked CONFIRMED only when a differential oracle
 proves them.
 """
+import concurrent.futures
 import hashlib
 import json
 import secrets
@@ -20,7 +21,7 @@ import threading
 import time
 from datetime import datetime, timezone
 
-from . import arsenal, attack_agent, egress, recon
+from . import arsenal, attack_agent, egress, recon, venom_agent
 from .net_client import TransportError
 from .site_assessment import SiteAssessmentError, normalize_site
 
@@ -28,6 +29,11 @@ IP_COOLDOWN_SECONDS = 60
 HOST_COOLDOWN_SECONDS = 600
 SCAN_CONCURRENCY = 6
 _scan_slots = threading.BoundedSemaphore(SCAN_CONCURRENCY)
+
+# Tech-stack fingerprints that mean "dispatch VENOM". The PHP agent is only
+# worth its request budget when the target is actually PHP; a static Next.js
+# site gets NO_PHP for the cost of one probe instead of a full LFI sweep.
+PHP_STACKS = ('PHP', 'WordPress', 'Laravel', 'Drupal', 'Joomla', 'Magento')
 
 SEVERITY_WEIGHT = {'CRITICAL': 10, 'HIGH': 6, 'MEDIUM': 3, 'LOW': 1, 'INFO': 0}
 
@@ -479,11 +485,104 @@ def attack_targets(findings):
     return [item['id'] for item in findings if item['id'] in ATTACK_TRIGGERS]
 
 
+def _agent_roster(attack_result, venom_result):
+    """Named agents and what each actually did on this target.
+
+    The roster is what the report and the UI show as the product's agent line:
+    a name, a scope, and the real verdict — never a claim about a stage that
+    did not run.
+    """
+    roster = []
+    if attack_result is not None:
+        roster.append({'id': attack_agent.AGENT['id'], 'name': attack_agent.AGENT['name'],
+                       'title': attack_agent.AGENT['title'],
+                       'verdict': attack_result.get('verdict'),
+                       'elapsed_ms': attack_result.get('elapsed_ms'),
+                       'confirmed': len(attack_result.get('confirmed') or [])})
+    if venom_result is not None:
+        roster.append({'id': venom_agent.AGENT['id'], 'name': venom_agent.AGENT['name'],
+                       'title': venom_agent.AGENT['title'],
+                       'verdict': venom_result.get('verdict'),
+                       'elapsed_ms': venom_result.get('elapsed_ms'),
+                       'confirmed': len(venom_result.get('confirmed') or []),
+                       'exposures': len(venom_result.get('exposures') or [])})
+    return roster
+
+
+def php_signal(recon_results):
+    """Does this host look like PHP? Decided from recon evidence, not guesses."""
+    tech = recon_results.get('tech_stack') or {}
+    detected = tech.get('detected') or {}
+    if any(name in detected for name in PHP_STACKS):
+        return True
+    if 'php' in ((tech.get('powered_by') or '') + ' ' + (tech.get('server') or '')).lower():
+        return True
+    return any('php' in str(hint).lower() for hint in (tech.get('version_hints') or []))
+
+
+def _venom_findings(venom_result):
+    """Convert VENOM output into findings with the same evidence contract."""
+    findings = []
+    if not venom_result:
+        return findings
+    confirmed = venom_result.get('confirmed') or []
+    rce = [item for item in confirmed if item.get('kind') == 'RCE']
+    lfi = [item for item in confirmed if item.get('kind') == 'LFI']
+    users = [item for item in confirmed if item.get('kind') == 'USER_ENUM']
+    if rce:
+        hit = rce[0]
+        findings.append(_finding(
+            'php-rce-confirmed', 'injection', 'PHP 代码执行已实证（phpunit eval-stdin）',
+            'CRITICAL', 'FACT',
+            f"POST {hit.get('path')} 回显执行标记 {hit.get('marker')}，服务端执行了我们提交的 PHP 代码。",
+            '立即下线 vendor 目录暴露、升级 phpunit、隔离主机取证；按已失陷处置。',
+            observed=hit, tags=['php', 'rce', 'confirmed']))
+    if lfi:
+        hit = lfi[0]
+        findings.append(_finding(
+            'php-lfi-confirmed', 'injection', f"PHP 文件读取已实证（{hit.get('technique')}）",
+            'CRITICAL', 'FACT',
+            f"{hit.get('path')} 参数 {hit.get('param')} 载荷 {hit.get('payload')} "
+            f"读回 {hit.get('target_file') or '源码'}：{str(hit.get('evidence'))[:160]}",
+            '参数白名单化、禁用 php:// 包装器与 ../ 路径、open_basedir 限制。',
+            observed=hit, tags=['php', 'lfi', 'confirmed']))
+    exposures = venom_result.get('exposures') or []
+    if exposures:
+        labels = sorted({item['label'] for item in exposures})
+        worst = 'CRITICAL' if any(item['severity'] == 'CRITICAL' for item in exposures) else 'HIGH'
+        findings.append(_finding(
+            'php-exposure', 'exposure', f'PHP 敏感文件可读（{", ".join(labels[:5])}）',
+            worst, 'FACT',
+            '; '.join(f"{item['path']} -> 200（{item['label']}，{item['length']}B）"
+                      for item in exposures[:6]),
+            '删除备份/调试文件、.git 与 vendor 暴露，Web 根目录只保留入口。',
+            observed={'paths': [item['path'] for item in exposures[:10]]},
+            tags=['php', 'exposure', 'confirmed']))
+    if users:
+        hit = users[0]
+        findings.append(_finding(
+            'wp-user-enum', 'exposure', 'WordPress 用户枚举（REST API 公开）',
+            'MEDIUM', 'FACT',
+            'GET /wp-json/wp/v2/users 返回账号：'
+            + ', '.join(str(item.get('slug')) for item in hit.get('users') or [])[:200],
+            '关闭 REST 用户端点或限制到已认证请求；改强口令并启用 2FA。',
+            observed=hit, tags=['wordpress', 'enumeration']))
+    if venom_result.get('verdict') == 'NO_CONFIRMED_PHP':
+        findings.append(_finding(
+            'php-tested', 'injection', 'PHP 攻击面已测试但未确认', 'INFO', 'FACT',
+            f"VENOM 已跑 {len(venom_result.get('targets') or [])} 个入口、"
+            f"{len(venom_result.get('chain') or [])} 个阶段，未读回任何可自证内容。",
+            '未确认不等于安全：可能存在过滤或 WAF，需带上下文人工复核。',
+            tags=['php', 'tested']))
+    return findings
+
+
 class QuickScans:
-    def __init__(self, store, recon_runner=None, attack_runner=None):
+    def __init__(self, store, recon_runner=None, attack_runner=None, venom_runner=None):
         self.store = store
         self.recon_runner = recon_runner or recon.run_all
         self.attack_runner = attack_runner or attack_agent.attack
+        self.venom_runner = venom_runner or venom_agent.attack
         with store.connect() as db:
             db.execute('''CREATE TABLE IF NOT EXISTS quick_scans (
                 id TEXT PRIMARY KEY, host TEXT NOT NULL, source_ip TEXT,
@@ -559,23 +658,36 @@ class QuickScans:
                 and (recon_results.get('tls') or {}).get('ok') is False:
             raise SiteAssessmentError('站点在预算内不可达：'
                                       + str(recon_results['root'].get('error'))[:200])
-        # Auto-dispatch: any high-value signal hands the host to the attack agent.
+        # Auto-dispatch. Two named agents share one pinned exit and run in
+        # parallel: the SQLi attack agent (armed by a concrete recon signal) and
+        # VENOM (armed by a PHP stack). Running them concurrently means the PHP
+        # sweep never adds serial latency to the injection chain.
         triggers = attack_targets(findings)
         attack_result = None
+        venom_result = None
         attack_skipped = None
-        if run_attack and triggers:
-            try:
-                attack_result = self.attack_runner(host, egress_pool=pool)
-            except Exception as exc:  # noqa: BLE001 - attack stage must not lose the recon
-                attack_result = {'verdict': 'ATTACK_STAGE_ERROR',
-                                 'error': f'{type(exc).__name__}: {exc}'}
+        need_attack = bool(run_attack and triggers)
+        need_venom = bool(run_attack and php_signal(recon_results))
+        if need_attack or need_venom:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+                attack_future = venom_future = None
+                if need_attack:
+                    attack_future = executor.submit(self._safe_attack, host, pool)
+                if need_venom:
+                    venom_future = executor.submit(self._safe_venom, host, pool)
+                if attack_future is not None:
+                    attack_result = attack_future.result()
+                if venom_future is not None:
+                    venom_result = venom_future.result()
             if attack_result:
                 # Deep enumeration only after the fast path confirmed a real
                 # injection: sqlmap's startup cost is never paid on clean sites.
                 if attack_result.get('verdict') == 'CONFIRMED_INJECTION':
                     attack_result['sqlmap'] = self._deep_enumerate(host, attack_result, pool)
                 findings.extend(_attack_findings(attack_result))
-                findings.sort(key=lambda item: -SEVERITY_WEIGHT.get(item['severity'], 0))
+            if venom_result:
+                findings.extend(_venom_findings(venom_result))
+            findings.sort(key=lambda item: -SEVERITY_WEIGHT.get(item['severity'], 0))
         elif not triggers:
             attack_skipped = '侦察未产生可攻击信号（无参数反射/无 DB 错误/无暴露文件/无管理入口）'
         summary = grade_report(findings)
@@ -584,26 +696,44 @@ class QuickScans:
             'summary': summary, 'findings': findings,
             'recon': _slim_recon(recon_results),
             'attack': attack_result,
+            'venom': venom_result,
+            'agents': _agent_roster(attack_result, venom_result),
             'attack_triggers': triggers,
             'attack_skipped': attack_skipped,
             'egress': pool.snapshot(),
             'arsenal': arsenal.shared().snapshot(),
             'timing': {'total_ms': round((time.perf_counter() - started) * 1000, 1),
                        'recon_ms': (recon_results.get('_meta') or {}).get('elapsed_ms'),
-                       'attack_ms': (attack_result or {}).get('elapsed_ms')},
+                       'attack_ms': (attack_result or {}).get('elapsed_ms'),
+                       'venom_ms': (venom_result or {}).get('elapsed_ms')},
             'scope': 'recon: 17 concurrent read-only checks (DNS/DNSSEC/WHOIS/TLS/headers/cookies/'
                      'tech/WAF/redirects/robots/sitemap/security.txt/methods/path-exposure/'
-                     'ip-ownership/injection-surface). attack: real payloads only when recon '
-                     'raised a signal; confirmed injections are handed to sqlmap for enumeration. '
-                     'All outbound traffic exits through a rotated proxy with a Chrome fingerprint.',
+                     'ip-ownership/injection-surface). agents: STRIKE (SQLi, real payloads only '
+                     'when recon raised a signal; confirmed injections handed to sqlmap) and '
+                     'VENOM (PHP surface: exposure sweep, LFI/filter-chain, phpunit eval-stdin, '
+                     'WP user enum) dispatch in parallel. All outbound traffic exits through a '
+                     'rotated proxy with a Chrome fingerprint.',
             'limitations': '指纹与 WAF 判定为 INFERENCE；攻击结论仅在被差分 oracle 复现时标记 CONFIRMED；'
                            'sqlmap 枚举以 --level/--risk 限制且设硬超时；未做全端口扫描、未做目录爆破、'
                            '未登录后台。',
             'evidence_sha256': hashlib.sha256(json.dumps(
                 {'host': host, 'recon': _hashable(recon_results),
-                 'attack': attack_result}, sort_keys=True, default=str).encode()).hexdigest(),
+                 'attack': attack_result, 'venom': venom_result},
+                sort_keys=True, default=str).encode()).hexdigest(),
         }
         return report
+
+    def _safe_attack(self, host, pool):
+        try:
+            return self.attack_runner(host, egress_pool=pool)
+        except Exception as exc:  # noqa: BLE001 - attack stage must not lose the recon
+            return {'verdict': 'ATTACK_STAGE_ERROR', 'error': f'{type(exc).__name__}: {exc}'}
+
+    def _safe_venom(self, host, pool):
+        try:
+            return self.venom_runner(host, pool=pool)
+        except Exception as exc:  # noqa: BLE001 - PHP stage must not lose the recon
+            return {'verdict': 'VENOM_STAGE_ERROR', 'error': f'{type(exc).__name__}: {exc}'}
 
     def _deep_enumerate(self, host, attack_result, pool):
         """Hand a confirmed injection point to the arsenal's sqlmap tool."""

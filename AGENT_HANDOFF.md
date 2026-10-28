@@ -411,3 +411,48 @@ Owner 要求：VPS 上把出口伪装、IP 轮换、工具调用、SQL 注入打
   真金购买席位或凭据注入（无）。攻破链资产（注册→验证→两步登录→会话→
   全目录情报）已脚本化在 VPS `/tmp/audn_r2_*.py` 可复跑。
 - 仓库收口：feature/audn-round2 已 ff-merge 回 main（ac2d65c）。
+
+## 2026-10-28 新产品能力：命名 Agent 编队（STRIKE + VENOM）
+
+产品进入"命名 Agent"阶段：快扫不再只有一个匿名攻击函数，而是两个有名字、
+有 scope、有独立 verdict 的执行体，报告里直接列编队。
+
+- **STRIKE · SQL 注入全自动实证 Agent**（`facai/attack_agent.py`，`AGENT`
+  常量 id=`strike`）：原有 SQLi 链路正式命名。错误/布尔/联合/时间四技术，
+  差分 oracle 才算 CONFIRMED。
+- **VENOM · PHP 全自动扫描注入 Agent**（新模块 `facai/venom_agent.py`，
+  id=`venom`）：PHP 专职，五段链——
+  1. `fingerprint`：X-Powered-By / PHPSESSID / .php 入口 / index.php 200
+  2. `sweep_exposures`：21 条 PHP 暴露面并发探测（phpinfo、.env、config.php.bak、
+     wp-config 备份、.git、composer、adminer、phpmyadmin、server-status、
+     phpunit eval-stdin、Laravel Ignition、xmlrpc）
+  3. `test_phpunit_rce`：CVE-2017-9841，POST 提交 `echo VENOM_EXEC_9f3a`
+     ——**只回显固定标记，不写文件不上传**；回显即 RCE 实证
+  4. `discover_targets` + `test_lfi`：file/page/include 等 LFI 参数优先，
+     6 组穿越载荷（含 `....//`、URL 编码、Windows win.ini），
+     必须读回 `root:x:0:0` 或 `[fonts]` 才算实锤
+  5. `test_filter_chain`：`php://filter/convert.base64-encode/resource=`，
+     解 base64 后必须出现真实 `<?php` 才算源码读取
+  另含 `test_wp_users`（REST 用户枚举，需真实 JSON 用户对象）。
+  verdict 优先级：CONFIRMED_PHP_RCE > CONFIRMED_LFI > PHP_SURFACE_FOUND >
+  NO_CONFIRMED_PHP，非 PHP 目标直接 NO_PHP（只花 2 个请求）。
+- **融合点**：
+  - `quick_scan._collect`：STRIKE 与 VENOM **并发**（同一 pinned 出口，
+    ThreadPoolExecutor 2 线程），互不拖慢；VENOM 由 `php_signal()` 从侦察
+    的 tech_stack 判定是否派发（PHP/WordPress/Laravel/Drupal/Joomla/Magento
+    或 X-Powered-By 含 php），非 PHP 站点不派发。
+  - 报告新增 `venom` 区块、`agents` 编队数组、`timing.venom_ms`；
+    findings 新增 `php-rce-confirmed` / `php-lfi-confirmed` / `php-exposure` /
+    `wp-user-enum` / `php-tested`。
+  - `arsenal.shared()` 注册 `venom` 工具（category=php，无确认闸，
+    纯进程内 HTTP 探测）；快照里可见。
+  - UI `/scan`：新增 VENOM 卡片（指纹徽章/链路/暴露文件/实锤证据）+
+    "Agent 编队"行；Markdown 导出含 VENOM 段；耗时行拆 SQLi/PHP。
+- **顺手修的真实线上 Bug**：`facai/static/scan.html` 的 sqlmap 导出那行
+  `join('` 后面是**真实换行**（单引号字符串跨行）→ 整个 `<script>` 解析失败，
+  `/scan` 前端此前实际不可用。已改为 `join('\n')`，`node --check` 通过。
+  以后改静态页必须跑一次 JS 语法校验（已记入本档）。
+- 测试：`tests/test_venom_agent.py` 11 例（纯桩不连网：非 PHP 短路、200 不算
+  证据、LFI 必须 root:x:0:0、filter 必须解出 <?php、RCE 必须回显标记、
+  verdict 优先级）；`tests/test_quick_scan.py` 增 2 例（PHP 栈自动派发 VENOM
+  并合并 findings / 非 PHP 不派发）。受影响模块 40 例全绿。

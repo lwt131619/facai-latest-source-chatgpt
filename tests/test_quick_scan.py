@@ -2,7 +2,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from facai import attack_agent, recon
+from facai import attack_agent, recon, venom_agent
 from facai.api import create_app
 from facai.quick_scan import (QuickScans, analyze_cookies, analyze_dns, analyze_exposure,
                               analyze_firewall, analyze_headers, analyze_injection_surface,
@@ -394,3 +394,81 @@ def test_transport_refuses_private_resolution(monkeypatch):
     recon.net_client._address_cache.clear()
     with pytest.raises(recon.TransportError):
         recon.net_client.resolve_public('internal.example')
+
+
+# --------------------------------------------------- VENOM (PHP agent) wiring
+
+def test_php_target_dispatches_venom_and_merges_findings(tmp_path, monkeypatch):
+    """A PHP stack arms VENOM even with zero SQLi signals, in parallel."""
+    monkeypatch.setenv('FACAI_ADMIN_PASSWORD', 'mock-admin-pass')
+    monkeypatch.setenv('FACAI_SCHEDULER_ENABLED', '0')
+    monkeypatch.setenv('FACAI_SKIP_CREDENTIAL_PREFLIGHT', '1')
+    php_recon = _fake_recon('php-site.org')
+    php_recon['tech_stack'] = {'detected': {'PHP': ['x-powered-by: php']}, 'generator': None,
+                               'version_hints': ['8.1'], 'server': 'nginx',
+                               'powered_by': 'PHP/8.1.2'}
+    php_recon['injection_surface'] = {'reflection': {'status': 200, 'reflected': False},
+                                      'sql_error': {'status': 200, 'marker': None},
+                                      'admin': [], 'upload': []}
+    called = {'venom': [], 'attack': 0}
+
+    def fake_venom(host, pool=None):
+        called['venom'].append(host)
+        return {'agent': venom_agent.AGENT, 'host': host, 'verdict': 'PHP_SURFACE_FOUND',
+                'elapsed_ms': 700, 'fingerprint': {'php': True, 'evidence': {}},
+                'targets': [{'path': '/index.php', 'params': ['file']}],
+                'chain': [{'step': 'exposure-sweep', 'hits': 1}],
+                'exposures': [{'path': '/.env', 'label': 'env', 'severity': 'CRITICAL',
+                               'status': 200, 'length': 120, 'evidence': 'APP_KEY=x',
+                               'self_verifying': False}],
+                'confirmed': []}
+
+    def fake_attack(host, egress_pool=None):
+        called['attack'] += 1
+        return {'verdict': 'NO_CONFIRMED_INJECTION', 'confirmed': [], 'targets': []}
+
+    original_init = QuickScans.__init__
+
+    def patched_init(self, store):
+        original_init(self, store, recon_runner=lambda host: php_recon,
+                      attack_runner=fake_attack, venom_runner=fake_venom)
+
+    monkeypatch.setattr('facai.quick_scan.QuickScans.__init__', patched_init)
+    app = create_app(tmp_path)
+    client = TestClient(app)
+    result = client.post('/api/v1/quick-scans', json={'url': 'https://php-site.org/'})
+    assert result.status_code == 200, result.text
+    report = result.json()['report']
+    assert called['venom'] == ['php-site.org']
+    assert report['venom']['verdict'] == 'PHP_SURFACE_FOUND'
+    ids = {item['id'] for item in report['findings']}
+    assert 'php-exposure' in ids
+    assert any(agent['name'] == 'VENOM' for agent in report['agents'])
+    assert report['timing']['venom_ms'] == 700
+
+
+def test_non_php_target_does_not_dispatch_venom(tmp_path, monkeypatch):
+    monkeypatch.setenv('FACAI_ADMIN_PASSWORD', 'mock-admin-pass')
+    monkeypatch.setenv('FACAI_SCHEDULER_ENABLED', '0')
+    monkeypatch.setenv('FACAI_SKIP_CREDENTIAL_PREFLIGHT', '1')
+    called = {'venom': 0}
+
+    def fake_venom(host, pool=None):
+        called['venom'] += 1
+        return {'verdict': 'NO_PHP'}
+
+    original_init = QuickScans.__init__
+
+    def patched_init(self, store):
+        original_init(self, store, recon_runner=_fake_recon,
+                      attack_runner=lambda host, egress_pool=None: {'verdict': 'NO_CONFIRMED_INJECTION',
+                                                                    'confirmed': [], 'targets': []},
+                      venom_runner=fake_venom)
+
+    monkeypatch.setattr('facai.quick_scan.QuickScans.__init__', patched_init)
+    app = create_app(tmp_path)
+    client = TestClient(app)
+    result = client.post('/api/v1/quick-scans', json={'url': 'https://example.org/'})
+    assert result.status_code == 200, result.text
+    assert called['venom'] == 0
+    assert result.json()['report']['venom'] is None

@@ -22,6 +22,14 @@ from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit
 
 from . import net_client
 
+AGENT = {
+    'id': 'strike',
+    'name': 'STRIKE',
+    'title': 'SQL 注入全自动实证 Agent',
+    'version': '1.0',
+    'scope': 'sqli',
+}
+
 # Differential canaries. Each pair is (true_payload, false_payload); a working
 # boolean oracle makes the two responses differ in a stable, repeatable way.
 BOOL_PAIRS = (
