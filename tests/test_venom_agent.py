@@ -180,3 +180,14 @@ def test_form_action_is_normalized_to_a_path(routes):
     assert targets, targets
     assert all(item['path'].startswith('/') for item in targets), targets
     assert any(item['path'] == '/submit.php' for item in targets), targets
+
+
+def test_non_sink_params_skip_traversal(routes):
+    """A `ver` cache-buster must never receive traversal payloads."""
+    routes['/'] = _resp(200, 'php', headers={'X-Powered-By': 'PHP/8.2'})
+    routes['/index.php'] = _resp(200, 'home')
+    routes['/download.php?ver=1'] = _resp(200, 'static')
+    result = venom_agent.attack('t')
+    steps = [item['step'] for item in result['chain']]
+    assert 'no-lfi-param' in steps
+    assert 'lfi' not in steps

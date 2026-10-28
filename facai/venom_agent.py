@@ -375,8 +375,16 @@ def attack(host, findings=None, pool=None, budget_seconds=45, php_hint=False):
     targets = discover_targets(host, pool)
     result['targets'] = [{'path': item['path'], 'params': item['params']} for item in targets[:6]]
     lfi_found = False
-    deadline = started + max(6.0, min(budget_seconds, 20.0))
-    for target in targets[:4]:
+    deadline = started + max(6.0, min(budget_seconds, 12.0))
+    # Traversal payloads are only worth sending at parameters whose *name* is a
+    # file sink. A cache-buster (`ver`) or a format switch can never be one, and
+    # probing them burns the whole budget for zero information.
+    sinks = [item for item in targets[:6]
+             if any(name.lower() in LFI_PARAMS for name in item['params'])]
+    if not sinks:
+        result['chain'].append({'step': 'no-lfi-param',
+                                'note': '入口参数名均非文件汇点，跳过穿越探测'})
+    for target in sinks[:2]:
         if time.perf_counter() > deadline:
             result['chain'].append({'step': 'budget-exhausted'})
             break
