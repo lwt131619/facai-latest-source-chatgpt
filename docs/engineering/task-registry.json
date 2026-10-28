@@ -12,7 +12,7 @@
     "seconds": 355.14,
     "real_browser_enabled": false,
     "production_acceptance": false,
-    "note": "1493 passed / 9 skipped / 0 failed; quick_scan adds 7 cases; 2 env-dependent cases skipped this run"
+    "note": "1493 passed / 9 skipped / 0 failed (pre-tags-polish run); tags polish re-verified with targeted 16 passed; public acceptance on whstapp.lol completed"
   },
   "last_package_regression": {
     "commit": "938ebe53f3379a049bcce5709e3be1630e4af8e0",
@@ -665,7 +665,7 @@
     {
       "id": "QA-001",
       "title": "免登录快速体检 quick scan（贴 URL → 多栈证据报告）",
-      "status": "DONE_LOCAL_VPS_IN_PROGRESS",
+      "status": "DONE",
       "priority": "high",
       "depends_on": [],
       "source_files": [
@@ -677,7 +677,7 @@
       ],
       "goal": "Owner 2026-10-28 死命令：免登录贴 URL，最快产出逐项有证据的多技术栈风险报告；能力对标开源注入面检测首层；授权直达 VPS 部署发布。",
       "acceptance": "免登录 POST /api/v1/quick-scans 返回带 evidence/tags/severity 的报告；单轮 1 握手+8 只读 GET；每 IP 60s/每主机 600s 限流与缓存语义；测试全绿；VPS whstapp.lol/scan 公网实测通过。",
-      "next_action": "VPS staging git pull + deploy.sh update + 公网验收；实测结果回填本条目。"
+      "next_action": "已完成并上线（2026-10-28）：main=本次 checkpoint，VPS /opt/facai-cloud 经 deploy.sh update 部署，公网 https://whstapp.lol/scan 实测 200；免登录 POST 实扫 whstapp.lol（A级）与 example.org（D级 7 findings，tags 全带）均真实返回；缓存/限流/伪造XFF无效性实战验证。后续可选：报告 Artifact/Proof 绑定、下载包、新域名 vhost。"
     }
   ],
   "latest_validation": {

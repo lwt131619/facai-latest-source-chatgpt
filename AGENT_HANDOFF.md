@@ -243,3 +243,13 @@ deploy-now.py 不在树中 5、真实模型密钥未配置 1、vendor authority 
 - VPS 部署：/opt/facai-staging git pull → `deploy/deploy.sh update`（自动备份
   + rsync 受管路径 + 重启 facai-cloud），公网 whstapp.lol/scan 验收；结果以
   dist/checkpoint-status.json 与实测 curl 为准，未验证不写已完成。
+- VPS 部署实测（2026-10-28，已完成）：staging pull 263ba3b + tags 补丁 →
+  `deploy/deploy.sh update` 两次成功（自动备份 app-*.tar.gz + rsync + 重启），
+  facai-cloud active，本机与公网 health 200。公网验收实测：
+  `https://whstapp.lol/scan` 200 免登录页；POST /api/v1/quick-scans 实扫
+  whstapp.lol=**A级**（CSP unsafe-inline LOW + 2 INFO）、example.org=**D级**
+  （7 findings，全部带 misconfig/exposure tags，判定与真实响应一致）；
+  同 host 复扫返回 10 分钟缓存（cached:true）；GET /api/v1/quick-scans/{id}
+  历史回看 200；伪造 X-Forwarded-For 无效（服务取 nginx 追加的最后一跳
+  真实 IP，8765 仅绑 127.0.0.1 无直连绕过面）。nginx 已配
+  X-Forwarded-For $proxy_add_x_forwarded_for，公网用户按真实 IP 分桶限流。
