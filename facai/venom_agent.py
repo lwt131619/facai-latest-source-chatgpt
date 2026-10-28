@@ -39,6 +39,9 @@ EXEC_MARKER = 'VENOM_EXEC_9f3a'
 
 # Parameters that carry a file-ish value in PHP applications. Ordered by how
 # often they appear in real LFI sinks, so the cheapest hits come first.
+ASSET_SUFFIXES = ('.css', '.js', '.mjs', '.map', '.png', '.jpg', '.jpeg', '.gif',
+                  '.svg', '.webp', '.ico', '.woff', '.woff2', '.ttf', '.eot', '.mp4', '.pdf')
+
 LFI_PARAMS = ('file', 'page', 'path', 'template', 'include', 'inc', 'url',
               'lang', 'view', 'load', 'module', 'doc', 'root', 'pg', 'style',
               'content', 'conf', 'cfg', 'dir', 'folder', 'read', 'name',
@@ -179,6 +182,10 @@ def discover_targets(host, pool=None):
         key = (path, tuple(params))
         if not params or key in seen:
             return
+        # Static assets carry cache-busters, not file-include sinks. Sending
+        # traversal payloads at a .css URL only burns the budget.
+        if path.lower().split('?')[0].endswith(ASSET_SUFFIXES):
+            return
         seen.add(key)
         targets.append({'path': path, 'method': method, 'params': list(params),
                         'source': source})
@@ -205,7 +212,8 @@ def discover_targets(host, pool=None):
         params = routed_params(host, path, pool)
         if params:
             add(path, 'GET', params, 'conventional')
-    targets.sort(key=lambda item: 0 if any(p.lower() in LFI_PARAMS for p in item['params']) else 1)
+    targets.sort(key=lambda item: (0 if item['path'].lower().split('?')[0].endswith('.php') else 1,
+                                   0 if any(p.lower() in LFI_PARAMS for p in item['params']) else 1))
     return targets
 
 
