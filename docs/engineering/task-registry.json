@@ -5,14 +5,14 @@
   "product": "FACAI / ICS Production Platform v1.0",
   "source_baseline_commit": "933b431",
   "last_full_regression": {
-    "commit": "pending-this-checkpoint",
+    "commit": "this-checkpoint",
     "scope": "git_worktree",
-    "passed": 1493,
+    "passed": 1505,
     "skipped": 9,
-    "seconds": 355.14,
+    "seconds": 373.18,
     "real_browser_enabled": false,
     "production_acceptance": false,
-    "note": "1493 passed / 9 skipped / 0 failed (pre-tags-polish run); tags polish re-verified with targeted 16 passed; public acceptance on whstapp.lol completed"
+    "note": "1505 passed / 9 skipped / 0 failed; includes 3 real-target attack integration tests"
   },
   "last_package_regression": {
     "commit": "938ebe53f3379a049bcce5709e3be1630e4af8e0",
@@ -664,20 +664,24 @@
     },
     {
       "id": "QA-001",
-      "title": "免登录快速体检 quick scan（贴 URL → 多栈证据报告）",
+      "title": "免登录极速检测 + 自动注入攻击（对标 Web-Check/Obscura）",
       "status": "DONE",
       "priority": "high",
       "depends_on": [],
       "source_files": [
+        "facai/net_client.py",
+        "facai/recon.py",
+        "facai/attack_agent.py",
         "facai/quick_scan.py",
         "facai/quick_scan_routes.py",
         "facai/static/scan.html",
         "tests/test_quick_scan.py",
-        "facai/api.py"
+        "tests/test_attack_integration.py",
+        "requirements.txt"
       ],
-      "goal": "Owner 2026-10-28 死命令：免登录贴 URL，最快产出逐项有证据的多技术栈风险报告；能力对标开源注入面检测首层；授权直达 VPS 部署发布。",
-      "acceptance": "免登录 POST /api/v1/quick-scans 返回带 evidence/tags/severity 的报告；单轮 1 握手+8 只读 GET；每 IP 60s/每主机 600s 限流与缓存语义；测试全绿；VPS whstapp.lol/scan 公网实测通过。",
-      "next_action": "已完成并上线（2026-10-28）：main=本次 checkpoint，VPS /opt/facai-cloud 经 deploy.sh update 部署，公网 https://whstapp.lol/scan 实测 200；免登录 POST 实扫 whstapp.lol（A级）与 example.org（D级 7 findings，tags 全带）均真实返回；缓存/限流/伪造XFF无效性实战验证。后续可选：报告 Artifact/Proof 绑定、下载包、新域名 vhost。"
+      "goal": "Owner 2026-10-28：对标 Web-Check（44 检查项）与 Obscura（反检测浏览器）的优势能力，做最快检测；侦察出高危信号后自动派发后端攻击 Agent 真发载荷、差分验证、能取数就取数。弃掉拖慢速度的检查（端口扫描/traceroute/截图/第三方情报 API/CT 子域），保留覆盖面。",
+      "acceptance": "17 项检查并发完成（实测 example.org 1.4–3.1s）；攻击链在真实 SQLite 注入靶场上 error-based + boolean 双确认并自动发现参数；VPS 生产环境同代码复现 CONFIRMED_INJECTION；公网 /scan 200；全量回归 1505 通过。",
+      "next_action": "已上线（2026-10-28）：main=本 checkpoint，VPS 已 deploy.sh update。后续可选：UNION 取数扩展（多表/列名枚举）、POST 表单注入、盲注提速（并行位提取）、报告 Artifact 绑定。"
     }
   ],
   "latest_validation": {

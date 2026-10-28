@@ -292,3 +292,12 @@ boolean 差分成立、参数从页面自动发现、verdict=CONFIRMED_INJECTION
 
 测试：`test_quick_scan.py` 16 例 + `test_attack_integration.py` 3 例全绿；
 全量回归见 checkpoint 记录。
+
+**VPS 生产验证（2026-10-28，第二轮）**：staging pull → `deploy.sh update` 完成，
+venv 内 dnspython + certifi 就位。生产实测：
+- 公网 `POST /api/v1/quick-scans`（example.org）→ **1.40 秒**完成 17 项侦察，
+  D 级 14 项发现，`tls verified: True`（certifi 修复生效，误报消失）。
+- 用**生产部署的同一份代码**在 VPS 上跑真实 SQLite 注入靶场 →
+  `CONFIRMED_INJECTION`：error-based 命中 `sqlite3::query`、boolean 差分
+  31 vs 13 字节、UNION 定出 2 列、参数 `id` 由页面自动发现，全程 **0.026 秒**。
+- 公网 `/scan` 200。
