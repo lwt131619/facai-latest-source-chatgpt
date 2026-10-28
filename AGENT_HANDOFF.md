@@ -456,3 +456,23 @@ Owner 要求：VPS 上把出口伪装、IP 轮换、工具调用、SQL 注入打
   证据、LFI 必须 root:x:0:0、filter 必须解出 <?php、RCE 必须回显标记、
   verdict 优先级）；`tests/test_quick_scan.py` 增 2 例（PHP 栈自动派发 VENOM
   并合并 findings / 非 PHP 不派发）。受影响模块 40 例全绿。
+
+### VENOM 上线实测（2026-10-28，生产 VPS，已验证）
+
+- **真靶场**：生产代码扫 https://wordpress.org/（WordPress 隐藏了所有 PHP 头，
+  靠 recon 的 wp-content 证据用 `php_hint` 放行）——命中 `/composer.lock`
+  可读（HIGH）+ `/wp-json/wp/v2/users` 返回 5 个账号（MEDIUM），
+  verdict=PHP_SURFACE_FOUND，grade F。报告里 `agents` 出现
+  `('VENOM','PHP_SURFACE_FOUND')`，`arsenal` 出现 `venom installed=True`。
+- **性能三轮收敛**（venom_ms）：36.5s → 28.9s → 20.3s → **7.7s**。
+  关键动作：①绝对 form action 归一化为 path（此前会请求
+  `https://host/https://host/...` 每个都超时）②静态资源 URL 不进目标池
+  ③只有参数名像文件汇点（file/page/include…）才发穿越载荷，`ver` 这类
+  缓存参数直接记录 `no-lfi-param` 跳过 ④暴露面/RCE/目标发现/WP 枚举
+  四路并发。总扫描 11s（recon 3.3s + PHP 7.7s）。
+- **线上前端**：`https://whstapp.lol/scan` 已含 VENOM 卡片与 Agent 编队，
+  `node --check` 对生产页面内联 JS 通过（此前整页 JS 因跨行字符串解析失败）。
+- 回归口径：115 个测试文件逐文件全过（进程隔离跑，零失败零挂起）。
+  单进程整跑会因既有跨文件线程泄漏在 `test_channel_host.py` 等位置挂起，
+  与本功能无关，已用 py-spy 抓栈定位（TestClient 请求不返回 + rerunfailures
+  服务线程），后续应单独治理测试隔离。
