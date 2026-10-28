@@ -107,7 +107,7 @@ def analyze_tls(tls):
     if version in ('TLSv1', 'TLSv1.1', 'SSLv3'):
         findings.append(_finding('tls-obsolete', 'transport', f'使用过时协议 {version}', 'HIGH', 'FACT',
                                  f'握手协商版本为 {version}，低于 TLSv1.2。',
-                                 '在服务器禁用 TLSv1.0/1.1，仅保留 TLSv1.2 及以上。'))
+                                 '在服务器禁用 TLSv1.0/1.1，仅保留 TLSv1.2 及以上。', tags=['tls', 'misconfig']))
     cert = tls.get('certificate') or {}
     remaining = cert.get('seconds_remaining')
     if remaining is not None:
@@ -149,7 +149,7 @@ def analyze_headers(root_status, headers):
     if not hsts:
         findings.append(_finding('hsts-missing', 'headers', '未启用 HSTS', 'MEDIUM', 'FACT',
                                  f'根响应（HTTP {root_status}）没有 Strict-Transport-Security 头。',
-                                 '添加 Strict-Transport-Security: max-age=31536000; includeSubDomains。'))
+                                 '添加 Strict-Transport-Security: max-age=31536000; includeSubDomains。', tags=['misconfig', 'hsts']))
     else:
         max_age = 0
         for part in hsts.split(';'):
@@ -162,40 +162,42 @@ def analyze_headers(root_status, headers):
         if max_age < HSTS_MIN_AGE:
             findings.append(_finding('hsts-short', 'headers', 'HSTS max-age 偏短', 'LOW', 'FACT',
                                      f'Strict-Transport-Security: {hsts}，max-age={max_age} 低于 {HSTS_MIN_AGE}。',
-                                     '将 max-age 提高到至少 15552000（180 天）。'))
+                                     '将 max-age 提高到至少 15552000（180 天）。', tags=['misconfig', 'hsts']))
     csp = _header(headers, 'Content-Security-Policy')
     if not csp:
         findings.append(_finding('csp-missing', 'headers', '未配置 CSP', 'MEDIUM', 'FACT',
                                  f'根响应（HTTP {root_status}）没有 Content-Security-Policy 头。',
-                                 '配置最小化 CSP，从 default-src \'self\' 起步并按需放行。'))
+                                 '配置最小化 CSP，从 default-src \'self\' 起步并按需放行。',
+                                 tags=['misconfig', 'csp']))
     else:
         lowered = csp.lower()
         if "'unsafe-eval'" in lowered:
             findings.append(_finding('csp-unsafe-eval', 'headers', 'CSP 允许 unsafe-eval', 'MEDIUM', 'FACT',
                                      f'Content-Security-Policy 中含 unsafe-eval：{csp[:200]}',
-                                     '移除 unsafe-eval，改用 nonce 或哈希放行可信脚本。'))
+                                     '移除 unsafe-eval，改用 nonce 或哈希放行可信脚本。', tags=['csp', 'xss']))
         if "'unsafe-inline'" in lowered:
             findings.append(_finding('csp-unsafe-inline', 'headers', 'CSP 允许 unsafe-inline', 'LOW', 'FACT',
                                      f'Content-Security-Policy 中含 unsafe-inline：{csp[:200]}',
-                                     '改用 nonce/哈希策略，缩小 XSS 注入面。'))
+                                     '改用 nonce/哈希策略，缩小 XSS 注入面。', tags=['csp', 'xss']))
     if not _header(headers, 'X-Content-Type-Options'):
         findings.append(_finding('nosniff-missing', 'headers', '缺少 X-Content-Type-Options', 'LOW', 'FACT',
                                  '根响应没有 X-Content-Type-Options: nosniff。',
-                                 '添加该头，阻止浏览器 MIME 嗅探歧义。'))
+                                 '添加该头，阻止浏览器 MIME 嗅探歧义。', tags=['misconfig', 'nosniff']))
     xfo = _header(headers, 'X-Frame-Options')
     frame_ancestors = csp and 'frame-ancestors' in csp.lower()
     if not xfo and not frame_ancestors:
         findings.append(_finding('framing-unset', 'headers', '未限制页面被嵌套（点击劫持面）', 'MEDIUM', 'FACT',
                                  '根响应既无 X-Frame-Options，CSP 中也无 frame-ancestors。',
-                                 '添加 CSP frame-ancestors \'self\' 或 X-Frame-Options: DENY。'))
+                                 '添加 CSP frame-ancestors \'self\' 或 X-Frame-Options: DENY。',
+                                 tags=['misconfig', 'clickjacking']))
     if not _header(headers, 'Referrer-Policy'):
         findings.append(_finding('referrer-unset', 'headers', '未设置 Referrer-Policy', 'LOW', 'FACT',
                                  '根响应没有 Referrer-Policy 头。',
-                                 '添加 Referrer-Policy: strict-origin-when-cross-origin。'))
+                                 '添加 Referrer-Policy: strict-origin-when-cross-origin。', tags=['misconfig', 'referrer']))
     if not _header(headers, 'Permissions-Policy'):
         findings.append(_finding('permissions-unset', 'headers', '未设置 Permissions-Policy', 'INFO', 'FACT',
                                  '根响应没有 Permissions-Policy 头。',
-                                 '按需禁用摄像头/麦克风/地理位置等敏感能力。'))
+                                 '按需禁用摄像头/麦克风/地理位置等敏感能力。', tags=['misconfig', 'permissions']))
     server = _header(headers, 'Server')
     if server and any(character.isdigit() for character in server):
         findings.append(_finding('server-version-exposed', 'headers', 'Server 头暴露精确版本', 'LOW', 'FACT',
@@ -217,15 +219,15 @@ def analyze_headers(root_status, headers):
         if session_like and not flags['secure']:
             findings.append(_finding('cookie-no-secure', 'cookies', f'会话 Cookie {name} 未加 Secure', 'HIGH', 'FACT',
                                      f'Set-Cookie: {cookie[:200]}',
-                                     '为所有会话类 Cookie 添加 Secure 标记，防止经明文信道泄露。'))
+                                     '为所有会话类 Cookie 添加 Secure 标记，防止经明文信道泄露。', tags=['cookies', 'session']))
         if session_like and not flags['httponly']:
             findings.append(_finding('cookie-no-httponly', 'cookies', f'会话 Cookie {name} 未加 HttpOnly', 'MEDIUM', 'FACT',
                                      f'Set-Cookie: {cookie[:200]}',
-                                     '为会话 Cookie 添加 HttpOnly，阻止脚本读取。'))
+                                     '为会话 Cookie 添加 HttpOnly，阻止脚本读取。', tags=['cookies', 'session']))
         if session_like and not flags['samesite']:
             findings.append(_finding('cookie-no-samesite', 'cookies', f'会话 Cookie {name} 未加 SameSite', 'LOW', 'FACT',
                                      f'Set-Cookie: {cookie[:200]}',
-                                     '添加 SameSite=Lax/Strict，降低 CSRF 与跨站携带面。'))
+                                     '添加 SameSite=Lax/Strict，降低 CSRF 与跨站携带面。', tags=['cookies', 'csrf']))
     return findings
 
 
