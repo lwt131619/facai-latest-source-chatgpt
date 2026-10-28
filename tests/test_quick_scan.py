@@ -412,7 +412,7 @@ def test_php_target_dispatches_venom_and_merges_findings(tmp_path, monkeypatch):
                                       'admin': [], 'upload': []}
     called = {'venom': [], 'attack': 0}
 
-    def fake_venom(host, pool=None):
+    def fake_venom(host, pool=None, php_hint=False):
         called['venom'].append(host)
         return {'agent': venom_agent.AGENT, 'host': host, 'verdict': 'PHP_SURFACE_FOUND',
                 'elapsed_ms': 700, 'fingerprint': {'php': True, 'evidence': {}},
@@ -453,7 +453,7 @@ def test_non_php_target_does_not_dispatch_venom(tmp_path, monkeypatch):
     monkeypatch.setenv('FACAI_SKIP_CREDENTIAL_PREFLIGHT', '1')
     called = {'venom': 0}
 
-    def fake_venom(host, pool=None):
+    def fake_venom(host, pool=None, php_hint=False):
         called['venom'] += 1
         return {'verdict': 'NO_PHP'}
 

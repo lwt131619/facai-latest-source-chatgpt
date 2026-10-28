@@ -314,8 +314,12 @@ def test_wp_users(host, pool=None):
     return None
 
 
-def attack(host, findings=None, pool=None, budget_seconds=45):
+def attack(host, findings=None, pool=None, budget_seconds=45, php_hint=False):
     """Run the VENOM chain and return evidence plus one verdict.
+
+    `php_hint` is set by the caller when recon already proved a PHP stack
+    (WordPress/Laravel/Drupal/Joomla/Magento). Hardened sites often hide every
+    PHP header, so our own fingerprint alone would wrongly stop the chain.
 
     Verdicts: CONFIRMED_PHP_RCE > CONFIRMED_LFI > PHP_SURFACE_FOUND > NO_PHP.
     """
@@ -323,6 +327,10 @@ def attack(host, findings=None, pool=None, budget_seconds=45):
     result = {'agent': AGENT, 'host': host, 'fingerprint': {}, 'exposures': [],
               'confirmed': [], 'targets': [], 'chain': [], 'errors': []}
     fp = fingerprint(host, pool)
+    if php_hint and not fp.get('php'):
+        fp['php'] = True
+        fp['evidence'] = dict(fp.get('evidence') or {}, hint='recon: PHP 栈指纹')
+        result['chain'].append({'step': 'php-hint', 'source': 'recon'})
     result['fingerprint'] = fp
     if not fp.get('php'):
         result['verdict'] = 'NO_PHP'

@@ -731,7 +731,7 @@ class QuickScans:
 
     def _safe_venom(self, host, pool):
         try:
-            return self.venom_runner(host, pool=pool)
+            return self.venom_runner(host, pool=pool, php_hint=True)
         except Exception as exc:  # noqa: BLE001 - PHP stage must not lose the recon
             return {'verdict': 'VENOM_STAGE_ERROR', 'error': f'{type(exc).__name__}: {exc}'}
 

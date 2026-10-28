@@ -157,3 +157,15 @@ def test_agent_identity_is_stable():
     assert venom_agent.AGENT['id'] == 'venom'
     assert venom_agent.AGENT['name'] == 'VENOM'
     assert 'PHP' in venom_agent.AGENT['title']
+
+
+def test_php_hint_overrides_strict_fingerprint(routes):
+    """Hardened WordPress hides PHP headers; recon's stack evidence must win."""
+    routes['/'] = _resp(200, '<html>wp</html>', headers={'Server': 'nginx'})
+    routes['/index.php'] = _resp(404)
+    assert venom_agent.attack('t')['verdict'] == 'NO_PHP'
+    result = venom_agent.attack('t', php_hint=True)
+    assert result['fingerprint']['php'] is True
+    assert result['fingerprint']['evidence']['hint'] == 'recon: PHP 栈指纹'
+    assert result['verdict'] != 'NO_PHP'
+    assert result['chain'][0]['step'] == 'php-hint'
