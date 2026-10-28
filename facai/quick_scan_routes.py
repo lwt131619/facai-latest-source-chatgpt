@@ -1,26 +1,25 @@
-"""Login-free quick scan API: paste a URL, get an evidence-backed report.
+"""Login-free fast assessment API: recon fans out, attack agent auto-fires.
 
-Public by design (Owner directive 2026-10-28); abuse is bounded by the
-per-IP and per-host rate gates inside QuickScans plus the scan concurrency
-cap, not by accounts. The report contains only what the target site itself
-publishes to any anonymous visitor.
+Public by design. Abuse is bounded by per-IP/per-host rate gates plus the scan
+concurrency cap. `run_attack` defaults to true: a host that raises a concrete
+signal is attacked in the same request, so the caller gets one report that
+already contains confirmed injection results instead of a to-do list.
 """
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse
 from pathlib import Path
 from pydantic import BaseModel, Field
 
-from .quick_scan import QuickScans, SiteAssessmentError
+from .quick_scan import QuickScans
+from .site_assessment import SiteAssessmentError
 
 
 class ScanRequest(BaseModel):
     url: str = Field(min_length=10, max_length=2048)
+    attack: bool = True
 
 
 def _client_ip(request):
-    # Behind the deployment nginx, X-Forwarded-For is "client, ...proxies" and
-    # the LAST entry is the hop our own nginx appended, i.e. the real client.
-    # Direct-to-uvicorn calls have no header and use the socket address.
     forwarded = request.headers.get('x-forwarded-for', '')
     if forwarded:
         return forwarded.split(',')[-1].strip() or (request.client.host if request.client else 'unknown')
@@ -38,7 +37,7 @@ def router_for(store):
     @router.post('/api/v1/quick-scans', status_code=200)
     def scan(body: ScanRequest, request: Request):
         try:
-            result = service.scan(body.url, _client_ip(request))
+            result = service.scan(body.url, _client_ip(request), run_attack=body.attack)
         except SiteAssessmentError as exc:
             raise HTTPException(400, str(exc)) from None
         if result['status'] == 'RATE_LIMITED':

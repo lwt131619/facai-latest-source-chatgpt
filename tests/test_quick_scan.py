@@ -1,191 +1,354 @@
+"""Tests for the fast-path scan: recon fan-out, attack agent, auto-dispatch."""
 import pytest
 from fastapi.testclient import TestClient
 
+from facai import attack_agent, recon
 from facai.api import create_app
-from facai.quick_scan import (QuickScans, analyze_exposure, analyze_fingerprint,
-                              analyze_headers, analyze_injection_surface, analyze_tls,
-                              grade_report)
+from facai.quick_scan import (QuickScans, analyze_cookies, analyze_dns, analyze_exposure,
+                              analyze_firewall, analyze_headers, analyze_injection_surface,
+                              analyze_redirects, analyze_tech, analyze_tls, attack_targets,
+                              derive_findings, grade_report)
 from facai.site_assessment import SiteAssessmentError
 
 
-def test_tls_analyzer_levels():
-    dead = analyze_tls({'ok': False, 'error': 'SSLError: certificate verify failed'})
-    assert dead[0]['severity'] == 'HIGH' and dead[0]['certainty'] == 'FACT'
-    obsolete = analyze_tls({'ok': True, 'tls_version': 'TLSv1',
-                            'certificate': {'seconds_remaining': 10 * 86400, 'not_after': 'x'}})
-    ids = [item['id'] for item in obsolete]
-    assert 'tls-obsolete' in ids and 'cert-expiring' in ids
-    expired = analyze_tls({'ok': True, 'tls_version': 'TLSv1.3',
-                           'certificate': {'seconds_remaining': -5, 'not_after': 'yesterday'}})
-    assert expired[0]['id'] == 'cert-expired' and expired[0]['severity'] == 'CRITICAL'
-    healthy = analyze_tls({'ok': True, 'tls_version': 'TLSv1.3',
-                           'certificate': {'seconds_remaining': 90 * 86400, 'not_after': 'far'}})
+# ------------------------------------------------------------------ analyzers
+
+def test_tls_findings():
+    dead = analyze_tls({'ok': False, 'error': 'SSLError: verify failed'})
+    assert dead[0]['severity'] == 'HIGH' and dead[0]['tags']
+    obsolete = analyze_tls({'ok': True, 'tls_version': 'TLSv1', 'obsolete_protocol': True,
+                            'cipher': 'RC4-SHA', 'weak_cipher': True,
+                            'seconds_remaining': 5 * 86400, 'not_after': 'x',
+                            'subject_cn': 'a.example', 'san': ['b.example']})
+    ids = {item['id'] for item in obsolete}
+    assert {'tls-obsolete', 'tls-weak-cipher', 'cert-expiring', 'cert-san-mismatch'} <= ids
+    healthy = analyze_tls({'ok': True, 'tls_version': 'TLSv1.3', 'obsolete_protocol': False,
+                           'weak_cipher': False, 'seconds_remaining': 200 * 86400,
+                           'subject_cn': 'a.example', 'san': ['a.example']})
     assert healthy == []
 
 
-def test_headers_cookies_and_grading():
-    findings = analyze_headers(200, {
-        'Content-Type': 'text/html', 'Server': 'nginx/1.18.0', 'X-Powered-By': 'PHP/7.4',
-        'Set-Cookie': 'PHPSESSID=abc123; path=/'})
-    by_id = {item['id']: item for item in findings}
-    assert by_id['hsts-missing']['severity'] == 'MEDIUM'
-    assert by_id['csp-missing']['severity'] == 'MEDIUM'
-    assert by_id['framing-unset']['severity'] == 'MEDIUM'
-    assert by_id['cookie-no-secure']['severity'] == 'HIGH'
-    assert by_id['cookie-no-httponly']['severity'] == 'MEDIUM'
-    assert by_id['cookie-no-samesite']['severity'] == 'LOW'
-    assert by_id['server-version-exposed']['observed'] == 'nginx/1.18.0'
-    hardening = analyze_headers(200, {
-        'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
-        'Content-Security-Policy': "default-src 'self'; frame-ancestors 'none'",
-        'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY',
-        'Referrer-Policy': 'no-referrer', 'Permissions-Policy': 'camera=()'})
-    assert hardening == []
-    summary = grade_report(findings)
-    assert summary['severity_counts']['HIGH'] == 1 and summary['grade'] in 'CDEF'
+def test_header_and_cookie_findings():
+    headers = {
+        'HSTS': {'present': False}, 'CSP': {'present': True, 'value': "default-src 'self' 'unsafe-inline' 'unsafe-eval'"},
+        'X-Content-Type-Options': {'present': True}, 'Referrer-Policy': {'present': False},
+        'Permissions-Policy': {'present': False}, 'COOP': {'present': False},
+        'CORP': {'present': False}, 'X-Frame-Options': {'present': False},
+    }
+    ids = {item['id'] for item in analyze_headers(headers)}
+    assert {'hsts-missing', 'referrer-missing', 'framing-unset', 'coop-missing'} <= ids
+    assert 'csp-unsafe-inline' in ids and 'csp-unsafe-eval' in ids
+
+    cookies = analyze_cookies({'cookies': [{'name': 'PHPSESSID', 'secure': False,
+                                            'httponly': False, 'samesite': None}]})
+    cookie_ids = {item['id'] for item in cookies}
+    assert {'cookie-no-secure', 'cookie-no-httponly', 'cookie-no-samesite'} <= cookie_ids
 
 
-def test_fingerprint_is_inference_only():
-    body = '<html><meta name="generator" content="WordPress 6.2"><script src="/wp-includes/js/jquery.min.js">'
-    findings = analyze_fingerprint({'Server': 'Apache'}, body)
-    assert len(findings) == 1
-    finding = findings[0]
-    assert finding['certainty'] == 'INFERENCE' and finding['severity'] == 'INFO'
-    names = finding['observed']['stack']
-    assert 'WordPress' in names and 'jQuery' in names and 'PHP' not in names
-    assert analyze_fingerprint({'Server': 'Apache'}, '<html>plain</html>') == []
-
-
-def test_exposure_and_injection_probes():
-    exposure = analyze_exposure({
-        'git': {'path': '/.git/HEAD', 'status': 200, 'body_text': 'ref: refs/heads/main\n'},
-        'env': {'path': '/.env', 'status': 404, 'body_text': ''}})
+def test_exposure_and_injection_surface_findings():
+    exposure = analyze_exposure({'git': {'path': '/.git/HEAD', 'status': 200,
+                                         'excerpt': 'ref: refs/heads/main'},
+                                 'env': {'path': '/.env', 'status': 404}})
     assert exposure[0]['id'] == 'git-exposed' and exposure[0]['severity'] == 'CRITICAL'
-    assert any(item['id'] == 'exposure-clear' for item in exposure)
+    # A CRITICAL exposure suppresses the "nothing found" info line.
+    assert not any(item['id'] == 'exposure-clear' for item in exposure)
+    clean = analyze_exposure({'git': {'path': '/.git/HEAD', 'status': 404},
+                              'env': {'path': '/.env', 'status': 404}})
+    assert any(item['id'] == 'exposure-clear' for item in clean)
 
-    env_leak = analyze_exposure({
-        'env': {'path': '/.env', 'status': 200, 'body_text': 'APP_KEY=base64:abc\nDB_PASSWORD=s3cret'}})
-    assert env_leak[0]['id'] == 'env-exposed' and env_leak[0]['severity'] == 'CRITICAL'
-
-    injection = analyze_injection_surface({
-        'reflection': {'path': '/?facai_probe=x', 'status': 200,
-                       'body_text': 'hello fcq7k2p\'"><{}{} world'},
-        'sqlerror': {'path': '/?id=x', 'status': 200,
-                     'body_text': 'You have an error in your SQL syntax near fcq7k2p'},
-        'adminpanel': [{'path': '/admin', 'status': 200, 'body_text': 'login'},
-                       {'path': '/phpmyadmin', 'status': 404, 'body_text': ''}]})
-    by_id = {item['id']: item for item in injection}
-    assert by_id['reflected-unencoded']['severity'] == 'HIGH'
-    assert 'xss' in by_id['reflected-unencoded']['tags']
-    assert by_id['sql-error-echo']['severity'] == 'HIGH'
-    assert by_id['admin-panel-reachable']['observed'] == {'paths': ['/admin']}
-
-    clean = analyze_injection_surface({
-        'reflection': {'path': '/?facai_probe=x', 'status': 200,
-                       'body_text': 'hello fcq7k2p&#39;&quot;&gt;&lt; world'},
-        'sqlerror': {'path': '/?id=x', 'status': 200, 'body_text': 'normal page'},
-        'adminpanel': [{'path': '/admin', 'status': 302, 'body_text': ''},
-                       {'path': '/phpmyadmin', 'status': 404, 'body_text': ''}]})
-    assert [item['id'] for item in clean] == ['reflected-encoded']
+    surface = analyze_injection_surface({
+        'reflection': {'status': 200, 'reflected': True, 'unescaped': True,
+                       'context': "'\"><{}", 'excerpt': 'echo fcq7k2p\'"><{}'},
+        'sql_error': {'status': 200, 'marker': 'sql syntax', 'excerpt': 'error in your SQL syntax'},
+        'admin': [{'path': '/admin', 'status': 200}],
+        'upload': [{'path': '/upload', 'status': 200}]})
+    ids = {item['id'] for item in surface}
+    assert {'reflected-unencoded', 'sql-error', 'admin-panel', 'upload-surface'} <= ids
+    # These are exactly the signals that must arm the attack stage.
+    assert set(attack_targets(surface)) == {'reflected-unencoded', 'sql-error',
+                                            'admin-panel', 'upload-surface'}
 
 
-RESPONSES = {
-    '/': {'status': 200, 'headers': {'Content-Type': 'text/html; charset=utf-8',
-                                     'Server': 'nginx',
-                                     'Set-Cookie': 'laravel_session=xyz; HttpOnly; SameSite=Lax'},
-          'body': b'<html><body>ok wp-content here</body></html>'},
-    '/.git/HEAD': {'status': 404, 'headers': {}, 'body': b'not found'},
-    '/.env': {'status': 404, 'headers': {}, 'body': b'not found'},
-    '/robots.txt': {'status': 200, 'headers': {}, 'body': b'User-agent: *\nDisallow: /admin'},
-    '/?facai_probe=fcq7k2p%27%22%3E%3C%7B%7D': {'status': 200, 'headers': {},
-                                                'body': b'search: fcq7k2p&#39;&quot; encoded'},
-    '/?id=fcq7k2p%27': {'status': 200, 'headers': {}, 'body': b'no error here'},
-    '/admin': {'status': 200, 'headers': {}, 'body': b'<form>login</form>'},
-    '/phpmyadmin': {'status': 404, 'headers': {}, 'body': b''},
-}
+def test_fingerprint_and_firewall_are_inference():
+    tech = analyze_tech({'detected': {'WordPress': ['wp-content'], 'PHP': ['phpsessid']},
+                         'generator': 'WordPress 6.2', 'version_hints': ['6.2'],
+                         'server': 'nginx/1.18.0', 'powered_by': 'PHP/7.4'})
+    stack = next(item for item in tech if item['id'] == 'tech-stack')
+    assert stack['certainty'] == 'INFERENCE' and stack['severity'] == 'INFO'
+    assert 'CVE' in stack['recommendation'] or '版本' in stack['recommendation']
+    waf = analyze_firewall({'vendors': ['Cloudflare'], 'server': 'cloudflare'})
+    assert waf[0]['certainty'] == 'INFERENCE'
 
 
-def _app_with_mocks(tmp_path, monkeypatch, fetch, tls_probe):
+def test_dns_and_redirect_findings():
+    dns = analyze_dns({'MX': ['10 mail.example.org'], 'TXT': ['v=spf1 -all']},
+                      {'signed': False, 'nameserver': 'ns1.example.org'},
+                      {'registrar': 'Example Registrar', 'expires': '2030-01-01'})
+    ids = {item['id'] for item in dns}
+    assert 'dnssec-off' in ids and 'dmarc-missing' in ids and 'caa-missing' in ids
+    assert 'spf-missing' not in ids
+    redirects = analyze_redirects([{'url': 'https://a/', 'status': 301,
+                                    'location': 'http://a/home'},
+                                   {'url': 'https://a/home', 'status': 200}])
+    assert any(item['id'] == 'redirect-downgrade' for item in redirects)
+
+
+def test_grade_scales_with_severity():
+    assert grade_report([])['grade'] == 'A+'
+    assert grade_report([{'severity': 'LOW'}])['grade'] == 'A'
+    assert grade_report([{'severity': 'CRITICAL'}])['grade'] == 'D'
+    assert grade_report([{'severity': 'CRITICAL'}] * 2)['grade'] == 'F'
+
+
+# ------------------------------------------------------------- attack agent
+
+def test_boolean_oracle_requires_reproducible_difference(monkeypatch):
+    """A random token that changes every request must not be read as an oracle."""
+    calls = {'n': 0}
+
+    def fake_request(host, path, **kwargs):
+        calls['n'] += 1
+        return {'status': 200, 'body': f'page {calls["n"]}'.encode(), 'headers': {},
+                'header_list': []}
+
+    monkeypatch.setattr(attack_agent.net_client, 'request', fake_request)
+    assert attack_agent.test_boolean_based('h', '/', ['id']) == []
+
+    from urllib.parse import unquote_plus
+
+    def stable_request(host, path, **kwargs):
+        decoded = unquote_plus(path)
+        # A real boolean oracle: every false payload carries a =2 predicate,
+        # every true payload carries =1, so the split is deterministic.
+        if any(token in decoded for token in ("'2", '"2', '=2')):
+            body = b'no rows here at all'
+        else:
+            body = b'row found'
+        return {'status': 200, 'body': body, 'headers': {}, 'header_list': []}
+
+    monkeypatch.setattr(attack_agent.net_client, 'request', stable_request)
+    hits = attack_agent.test_boolean_based('h', '/', ['id'])
+    assert hits and hits[0]['technique'] == 'boolean'
+    assert hits[0]['param'] == 'id'
+
+
+def test_error_based_detects_driver_message(monkeypatch):
+    def fake_request(host, path, **kwargs):
+        body = b'You have an error in your SQL syntax near facai1'
+        return {'status': 200, 'body': body, 'headers': {}, 'header_list': []}
+
+    monkeypatch.setattr(attack_agent.net_client, 'request', fake_request)
+    hits = attack_agent.test_error_based('h', '/', ['id'])
+    assert hits and hits[0]['db_marker'] == 'sql syntax' and hits[0]['param'] == 'id'
+
+
+def test_time_based_requires_real_delay(monkeypatch):
+    import time as _time
+
+    def fast_request(host, path, **kwargs):
+        return {'status': 200, 'body': b'ok', 'headers': {}, 'header_list': []}
+
+    monkeypatch.setattr(attack_agent.net_client, 'request', fast_request)
+    assert attack_agent.test_time_based('h', '/', ['id']) == []
+
+    def slow_request(host, path, **kwargs):
+        if 'SLEEP' in path.upper():
+            _time.sleep(attack_agent.SLEEP_SECONDS + 0.2)
+        return {'status': 200, 'body': b'ok', 'headers': {}, 'header_list': []}
+
+    monkeypatch.setattr(attack_agent.net_client, 'request', slow_request)
+    hits = attack_agent.test_time_based('h', '/', ['id'])
+    assert hits and hits[0]['technique'] == 'time'
+
+
+def test_attack_verdict_and_param_discovery(monkeypatch):
+    def root_request(host, path, **kwargs):
+        body = (b'<a href="/product?id=7">x</a>'
+                b'<form action="/search" method="post"><input name="q"><input name="page"></form>')
+        return {'status': 200, 'body': body, 'headers': {}, 'header_list': []}
+
+    monkeypatch.setattr(attack_agent.net_client, 'request', root_request)
+    targets = attack_agent.discover_params('h')
+    paths = {(item['path'], item['method']) for item in targets}
+    assert ('/product', 'GET') in paths and ('/search', 'POST') in paths
+    assert ['q', 'page'] in [item['params'] for item in targets]
+
+    monkeypatch.setattr(attack_agent, 'discover_params', lambda host: [])
+    result = attack_agent.attack('h')
+    assert result['verdict'] == 'NO_CONFIRMED_INJECTION'
+
+
+# --------------------------------------------------------- end-to-end wiring
+
+def _fake_recon(host):
+    return {
+        'tls': {'ok': True, 'tls_version': 'TLSv1.3', 'obsolete_protocol': False,
+                'weak_cipher': False, 'seconds_remaining': 90 * 86400, 'not_after': 'later',
+                'subject_cn': host, 'san': [host], 'cipher': 'TLS_AES_256_GCM_SHA384'},
+        'security_headers': {
+            'HSTS': {'present': True, 'value': 'max-age=31536000'},
+            'CSP': {'present': True, 'value': "default-src 'self'; frame-ancestors 'none'"},
+            'X-Content-Type-Options': {'present': True, 'value': 'nosniff'},
+            'X-Frame-Options': {'present': True, 'value': 'DENY'},
+            'Referrer-Policy': {'present': True, 'value': 'no-referrer'},
+            'Permissions-Policy': {'present': True, 'value': 'camera=()'},
+            'COOP': {'present': True, 'value': 'same-origin'},
+            'CORP': {'present': True, 'value': 'same-origin'},
+        },
+        'cookies': {'count': 1, 'cookies': [{'name': 'sid', 'secure': True,
+                                             'httponly': True, 'samesite': 'lax'}]},
+        'tech_stack': {'detected': {'Nginx': ['server:nginx']}, 'generator': None,
+                       'version_hints': [], 'server': 'nginx', 'powered_by': None},
+        'firewall': {'vendors': [], 'server': 'nginx'},
+        'path_exposure': {'git': {'path': '/.git/HEAD', 'status': 404},
+                          'env': {'path': '/.env', 'status': 404},
+                          'backup_sql': {'path': '/backup.sql', 'status': 404}},
+        'dns': {'A': ['93.184.215.14'], 'MX': [], 'TXT': ['v=spf1 -all']},
+        'dnssec': {'signed': True},
+        'whois': {'registrar': 'Test Registrar', 'expires': '2031-01-01'},
+        'robots': {'status': 200, 'disallow': ['/private/'], 'sitemaps': []},
+        'sitemap': {'found': False},
+        'security_txt': {'found': False},
+        'http_methods': {'status': 200, 'allow': 'GET, HEAD', 'dangerous_advertised': []},
+        'redirects': [{'url': f'https://{host}/', 'status': 200}],
+        'subdomains': {'count': 2, 'sample': [host, 'www.' + host]},
+        'ip_info': {'address': '93.184.215.14', 'org': 'Test'},
+        'injection_surface': {
+            'reflection': {'status': 200, 'reflected': False},
+            'sql_error': {'status': 200, 'marker': 'sql syntax', 'excerpt': 'SQL syntax error'},
+            'admin': [], 'upload': []},
+        '_meta': {'elapsed_ms': 1200, 'checks': 18, 'budget_seconds': 25},
+    }
+
+
+def test_scan_auto_dispatches_attack_and_reports_confirmed(tmp_path, monkeypatch):
+    monkeypatch.setenv('FACAI_ADMIN_PASSWORD', 'mock-admin-pass')
+    monkeypatch.setenv('FACAI_SCHEDULER_ENABLED', '0')
+    monkeypatch.setenv('FACAI_SKIP_CREDENTIAL_PREFLIGHT', '1')
+    attacked = {'hosts': []}
+
+    def fake_attack(host):
+        attacked['hosts'].append(host)
+        return {'host': host, 'verdict': 'CONFIRMED_INJECTION', 'elapsed_ms': 900,
+                'targets': [{'path': '/item', 'params': ['id']}],
+                'chain': [{'path': '/item', 'step': 'error-based', 'hits': 1}],
+                'confirmed': [{'kind': 'SQLi', 'technique': 'error-based', 'path': '/item',
+                               'param': 'id', 'db_marker': 'sql syntax',
+                               'evidence': 'error in your SQL syntax'}]}
+
+    original_init = QuickScans.__init__
+
+    def patched_init(self, store):
+        original_init(self, store, recon_runner=_fake_recon, attack_runner=fake_attack)
+
+    monkeypatch.setattr('facai.quick_scan.QuickScans.__init__', patched_init)
+    app = create_app(tmp_path)
+    client = TestClient(app)
+
+    assert client.get('/scan').status_code == 200
+    result = client.post('/api/v1/quick-scans', json={'url': 'https://example.org/'})
+    assert result.status_code == 200, result.text
+    report = result.json()['report']
+    # The SQL error signal must have fired the attack agent in the same request.
+    assert attacked['hosts'] == ['example.org']
+    assert 'sql-error' in report['attack_triggers']
+    ids = {item['id'] for item in report['findings']}
+    assert 'sqli-confirmed' in ids
+    sqli = next(item for item in report['findings'] if item['id'] == 'sqli-confirmed')
+    assert sqli['severity'] == 'CRITICAL' and sqli['certainty'] == 'FACT'
+    assert report['attack']['verdict'] == 'CONFIRMED_INJECTION'
+    assert report['summary']['grade'] == 'F'
+    assert report['timing']['attack_ms'] == 900
+    assert report['evidence_sha256']
+
+
+def test_scan_skips_attack_without_signals(tmp_path, monkeypatch):
+    monkeypatch.setenv('FACAI_ADMIN_PASSWORD', 'mock-admin-pass')
+    monkeypatch.setenv('FACAI_SCHEDULER_ENABLED', '0')
+    monkeypatch.setenv('FACAI_SKIP_CREDENTIAL_PREFLIGHT', '1')
+    clean = _fake_recon('example.org')
+    clean['injection_surface'] = {'reflection': {'status': 200, 'reflected': False},
+                                  'sql_error': {'status': 200, 'marker': None},
+                                  'admin': [], 'upload': []}
+    called = {'n': 0}
+
+    def fake_attack(host):
+        called['n'] += 1
+        return {'verdict': 'NO_CONFIRMED_INJECTION', 'confirmed': [], 'targets': []}
+
+    original_init = QuickScans.__init__
+
+    def patched_init(self, store):
+        original_init(self, store, recon_runner=lambda host: clean, attack_runner=fake_attack)
+
+    monkeypatch.setattr('facai.quick_scan.QuickScans.__init__', patched_init)
+    app = create_app(tmp_path)
+    client = TestClient(app)
+    result = client.post('/api/v1/quick-scans', json={'url': 'https://clean-site.org/'})
+    assert result.status_code == 200, result.text
+    assert called['n'] == 0
+    assert result.json()['report']['attack_skipped']
+    assert result.json()['report']['attack'] is None
+
+
+def test_scan_cache_and_rate_limit(tmp_path, monkeypatch):
     monkeypatch.setenv('FACAI_ADMIN_PASSWORD', 'mock-admin-pass')
     monkeypatch.setenv('FACAI_SCHEDULER_ENABLED', '0')
     monkeypatch.setenv('FACAI_SKIP_CREDENTIAL_PREFLIGHT', '1')
     original_init = QuickScans.__init__
 
     def patched_init(self, store):
-        original_init(self, store, fetch=fetch, tls_probe=tls_probe)
+        original_init(self, store, recon_runner=_fake_recon,
+                      attack_runner=lambda host: {'verdict': 'NO_CONFIRMED_INJECTION',
+                                                  'confirmed': [], 'targets': []})
 
     monkeypatch.setattr('facai.quick_scan.QuickScans.__init__', patched_init)
-    return create_app(tmp_path)
-
-
-def test_public_scan_flow_no_login(tmp_path, monkeypatch):
-    def fetch(host, path, max_bytes=8192):
-        return RESPONSES[path]
-
-    def tls_probe(host):
-        return {'ok': True, 'tls_version': 'TLSv1.3',
-                'certificate': {'seconds_remaining': 100 * 86400, 'not_after': 'later',
-                                'self_signed': False, 'issuer': "Let's Encrypt"}}
-
-    app = _app_with_mocks(tmp_path, monkeypatch, fetch, tls_probe)
+    app = create_app(tmp_path)
     client = TestClient(app)
-
-    # Page and endpoint are reachable with no session at all.
-    assert client.get('/scan').status_code == 200
-    assert '免登录' in client.get('/scan').text
-
-    result = client.post('/api/v1/quick-scans', json={'url': 'https://example.org/'})
-    assert result.status_code == 200, result.text
-    report = result.json()['report']
-    assert result.json()['cached'] is False and result.json()['id'].startswith('qs_')
-    assert report['host'] == 'example.org'
-    assert report['request_count'] == 9  # 8 GET probes + 1 TLS handshake
-    ids = {item['id'] for item in report['findings']}
-    assert 'cookie-no-secure' in ids and 'admin-panel-reachable' in ids
-    assert 'tech-stack' in ids  # wp-content fingerprint from body
-    assert 'reflected-encoded' in ids
-    assert report['summary']['grade'] in 'BCDEF'
-    assert report['evidence_sha256']
-
-    # Same host again within the cooldown returns the cached report, not 429.
+    first = client.post('/api/v1/quick-scans', json={'url': 'https://example.org/'})
+    assert first.status_code == 200
     again = client.post('/api/v1/quick-scans', json={'url': 'https://example.org/'})
     assert again.status_code == 200 and again.json()['cached'] is True
-    assert again.json()['report']['evidence_sha256'] == report['evidence_sha256']
-
-    # Persisted report is retrievable by id; an unknown id is a 404.
-    fetched = client.get(f"/api/v1/quick-scans/{result.json()['id']}")
-    assert fetched.status_code == 200 and fetched.json()['report']['host'] == 'example.org'
-    assert client.get('/api/v1/quick-scans/qs_unknown').status_code == 404
-
-    # Same IP, different host within the minute: blocked by the per-IP gate.
-    rate = client.post('/api/v1/quick-scans', json={'url': 'https://other-site.org/'})
-    assert rate.status_code == 429
+    assert client.get(f"/api/v1/quick-scans/{first.json()['id']}").status_code == 200
+    assert client.get('/api/v1/quick-scans/qs_missing').status_code == 404
+    other = client.post('/api/v1/quick-scans', json={'url': 'https://another.org/'})
+    assert other.status_code == 429
 
 
-def test_scan_rejects_private_and_unsafe_urls_without_login(tmp_path, monkeypatch):
-    def fetch(host, path, max_bytes=8192):
-        return RESPONSES.get(path, {'status': 200, 'headers': {}, 'body': b'x'})
+def test_scan_rejects_unsafe_urls(tmp_path, monkeypatch):
+    monkeypatch.setenv('FACAI_ADMIN_PASSWORD', 'mock-admin-pass')
+    monkeypatch.setenv('FACAI_SCHEDULER_ENABLED', '0')
+    monkeypatch.setenv('FACAI_SKIP_CREDENTIAL_PREFLIGHT', '1')
+    original_init = QuickScans.__init__
 
-    def tls_probe(host):
-        return {'ok': True, 'tls_version': 'TLSv1.3', 'certificate': {}}
+    def patched_init(self, store):
+        original_init(self, store, recon_runner=_fake_recon,
+                      attack_runner=lambda host: {'confirmed': [], 'targets': []})
 
-    app = _app_with_mocks(tmp_path, monkeypatch, fetch, tls_probe)
+    monkeypatch.setattr('facai.quick_scan.QuickScans.__init__', patched_init)
+    app = create_app(tmp_path)
     client = TestClient(app)
-    for url in ('http://example.org', 'https://127.0.0.1/', 'https://localhost/'):
-        rejected = client.post('/api/v1/quick-scans', json={'url': url})
-        assert rejected.status_code == 400
+    for url in ('http://example.org', 'https://127.0.0.1/', 'https://localhost/',
+                'https://example.org/path?x=1'):
+        assert client.post('/api/v1/quick-scans', json={'url': url}).status_code == 400
 
 
-def test_unreachable_site_consumes_host_cooldown(tmp_path, monkeypatch):
-    def fetch(host, path, max_bytes=8192):
-        raise SiteAssessmentError('HTTPS request failed')
+def test_recon_fanout_survives_individual_failures(monkeypatch):
+    def boom(host):
+        raise RuntimeError('check exploded')
 
-    def tls_probe(host):
-        return {'ok': False, 'error': 'timeout'}
+    monkeypatch.setattr(recon, 'CHECKS', (('ok', lambda host: {'fine': True}), ('boom', boom)))
+    results = recon.run_all('example.org', budget_seconds=5)
+    assert results['ok'] == {'fine': True}
+    assert 'exploded' in results['boom']['error']
+    assert results['_meta']['checks'] == 2
 
-    app = _app_with_mocks(tmp_path, monkeypatch, fetch, tls_probe)
-    client = TestClient(app)
-    first = client.post('/api/v1/quick-scans', json={'url': 'https://down-example.org/'})
-    assert first.status_code == 400
-    second = client.post('/api/v1/quick-scans', json={'url': 'https://down-example.org/'})
-    assert second.status_code == 429  # failed host is cooling down, not rehammered
+
+def test_transport_refuses_private_resolution(monkeypatch):
+    import socket as _socket
+
+    monkeypatch.setattr(recon.net_client.socket, 'getaddrinfo', lambda *a, **k: [
+        (2, 1, 6, '', ('10.0.0.5', 443))])
+    recon.net_client._address_cache.clear()
+    with pytest.raises(recon.TransportError):
+        recon.net_client.resolve_public('internal.example')

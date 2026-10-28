@@ -253,3 +253,42 @@ deploy-now.py 不在树中 5、真实模型密钥未配置 1、vendor authority 
   历史回看 200；伪造 X-Forwarded-For 无效（服务取 nginx 追加的最后一跳
   真实 IP，8765 仅绑 127.0.0.1 无直连绕过面）。nginx 已配
   X-Forwarded-For $proxy_add_x_forwarded_for，公网用户按真实 IP 分桶限流。
+
+## 2026-10-28 第二轮：对标 Web-Check + Obscura 的极速检测与自动注入（ZCode）
+
+对比结论（不做无用功）：
+- **Lissy93/web-check**（35k★，TS，44 检查项）：取其覆盖面，弃其拖慢速度的部分——
+  不做全端口扫描、不做 traceroute、不做截图、不调第三方情报 API。实测发现
+  `crt.sh`（CT 子域）单次要 17s、ipinfo 有 5s 超时，两者直接移除：前者砍掉，
+  后者改为**本地静态 IP 归属表**推断（Cloudflare/AWS/GCP/Azure/Akamai/DO/Hetzner/
+  OVH/阿里云/腾讯云），零外部依赖零等待。
+- **h4ckf0r0day/obscura**（29k★，Rust 反检测无头浏览器）：不引入其浏览器栈（重、
+  慢）；真实交互需求走现有 Playwright 线。
+
+新增/改造模块：
+- `facai/net_client.py`：统一钉 IP 传输层。DNS 只解析一次并校验**全部**地址为公网
+  （防 rebinding）；TCP 目标钉到已验证地址、Host/SNI 保留域名；不自动跟随重定向。
+  证书校验失败**降级重试**并标记 `cert_verify_failed`，让报告不因证书问题整站空白。
+  CA 用 certifi 完整 Mozilla 链（实测本机默认库对 example.org 误报"无法验证"，
+  换 certifi 后 `verified: True`，误报消除）。
+- `facai/recon.py`：**17 项检查并发**（ThreadPoolExecutor 12 线程，单项失败不影响
+  其余）：DNS/DNSSEC/WHOIS/TLS/根响应/重定向链/robots/sitemap/security.txt/
+  安全头/Cookie/技术栈/WAF/HTTP 方法/敏感文件暴露/IP 归属/注入面。实测
+  example.org 全量 **2.1–3.1 秒**（移除 crt.sh 前是 17.5 秒）。
+- `facai/attack_agent.py`：**真打链路**。自动从页面发现参数（链接 query + 表单
+  field），四条技术：error-based（驱动错误回显）、boolean-based（差分 oracle，
+  要求 true/false 各自跨请求稳定且互不相同，防随机 token 误判）、union（ORDER BY
+  二分定列数 + marker 验证 + 读 version/user/database）、time-based（基线对比，
+  需超过注入 sleep 的 80%）。
+- `facai/quick_scan.py`：管线改为 recon → findings → **命中高危信号自动派发攻击
+  Agent**（sql-error / reflected-unencoded / .git / .env / 备份文件 / 管理入口 /
+  上传表单 / swagger / actuator），同一请求返回侦察+攻击+已取数据。
+- `facai/static/scan.html`：重做为作战面板——评级徽章、攻击阶段独立区块（确认
+  注入时红框）、侦察详情卡、逐项证据折叠、Markdown/JSON 复制与下载。
+
+**真实靶场验证**（`tests/test_attack_integration.py`，非 mock）：起一个真的
+SQLite 拼接注入的 HTTP 服务，真实攻击链跑通——error-based 命中 `sqlite3::query`、
+boolean 差分成立、参数从页面自动发现、verdict=CONFIRMED_INJECTION。
+
+测试：`test_quick_scan.py` 16 例 + `test_attack_integration.py` 3 例全绿；
+全量回归见 checkpoint 记录。

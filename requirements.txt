@@ -6,3 +6,7 @@ qrcode>=7.4,<9
 cryptography>=42
 # QR login encodes PNG with the stdlib. Do not call qrcode.make().save(format="PNG"):
 # that imports qrcode.image.pil and 500s unless this file also declares qrcode[pil].
+# Site recon: DNSSEC/record lookups, and a complete CA bundle so a distro
+# Python without intermediate certs does not report false "untrusted chain".
+dnspython>=2.6,<3
+certifi>=2024.2.2

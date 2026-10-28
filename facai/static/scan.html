@@ -1,37 +1,212 @@
 <!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>FACAI · 免登录快速体检</title><style>
-:root{font-family:system-ui,"Microsoft YaHei",sans-serif;color-scheme:dark;background:#0b111b;color:#e9eff7}*{box-sizing:border-box}body{margin:0}header{padding:20px 5vw;border-bottom:1px solid #29384a}a{color:#83d9c7}main{max-width:960px;margin:28px auto;padding:0 18px}section{background:#121c2a;border:1px solid #29384a;border-radius:12px;padding:22px;margin:16px 0}h1{font-size:28px}p{color:#b1c0d1;line-height:1.6}label{display:block;margin:12px 0 6px}input{width:100%;background:#0b1421;color:#e9eff7;border:1px solid #36485d;border-radius:7px;padding:11px;font:inherit}button{min-height:44px;border:1px solid #45605e;border-radius:7px;padding:11px 15px;background:#25453e;color:#c3ffec;font:inherit;cursor:pointer;margin:8px 8px 0 0}button:disabled{opacity:.45}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px;background:#0b1421;border:1px solid #29384a;border-radius:7px;padding:10px}code{overflow-wrap:anywhere}#message{color:#f2cd8c;min-height:24px}
-.grade{display:inline-block;min-width:52px;text-align:center;font-size:30px;font-weight:700;border-radius:9px;padding:4px 12px;margin-right:12px;vertical-align:middle}
-.CRITICAL{color:#ffb3b3}.HIGH{color:#ffb36b}.MEDIUM{color:#f2cd8c}.LOW{color:#b1c0d1}.INFO{color:#83d9c7}
-.badge{display:inline-block;border-radius:6px;padding:1px 8px;font-size:12px;margin-right:8px;border:1px solid #36485d}
-.finding{border:1px solid #29384a;border-radius:9px;padding:12px 14px;margin:10px 0}
-.finding summary{cursor:pointer;line-height:1.5}
-.sev{font-weight:700}
-.cat{color:#8fa3b8;font-size:12px}
-details.evidence{margin-top:8px}
-meta{color:#8fa3b8;font-size:12px}
-</style></head><body><header><strong>FACAI / ICS</strong> · <a href="/login">控制台登录</a> · 深度认领体检见 <a href="/site-assessment">站点认领体检</a></header>
-<main><h1>免登录快速体检</h1>
-<p>贴一个 HTTPS 域名根地址，无需账号与验证文件。检测为只读：1 次 TLS 握手 + 4 次同域 GET（首页、<code>/.git/HEAD</code>、<code>/.env</code>、<code>/robots.txt</code>）。逐条结论附原始观察证据；技术栈识别为被动推断，不声称已证实任何 CVE。</p>
-<section><form id="scan-form"><label for="url">目标站点（你自己管理的域名）</label><input id="url" type="url" placeholder="https://example.org/" required><button id="go">开始体检</button></form><p id="message" role="status" aria-live="polite"></p></section>
-<section id="report" hidden></section>
-</main><script>
+<title>FACAI · 极速站点检测</title><style>
+:root{font-family:system-ui,"Microsoft YaHei",sans-serif;color-scheme:dark;background:#0b111b;color:#e9eff7}
+*{box-sizing:border-box}body{margin:0}
+header{padding:18px 5vw;border-bottom:1px solid #29384a;display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+a{color:#83d9c7;text-decoration:none}a:hover{text-decoration:underline}
+main{max-width:1080px;margin:26px auto;padding:0 18px}
+section{background:#121c2a;border:1px solid #29384a;border-radius:12px;padding:20px;margin:16px 0}
+h1{font-size:26px;margin:0 0 10px}h2{font-size:18px;margin:0 0 12px}h3{font-size:15px;margin:18px 0 8px;color:#c9d6e4}
+p{color:#b1c0d1;line-height:1.65;margin:8px 0}
+label{display:block;margin:12px 0 6px;color:#c9d6e4}
+input[type=url]{width:100%;background:#0b1421;color:#e9eff7;border:1px solid #36485d;border-radius:7px;padding:12px;font:inherit}
+button{min-height:44px;border:1px solid #45605e;border-radius:7px;padding:11px 16px;background:#25453e;color:#c3ffec;font:inherit;cursor:pointer;margin:10px 8px 0 0}
+button:hover:not(:disabled){background:#2f5a50}button:disabled{opacity:.45;cursor:not-allowed}
+button.ghost{background:#16222f;border-color:#36485d;color:#c9d6e4}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12.5px;background:#0b1421;border:1px solid #29384a;border-radius:7px;padding:10px;margin:8px 0;max-height:420px;overflow:auto}
+code{overflow-wrap:anywhere;font-size:12.5px;background:#0b1421;padding:1px 5px;border-radius:4px}
+#message{color:#f2cd8c;min-height:22px;margin-top:10px}
+.grade{display:inline-block;min-width:56px;text-align:center;font-size:30px;font-weight:700;border-radius:10px;padding:6px 14px;margin-right:14px;vertical-align:middle}
+.g-APLUS,.g-A{background:#123a2e;color:#7dffcf}.g-B{background:#12352e;color:#9fe8c0}.g-C{background:#3a3412;color:#ffe07d}.g-D{background:#3d2a12;color:#ffbe7d}.g-F{background:#3d1414;color:#ff9d9d}
+.CRITICAL{color:#ff8f8f}.HIGH{color:#ffb36b}.MEDIUM{color:#f2cd8c}.LOW{color:#b1c0d1}.INFO{color:#83d9c7}
+.badge{display:inline-block;border-radius:6px;padding:1px 8px;font-size:11.5px;margin:0 6px 6px 0;border:1px solid #36485d;background:#0f1a27;color:#b1c0d1}
+.badge.sev-CRITICAL{border-color:#7a2020;color:#ff9d9d}.badge.sev-HIGH{border-color:#7a4a1e;color:#ffb36b}.badge.sev-MEDIUM{border-color:#7a6a1e;color:#f2cd8c}
+.finding{border:1px solid #29384a;border-radius:9px;padding:12px 14px;margin:9px 0;background:#0f1a27}
+.finding summary{cursor:pointer;line-height:1.55;list-style:none}.finding summary::-webkit-details-marker{display:none}
+.finding summary::before{content:"▸ ";color:#5a7a90}
+.sev{font-weight:700;margin-right:6px}.cat{color:#7d8fa3;font-size:11.5px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px}
+.kv{background:#0b1421;border:1px solid #29384a;border-radius:8px;padding:10px 12px;font-size:12.5px}
+.kv b{display:block;color:#7d8fa3;font-weight:500;font-size:11px;margin-bottom:3px;text-transform:uppercase;letter-spacing:.03em}
+.attack{border-left:3px solid #c2410c;background:#1c1410}
+.attack.confirmed{border-left-color:#ef4444}
+.spinner{display:inline-block;width:13px;height:13px;border:2px solid #45605e;border-top-color:#c3ffec;border-radius:50%;animation:spin .7s linear infinite;vertical-align:-2px;margin-right:7px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.phase{display:flex;gap:8px;align-items:center;color:#8fa3b8;font-size:12.5px;margin:5px 0}
+.dot{width:7px;height:7px;border-radius:50%;background:#36485d;flex:none}
+.dot.on{background:#7dffcf}.dot.warn{background:#f2cd8c}.dot.hot{background:#ef4444}
+.tabs{display:flex;gap:6px;margin:14px 0 6px;flex-wrap:wrap}
+.tab{padding:7px 13px;border:1px solid #36485d;border-radius:7px;background:#0f1a27;color:#b1c0d1;cursor:pointer;font-size:13px}
+.tab.active{background:#25453e;color:#c3ffec;border-color:#45605e}
+.hidden{display:none}
+</style></head><body>
+<header><strong>FACAI / ICS</strong><span style="color:#36485d">|</span>
+<a href="/command-center">指挥中心</a><a href="/site-assessment">认领体检</a><a href="/login">登录</a></header>
+<main>
+<h1>极速站点检测</h1>
+<p>贴 HTTPS 域名根地址，无需账号。<b>17 项侦察并发执行</b>（DNS/DNSSEC/WHOIS/TLS/安全头/Cookie/技术栈/WAF/重定向/robots/sitemap/security.txt/HTTP方法/敏感文件/CT子域/IP信息/注入面），侦察出可攻击信号时<b>自动派发注入验证并尝试取数</b>，一次请求直接给结论。</p>
+
+<section>
+<form id="scan-form">
+<label for="url">目标站点</label>
+<input id="url" type="url" placeholder="https://example.org/" required autocomplete="off">
+<label style="display:flex;align-items:center;gap:8px;margin-top:12px;color:#b1c0d1">
+<input type="checkbox" id="attack" checked style="width:auto;min-height:auto"> 侦察命中信号时自动派发注入验证（真发载荷）
+</label>
+<button id="go">开始检测</button>
+<button type="button" id="demo" class="ghost">填入示例</button>
+<p id="message" role="status" aria-live="polite"></p>
+</form>
+<div id="phases" class="hidden">
+<div class="phase"><span class="dot on"></span>侦察并发中：17 项检查同时进行，单项超时不影响其余</div>
+<div class="phase"><span class="dot"></span>分析：逐项生成证据与分级</div>
+<div class="phase"><span class="dot"></span>攻击阶段：命中信号则真发载荷并差分验证</div>
+</div>
+</section>
+
+<section id="report" class="hidden"></section>
+</main>
+<script>
 'use strict';
 const $=id=>document.getElementById(id);
-function message(value){$('message').textContent=value}
-async function api(path,method,body){const response=await fetch(path,{method,headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});const data=await response.json().catch(()=>({}));if(!response.ok)throw Error(typeof data.detail==='string'?data.detail:'请求失败：'+response.status);return data}
-const SEV_ORDER=['CRITICAL','HIGH','MEDIUM','LOW','INFO'],CAT_NAMES={transport:'传输与证书',headers:'安全响应头',cookies:'Cookie 安全',fingerprint:'技术栈指纹',exposure:'敏感暴露'};
-function esc(value){return String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-function toMarkdown(report){const lines=['# FACAI 快速体检报告 — '+report.host,'','采集时间：'+report.collected_at+'　评级：'+report.summary.grade+'（'+report.summary.score+' 分）',''];for(const item of report.findings){lines.push('## ['+item.severity+'] '+item.title,'- 类别：'+(CAT_NAMES[item.category]||item.category)+'　确定性：'+item.certainty,'- 证据：'+item.evidence,'- 建议：'+item.recommendation,'')}lines.push('---',report.scope,report.limitations,'evidence_sha256: '+report.evidence_sha256);return lines.join('\n')}
-function render(report,cached){const box=$('report');box.hidden=false;const counts=report.summary.severity_counts;const chips=SEV_ORDER.filter(s=>counts[s]).map(s=>`<span class="badge ${s}">${s} ×${counts[s]}</span>`).join('');let html=`<h2 style="margin:0"><span class="grade ${report.summary.grade.startsWith('A')?'INFO':report.summary.grade.startsWith('F')?'CRITICAL':report.summary.grade==='D'?'HIGH':'MEDIUM'}">${esc(report.summary.grade)}</span>${esc(report.host)}</h2><p>${chips}${cached?'<span class="badge INFO">10 分钟内缓存结果</span>':''}</p><p class="cat">采集于 ${esc(report.collected_at)} · TLS ${esc(report.tls.tls_version||report.tls.error||'未知')} · 出站请求 ${report.request_count} 次</p>`;
-for(const item of report.findings){html+=`<div class="finding"><div><span class="sev ${item.severity}">[${item.severity}]</span> ${esc(item.title)} <span class="cat">· ${(CAT_NAMES[item.category]||item.category)} · ${item.certainty==='FACT'?'已验证事实':'指纹推断'}</span></div><details class="evidence"><summary>证据与建议</summary><pre>${esc(item.evidence)}</pre><p>建议：${esc(item.recommendation)}</p></details></div>`}
-if(!report.findings.length){html+='<p>预算内未发现配置类风险项。</p>'}
-html+=`<details class="evidence"><summary>范围与限制</summary><pre>${esc(report.scope)}\n${esc(report.limitations)}</pre><p>evidence_sha256: <code>${esc(report.evidence_sha256)}</code></p></details>`;
-html+='<button id="copy-md">复制 Markdown 报告</button><button id="copy-json">复制 JSON</button>';
-box.innerHTML=html;
-$('copy-md').onclick=()=>navigator.clipboard.writeText(toMarkdown(report)).then(()=>message('Markdown 已复制'));
-$('copy-json').onclick=()=>navigator.clipboard.writeText(JSON.stringify(report,null,2)).then(()=>message('JSON 已复制'));}
-$('scan-form').onsubmit=async event=>{event.preventDefault();$('go').disabled=true;message('扫描中…（约 5–20 秒，单轮预算：1 次握手 + 4 次只读 GET）');try{const result=await api('/api/v1/quick-scans','POST',{url:$('url').value.trim()});render(result.report,result.cached);if(result.id)history.replaceState(null,'','?id='+encodeURIComponent(result.id));message('体检完成'+(result.cached?'（命中 10 分钟内缓存）':''))}catch(error){message(error.message)}finally{$('go').disabled=false}};
-(async()=>{const id=new URL(location.href).searchParams.get('id');if(!id)return;try{message('读取历史报告…');const result=await api('/api/v1/quick-scans/'+encodeURIComponent(id));render(result.report,false);message('历史报告')}catch(error){message(error.message)}})();
+const SEV=['CRITICAL','HIGH','MEDIUM','LOW','INFO'];
+const CAT={transport:'传输与证书',headers:'安全响应头',cookies:'Cookie',fingerprint:'指纹',exposure:'暴露面',injection:'注入',dns:'DNS 与域名'};
+function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function msg(t){$('message').textContent=t}
+
+async function api(path,method='GET',body){
+  const res=await fetch(path,{method,headers:body?{'Content-Type':'application/json'}:{},
+    body:body?JSON.stringify(body):undefined,credentials:'same-origin'});
+  const data=await res.json().catch(()=>({}));
+  if(!res.ok)throw Error(typeof data.detail==='string'?data.detail:'请求失败：'+res.status);
+  return data;
+}
+
+function gradeClass(g){return g==='A+'?'g-APLUS':g==='A'?'g-A':'g-'+g}
+
+function findingHtml(f){
+  const tags=(f.tags||[]).map(t=>`<span class="badge">${esc(t)}</span>`).join('');
+  return `<details class="finding"><summary>
+    <span class="sev ${f.severity}">[${f.severity}]</span>${esc(f.title)}
+    <span class="cat">· ${esc(CAT[f.category]||f.category)} · ${f.certainty==='FACT'?'已验证':'推断'}</span>
+  </summary>
+  <div style="margin-top:10px"><pre>${esc(f.evidence)}</pre>
+  <p><b>建议：</b>${esc(f.recommendation)}</p>${tags}</div></details>`;
+}
+
+function reconHtml(r){
+  if(!r)return '';
+  const tls=r.tls||{}, tech=r.tech_stack||{}, fw=r.firewall||{}, dns=r.dns||{};
+  const cards=[
+    ['TLS', tls.ok?`${tls.tls_version||'?'} · ${tls.cipher||'?'}`:(tls.error||'握手失败')],
+    ['证书', tls.not_after?`到期 ${tls.not_after}${tls.seconds_remaining!=null?`（${Math.floor(tls.seconds_remaining/86400)} 天）`:''}`:'—'],
+    ['服务器', tech.server||(r.root&&r.root.server)||'—'],
+    ['技术栈', (tech.detected?Object.keys(tech.detected).join(', '):'—')||'—'],
+    ['WAF/CDN', (fw.vendors&&fw.vendors.length)?fw.vendors.join(', '):'未识别'],
+    ['IP', (r.ip_info&&r.ip_info.address)||'—'],
+    ['注册商', (r.whois&&r.whois.registrar)||'—'],
+    ['DNSSEC', r.dnssec&&r.dnssec.signed===true?'已签名':r.dnssec&&r.dnssec.signed===false?'未签名':'未知'],
+    ['归属推断', (r.ip_info&&r.ip_info.inferred_owner)?r.ip_info.inferred_owner.join(', '):'未匹配'],
+  ];
+  return `<div class="grid">${cards.map(([k,v])=>`<div class="kv"><b>${esc(k)}</b>${esc(v)}</div>`).join('')}</div>`;
+}
+
+function attackHtml(a){
+  if(!a)return '';
+  const confirmed=(a.verdict==='CONFIRMED_INJECTION');
+  const rows=(a.confirmed||[]).map(c=>`<div class="kv" style="margin:6px 0">
+    <b>${esc(c.technique)} · ${esc(c.kind)}</b>
+    ${esc(c.path)}${c.param?'?'+esc(c.param):''}
+    ${c.db_marker?'<br>DB 特征：'+esc(c.db_marker):''}
+    ${c.payload?'<br>载荷：<code>'+esc(c.payload)+'</code>':''}
+    ${c.version?'<br>version='+esc(c.version)+' user='+esc(c.user||'')+' db='+esc(c.database||''):''}
+    ${c.baseline_ms!=null?'<br>基线 '+esc(c.baseline_ms)+'ms → 注入 '+esc(c.injected_ms)+'ms':''}
+  </div>`).join('');
+  const chain=(a.chain||[]).map(s=>`<div class="phase"><span class="dot ${s.hits||s.columns?'hot':'on'}"></span>
+    ${esc(s.path)} · ${esc(s.step)}${s.hits?' · 命中 '+s.hits:''}${s.columns?' · '+s.columns+' 列':''}</div>`).join('');
+  return `<section class="attack ${confirmed?'confirmed':''}">
+    <h2>攻击阶段 · ${confirmed?'<span class="CRITICAL">已实证注入</span>':esc(a.verdict||'无结论')}</h2>
+    <p style="color:#8fa3b8">耗时 ${esc(a.elapsed_ms??'—')}ms · 测试参数点 ${(a.targets||[]).length} 个</p>
+    ${chain}${rows}
+    ${!confirmed&&(a.targets||[]).length?'<p style="color:#8fa3b8">已发送错误/布尔/时间载荷，未复现稳定差分。</p>':''}
+  </section>`;
+}
+
+function render(data){
+  const r=data.report, s=r.summary;
+  const chips=SEV.filter(k=>s.severity_counts[k]).map(k=>`<span class="badge sev-${k}">${k} ×${s.severity_counts[k]}</span>`).join('');
+  const trig=(r.attack_triggers||[]).map(t=>`<span class="badge sev-HIGH">${esc(t)}</span>`).join('');
+  const t=r.timing||{};
+  let html=`<section>
+    <h2><span class="grade ${gradeClass(s.grade)}">${esc(s.grade)}</span>${esc(r.host)}</h2>
+    <p>${chips}${data.cached?'<span class="badge">10 分钟内缓存</span>':''}</p>
+    <p style="color:#8fa3b8;font-size:12.5px">采集 ${esc(r.collected_at)} · 总分 ${s.score} ·
+      总耗时 ${esc(t.total_ms??'—')}ms（侦察 ${esc(t.recon_ms??'—')}ms / 攻击 ${esc(t.attack_ms??'—')}ms）</p>
+    ${trig?'<p>攻击触发信号：'+trig+'</p>':''}
+    ${r.attack_skipped?'<p style="color:#8fa3b8">'+esc(r.attack_skipped)+'</p>':''}
+  </section>
+  ${attackHtml(r.attack)}
+  <section><h2>侦察详情</h2>${reconHtml(r.recon)}</section>
+  <section><h2>风险项（${(r.findings||[]).length}）</h2>
+    ${(r.findings||[]).map(findingHtml).join('')||'<p>未发现配置类风险项。</p>'}
+    <details style="margin-top:14px"><summary style="cursor:pointer;color:#8fa3b8">范围与限制</summary>
+      <pre>${esc(r.scope)}\n\n${esc(r.limitations)}</pre>
+      <p>evidence_sha256: <code>${esc(r.evidence_sha256)}</code></p></details>
+  </section>
+  <section><h2>导出</h2>
+    <button id="copy-md" class="ghost">复制 Markdown</button>
+    <button id="copy-json" class="ghost">复制 JSON</button>
+    <button id="download-json" class="ghost">下载 JSON</button>
+  </section>`;
+  const box=$('report');box.innerHTML=html;box.classList.remove('hidden');
+  $('copy-md').onclick=()=>navigator.clipboard.writeText(toMarkdown(r)).then(()=>msg('Markdown 已复制'));
+  $('copy-json').onclick=()=>navigator.clipboard.writeText(JSON.stringify(r,null,2)).then(()=>msg('JSON 已复制'));
+  $('download-json').onclick=()=>{
+    const blob=new Blob([JSON.stringify(r,null,2)],{type:'application/json'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+    a.download=`facai-${r.host}-${Date.now()}.json`;a.click();URL.revokeObjectURL(a.href);
+  };
+  box.scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+function toMarkdown(r){
+  const lines=[`# FACAI 检测报告 — ${r.host}`,'',
+    `采集：${r.collected_at}　评级：**${r.summary.grade}**（${r.summary.score} 分）`,
+    `耗时：${r.timing?.total_ms??'—'}ms（侦察 ${r.timing?.recon_ms??'—'}ms / 攻击 ${r.timing?.attack_ms??'—'}ms）`,''];
+  if(r.attack){lines.push(`## 攻击阶段：${r.attack.verdict}`,'');
+    for(const c of r.attack.confirmed||[])lines.push(`- **${c.technique}** ${c.path}${c.param?'?'+c.param:''}${c.db_marker?' · '+c.db_marker:''}`);
+    lines.push('');}
+  lines.push('## 风险项','');
+  for(const f of r.findings||[]){lines.push(`### [${f.severity}] ${f.title}`,
+    `- 类别：${CAT[f.category]||f.category}　确定性：${f.certainty}`,
+    `- 证据：${f.evidence}`,`- 建议：${f.recommendation}`,'');}
+  lines.push('---',r.scope,'',r.limitations,'',`evidence_sha256: ${r.evidence_sha256}`);
+  return lines.join('\n');
+}
+
+$('demo').onclick=()=>{$('url').value='https://example.org/'};
+$('scan-form').onsubmit=async ev=>{
+  ev.preventDefault();
+  $('go').disabled=true;$('phases').classList.remove('hidden');
+  msg('检测中…（侦察并发约 5–15 秒；若命中信号会自动进入注入验证）');
+  const dots=[...document.querySelectorAll('#phases .dot')];
+  let step=0;
+  const tick=setInterval(()=>{if(step<dots.length-1){dots[step].classList.remove('on');step++;dots[step].classList.add('on');}},4500);
+  try{
+    const data=await api('/api/v1/quick-scans','POST',{url:$('url').value.trim(),attack:$('attack').checked});
+    clearInterval(tick);dots.forEach(d=>d.classList.add('on'));
+    render(data);
+    if(data.id)history.replaceState(null,'','?id='+encodeURIComponent(data.id));
+    msg('完成'+(data.cached?'（命中 10 分钟内缓存）':''));
+  }catch(err){clearInterval(tick);msg(err.message)}
+  finally{$('go').disabled=false}
+};
+
+(async()=>{
+  const id=new URL(location.href).searchParams.get('id');
+  if(!id)return;
+  try{msg('读取历史报告…');render({report:(await api('/api/v1/quick-scans/'+encodeURIComponent(id))).report,cached:false});msg('历史报告')}
+  catch(err){msg(err.message)}
+})();
 </script></body></html>

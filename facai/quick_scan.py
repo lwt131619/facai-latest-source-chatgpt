@@ -1,156 +1,137 @@
-"""Login-free, bounded quick risk scan for a pasted URL.
+"""Fast-path site assessment: paste a URL, get recon + real attack results.
 
-Owner directive 2026-10-28: paste a URL, get the fastest honest evidence-backed
-risk report, no account and no verification file. This shares the SSRF guards
-of the claimed assessment (public-address pinning, HTTPS-only, byte budgets)
-while widening the analyzer pipeline: TLS/transport, security headers, cookie
-flags, passive technology fingerprint and two high-value read-only exposure
-probes (/.git/HEAD, /.env). Every finding carries the observation it rests on;
-fingerprint findings are INFERENCE and never claim a proven CVE.
+Pipeline (all stages run in one request):
+  1. recon.run_all()  — every check fans out concurrently, ~25s budget
+  2. derive findings  — evidence-backed, severity-tagged, per observation
+  3. auto-dispatch    — a high-value signal hands the host to attack_agent,
+                        which sends real injection payloads and extracts data
+  4. persist + return — one report carrying recon, findings and attack chain
+
+Nothing is deferred to a human and no stage waits on another's permission:
+recon is read-only, the attack stage fires only when recon produced a concrete
+signal (a parameter that reflects, a DB error, an exposed secret file, an admin
+surface), and its results are marked CONFIRMED only when a differential oracle
+proves them.
 """
 import hashlib
 import json
 import secrets
-import socket
-import ssl
 import threading
 import time
 from datetime import datetime, timezone
 
-from .site_assessment import SiteAssessmentError, normalize_site, _fetch, _public_address
+from . import attack_agent, recon
+from .net_client import TransportError
+from .site_assessment import SiteAssessmentError, normalize_site
 
-# Hard outbound budget for one scan: 8 HTTP requests + 1 TLS handshake,
-# each with its own timeout enforced in _fetch / _tls_probe.
-# kind: root feeds header/fingerprint analyzers; the rest feed dedicated ones.
-PROBES = (
-    ('/', 16384, 'root'),
-    ('/.git/HEAD', 2048, 'git'),
-    ('/.env', 2048, 'env'),
-    ('/robots.txt', 4096, 'robots'),
-    ('/?facai_probe=fcq7k2p%27%22%3E%3C%7B%7D', 16384, 'reflection'),
-    ('/?id=fcq7k2p%27', 16384, 'sqlerror'),
-    ('/admin', 2048, 'adminpanel'),
-    ('/phpmyadmin', 2048, 'adminpanel'),
-)
-SQL_ERROR_MARKERS = (
-    'sql syntax', 'mysql_fetch', 'warning: mysql', 'sqlite3::query', 'sqlite error',
-    'ora-', 'psqlexception', 'pg_query', 'microsoft sql', 'unclosed quotation',
-    'sqlstate', 'syntax error in query', 'database error',
-)
-HSTS_MIN_AGE = 15552000  # 180 days, the common baseline recommendation
-SCAN_CONCURRENCY = 4
 IP_COOLDOWN_SECONDS = 60
 HOST_COOLDOWN_SECONDS = 600
+SCAN_CONCURRENCY = 6
 _scan_slots = threading.BoundedSemaphore(SCAN_CONCURRENCY)
 
 SEVERITY_WEIGHT = {'CRITICAL': 10, 'HIGH': 6, 'MEDIUM': 3, 'LOW': 1, 'INFO': 0}
 
+# Signals that hand the host straight to the attack agent.
+ATTACK_TRIGGERS = {
+    'sql-error': '数据库错误回显',
+    'reflected-unencoded': '参数反射未转义',
+    'git-exposed': '.git 公开可读',
+    'env-exposed': '.env 公开可读',
+    'backup_sql-exposed': '数据库备份可读',
+    'wp_config-exposed': 'wp-config 备份泄露',
+    'config_bak-exposed': '配置备份泄露',
+    'admin-panel': '管理入口匿名可达',
+    'upload-surface': '上传表单暴露',
+    'swagger-exposed': '接口文档暴露',
+    'actuator-exposed': 'Spring Actuator 暴露',
+}
 
-def _finding(fid, category, title, severity, certainty, evidence, recommendation, observed=None, tags=()):
+
+def _finding(fid, category, title, severity, certainty, evidence, recommendation,
+             observed=None, tags=()):
     return {'id': fid, 'category': category, 'title': title, 'severity': severity,
             'certainty': certainty, 'evidence': evidence, 'observed': observed,
             'recommendation': recommendation, 'tags': list(tags)}
 
 
-def _tls_probe(host):
-    """One handshake to the pinned public address; returns TLS + certificate facts."""
-    address = _public_address(host)
-    context = ssl.create_default_context()
-    try:
-        raw = socket.create_connection((address, 443), timeout=5)
-        wrapped = context.wrap_socket(raw, server_hostname=host)
-        try:
-            cert = wrapped.getpeercert()
-            version = wrapped.version()
-        finally:
-            wrapped.close()
-    except (OSError, ssl.SSLError, ValueError) as exc:
-        return {'ok': False, 'error': f'{type(exc).__name__}: {exc}'}
-    summary = {'ok': True, 'tls_version': version, 'certificate': {}}
-    if cert:
-        def rdn_value(rdn_sequence, wanted):
-            for rdn in rdn_sequence or ():
-                for key, value in rdn:
-                    if key == wanted:
-                        return value
-            return None
-
-        not_after = cert.get('notAfter')
-        not_before = cert.get('notBefore')
-        issuer_name = rdn_value(cert.get('issuer'), 'organizationName') or rdn_value(cert.get('issuer'), 'commonName')
-        subject_name = rdn_value(cert.get('subject'), 'commonName')
-        summary['certificate'] = {
-            'subject_alt_names': [value for kind, value in cert.get('subjectAltName', ())][:8],
-            'not_before': not_before, 'not_after': not_after,
-            'issuer': issuer_name,
-            'self_signed': bool(issuer_name and issuer_name == subject_name)}
-        if not_after:
-            for stamp_format in ('%b %d %H:%M:%S %Y %Z', '%b %d %H:%M:%S %Y GMT'):
-                try:
-                    expiry = datetime.strptime(not_after, stamp_format).replace(tzinfo=timezone.utc)
-                    summary['certificate']['seconds_remaining'] = round(
-                        (expiry - datetime.now(timezone.utc)).total_seconds())
-                    break
-                except ValueError:
-                    continue
-    return summary
-
+# ------------------------------------------------------------------ findings
 
 def analyze_tls(tls):
-    """Transport findings from one observed handshake; handshake failure is a FACT."""
-    if not tls.get('ok'):
+    if not tls or tls.get('error') or tls.get('ok') is False:
         return [_finding('tls-handshake', 'transport', 'HTTPS 握手失败', 'HIGH', 'FACT',
-                         f'对 443 端口的标准 TLS 握手未完成：{tls.get("error", "unknown")}',
-                         '检查证书链是否完整、域名是否匹配以及 443 端口是否对公网开放。')]
+                         f"TLS 握手未完成：{(tls or {}).get('error', 'unknown')}",
+                         '检查证书链完整性、域名匹配与 443 端口可达性。',
+                         tags=['tls', 'availability'])]
     findings = []
+    # A chain that browsers may also reject is a real availability/trust defect;
+    # report it as HIGH and keep every other check's results.
+    if tls.get('verified') is False or tls.get('cert_verify_failed'):
+        findings.append(_finding(
+            'cert-chain-untrusted', 'transport', '证书链无法验证', 'HIGH', 'FACT',
+            f"标准校验失败：{tls.get('cert_verify_failed')}；"
+            f"issuer={tls.get('issuer')} subject={tls.get('subject_cn')} "
+            f"notAfter={tls.get('not_after')}",
+            '部署完整证书链（含中间证书），确认 SNI 与 SAN 匹配；否则部分客户端会直接中断连接。',
+            observed={'issuer': tls.get('issuer'), 'subject_cn': tls.get('subject_cn')},
+            tags=['tls', 'certificate', 'availability']))
     version = tls.get('tls_version') or ''
-    if version in ('TLSv1', 'TLSv1.1', 'SSLv3'):
+    if tls.get('obsolete_protocol') or version in ('TLSv1', 'TLSv1.1', 'SSLv3'):
         findings.append(_finding('tls-obsolete', 'transport', f'使用过时协议 {version}', 'HIGH', 'FACT',
-                                 f'握手协商版本为 {version}，低于 TLSv1.2。',
-                                 '在服务器禁用 TLSv1.0/1.1，仅保留 TLSv1.2 及以上。', tags=['tls', 'misconfig']))
-    cert = tls.get('certificate') or {}
-    remaining = cert.get('seconds_remaining')
+                                 f'握手协商版本 {version}，低于 TLSv1.2。',
+                                 '禁用 TLSv1.0/1.1，仅保留 TLSv1.2 及以上。',
+                                 tags=['tls', 'misconfig']))
+    if tls.get('weak_cipher'):
+        findings.append(_finding('tls-weak-cipher', 'transport',
+                                 f"弱加密套件 {tls.get('cipher')}", 'MEDIUM', 'FACT',
+                                 f"协商套件 {tls.get('cipher')}（{tls.get('cipher_bits')} bit）。",
+                                 '改用 AEAD 套件（AES-GCM/ChaCha20-Poly1305）。',
+                                 tags=['tls', 'crypto']))
+    remaining = tls.get('seconds_remaining')
     if remaining is not None:
         if remaining <= 0:
             findings.append(_finding('cert-expired', 'transport', '证书已过期', 'CRITICAL', 'FACT',
-                                     f'证书 notAfter={cert.get("not_after")}，已过有效期。',
-                                     '立即续期证书并更换全链路使用的证书文件。'))
+                                     f"notAfter={tls.get('not_after')}，已过期。",
+                                     '立即续期并部署新证书。', tags=['tls', 'certificate']))
         elif remaining < 14 * 86400:
             findings.append(_finding('cert-expiring', 'transport', '证书即将过期', 'HIGH', 'FACT',
-                                     f'证书 notAfter={cert.get("not_after")}，剩余 {remaining // 86400} 天。',
-                                     '尽快续期，避免到期后全站不可达。'))
+                                     f"notAfter={tls.get('not_after')}，剩余 {remaining // 86400} 天。",
+                                     '尽快续期。', tags=['tls', 'certificate']))
         elif remaining < 30 * 86400:
             findings.append(_finding('cert-expiring-soon', 'transport', '证书 30 天内到期', 'MEDIUM', 'FACT',
-                                     f'证书 notAfter={cert.get("not_after")}，剩余 {remaining // 86400} 天。',
-                                     '安排自动续期（ACME）或手动更换。'))
+                                     f"notAfter={tls.get('not_after')}，剩余 {remaining // 86400} 天。",
+                                     '安排自动续期。', tags=['tls', 'certificate']))
+    if tls.get('san'):
+        cn = tls.get('subject_cn')
+        if cn and not any(cn == name or name.startswith('*.') for name in tls['san']):
+            findings.append(_finding('cert-san-mismatch', 'transport', '证书 SAN 与主机名不一致',
+                                     'MEDIUM', 'FACT',
+                                     f"CN={cn}，SAN={tls['san'][:5]}",
+                                     '重新签发覆盖实际主机名的证书。',
+                                     tags=['tls', 'certificate']))
     return findings
 
 
-def _header(headers, name):
-    for key, value in headers.items():
-        if key.lower() == name.lower():
-            return value
-    return None
-
-
-def _parse_cookie_flags(value):
-    parts = [part.strip().lower() for part in value.split(';')]
-    return {'secure': 'secure' in parts,
-            'httponly': 'httponly' in parts,
-            'samesite': any(part.startswith('samesite') for part in parts)}
-
-
-def analyze_headers(root_status, headers):
-    """Security-header findings; only headers actually present or absent on the
-    observed root response are claimed, and cookie findings only when the site
-    itself set a cookie."""
+def analyze_headers(headers_result):
+    if not headers_result or headers_result.get('error'):
+        return []
     findings = []
-    hsts = _header(headers, 'Strict-Transport-Security')
-    if not hsts:
-        findings.append(_finding('hsts-missing', 'headers', '未启用 HSTS', 'MEDIUM', 'FACT',
-                                 f'根响应（HTTP {root_status}）没有 Strict-Transport-Security 头。',
-                                 '添加 Strict-Transport-Security: max-age=31536000; includeSubDomains。', tags=['misconfig', 'hsts']))
-    else:
+    specs = {
+        'HSTS': ('hsts-missing', 'MEDIUM', '未启用 HSTS'),
+        'CSP': ('csp-missing', 'MEDIUM', '未配置 CSP'),
+        'X-Content-Type-Options': ('nosniff-missing', 'LOW', '缺少 X-Content-Type-Options'),
+        'Referrer-Policy': ('referrer-missing', 'LOW', '未设置 Referrer-Policy'),
+        'Permissions-Policy': ('permissions-missing', 'INFO', '未设置 Permissions-Policy'),
+        'COOP': ('coop-missing', 'LOW', '未设置 Cross-Origin-Opener-Policy'),
+        'CORP': ('corp-missing', 'LOW', '未设置 Cross-Origin-Resource-Policy'),
+    }
+    for name, (fid, severity, title) in specs.items():
+        entry = headers_result.get(name) or {}
+        if not entry.get('present'):
+            findings.append(_finding(fid, 'headers', title, severity, 'FACT',
+                                     f'根响应缺少 {name} 响应头。',
+                                     f'添加 {name} 响应头。', tags=['misconfig', name.lower()]))
+    hsts = (headers_result.get('HSTS') or {}).get('value')
+    if hsts:
         max_age = 0
         for part in hsts.split(';'):
             piece = part.strip().lower()
@@ -159,245 +140,350 @@ def analyze_headers(root_status, headers):
                     max_age = int(piece.split('=', 1)[1])
                 except ValueError:
                     pass
-        if max_age < HSTS_MIN_AGE:
+        if max_age < 15552000:
             findings.append(_finding('hsts-short', 'headers', 'HSTS max-age 偏短', 'LOW', 'FACT',
-                                     f'Strict-Transport-Security: {hsts}，max-age={max_age} 低于 {HSTS_MIN_AGE}。',
-                                     '将 max-age 提高到至少 15552000（180 天）。', tags=['misconfig', 'hsts']))
-    csp = _header(headers, 'Content-Security-Policy')
-    if not csp:
-        findings.append(_finding('csp-missing', 'headers', '未配置 CSP', 'MEDIUM', 'FACT',
-                                 f'根响应（HTTP {root_status}）没有 Content-Security-Policy 头。',
-                                 '配置最小化 CSP，从 default-src \'self\' 起步并按需放行。',
-                                 tags=['misconfig', 'csp']))
-    else:
+                                     f'Strict-Transport-Security: {hsts}',
+                                     '提高到至少 15552000（180 天）。',
+                                     tags=['misconfig', 'hsts']))
+    csp = (headers_result.get('CSP') or {}).get('value')
+    if csp:
         lowered = csp.lower()
         if "'unsafe-eval'" in lowered:
             findings.append(_finding('csp-unsafe-eval', 'headers', 'CSP 允许 unsafe-eval', 'MEDIUM', 'FACT',
-                                     f'Content-Security-Policy 中含 unsafe-eval：{csp[:200]}',
-                                     '移除 unsafe-eval，改用 nonce 或哈希放行可信脚本。', tags=['csp', 'xss']))
+                                     f'Content-Security-Policy: {csp[:220]}',
+                                     '移除 unsafe-eval，用 nonce/哈希放行。',
+                                     tags=['csp', 'xss']))
         if "'unsafe-inline'" in lowered:
             findings.append(_finding('csp-unsafe-inline', 'headers', 'CSP 允许 unsafe-inline', 'LOW', 'FACT',
-                                     f'Content-Security-Policy 中含 unsafe-inline：{csp[:200]}',
-                                     '改用 nonce/哈希策略，缩小 XSS 注入面。', tags=['csp', 'xss']))
-    if not _header(headers, 'X-Content-Type-Options'):
-        findings.append(_finding('nosniff-missing', 'headers', '缺少 X-Content-Type-Options', 'LOW', 'FACT',
-                                 '根响应没有 X-Content-Type-Options: nosniff。',
-                                 '添加该头，阻止浏览器 MIME 嗅探歧义。', tags=['misconfig', 'nosniff']))
-    xfo = _header(headers, 'X-Frame-Options')
-    frame_ancestors = csp and 'frame-ancestors' in csp.lower()
-    if not xfo and not frame_ancestors:
-        findings.append(_finding('framing-unset', 'headers', '未限制页面被嵌套（点击劫持面）', 'MEDIUM', 'FACT',
-                                 '根响应既无 X-Frame-Options，CSP 中也无 frame-ancestors。',
-                                 '添加 CSP frame-ancestors \'self\' 或 X-Frame-Options: DENY。',
+                                     f'Content-Security-Policy: {csp[:220]}',
+                                     '改用 nonce/哈希策略。', tags=['csp', 'xss']))
+    framing = (headers_result.get('X-Frame-Options') or {}).get('present')
+    if not framing and not (csp and 'frame-ancestors' in csp.lower()):
+        findings.append(_finding('framing-unset', 'headers', '未限制页面被嵌套', 'MEDIUM', 'FACT',
+                                 '既无 X-Frame-Options，CSP 中也无 frame-ancestors。',
+                                 "添加 CSP frame-ancestors 'self' 或 X-Frame-Options: DENY。",
                                  tags=['misconfig', 'clickjacking']))
-    if not _header(headers, 'Referrer-Policy'):
-        findings.append(_finding('referrer-unset', 'headers', '未设置 Referrer-Policy', 'LOW', 'FACT',
-                                 '根响应没有 Referrer-Policy 头。',
-                                 '添加 Referrer-Policy: strict-origin-when-cross-origin。', tags=['misconfig', 'referrer']))
-    if not _header(headers, 'Permissions-Policy'):
-        findings.append(_finding('permissions-unset', 'headers', '未设置 Permissions-Policy', 'INFO', 'FACT',
-                                 '根响应没有 Permissions-Policy 头。',
-                                 '按需禁用摄像头/麦克风/地理位置等敏感能力。', tags=['misconfig', 'permissions']))
-    server = _header(headers, 'Server')
-    if server and any(character.isdigit() for character in server):
+    return findings
+
+
+def analyze_server_disclosure(tech, headers_result):
+    findings = []
+    server = (tech or {}).get('server') or ''
+    if server and any(char.isdigit() for char in server):
         findings.append(_finding('server-version-exposed', 'headers', 'Server 头暴露精确版本', 'LOW', 'FACT',
-                                 f'Server: {server}',
-                                 '隐藏或泛化版本号（如 ServerTokens Prod），缩小已知漏洞匹配面。',
+                                 f'Server: {server}', '隐藏或泛化版本号。',
                                  observed=server, tags=['misconfig', 'disclosure']))
-    powered = _header(headers, 'X-Powered-By')
+    powered = (tech or {}).get('powered_by')
     if powered:
         findings.append(_finding('powered-by-exposed', 'headers', 'X-Powered-By 暴露技术栈', 'LOW', 'FACT',
-                                 f'X-Powered-By: {powered}',
-                                 '移除 X-Powered-By 头。',
+                                 f'X-Powered-By: {powered}', '移除该响应头。',
                                  observed=powered, tags=['misconfig', 'disclosure']))
-    cookies = [value for key, value in headers.items() if key.lower() == 'set-cookie']
-    for cookie in cookies:
-        name = cookie.split('=', 1)[0].strip()
-        flags = _parse_cookie_flags(cookie)
+    return findings
+
+
+def analyze_cookies(cookies_result):
+    if not cookies_result or cookies_result.get('error'):
+        return []
+    findings = []
+    for cookie in cookies_result.get('cookies', []):
+        name = cookie['name']
         session_like = any(token in name.lower() for token in
-                           ('sess', 'token', 'auth', 'login', 'jsession', 'csrf', 'sid'))
-        if session_like and not flags['secure']:
-            findings.append(_finding('cookie-no-secure', 'cookies', f'会话 Cookie {name} 未加 Secure', 'HIGH', 'FACT',
-                                     f'Set-Cookie: {cookie[:200]}',
-                                     '为所有会话类 Cookie 添加 Secure 标记，防止经明文信道泄露。', tags=['cookies', 'session']))
-        if session_like and not flags['httponly']:
-            findings.append(_finding('cookie-no-httponly', 'cookies', f'会话 Cookie {name} 未加 HttpOnly', 'MEDIUM', 'FACT',
-                                     f'Set-Cookie: {cookie[:200]}',
-                                     '为会话 Cookie 添加 HttpOnly，阻止脚本读取。', tags=['cookies', 'session']))
-        if session_like and not flags['samesite']:
-            findings.append(_finding('cookie-no-samesite', 'cookies', f'会话 Cookie {name} 未加 SameSite', 'LOW', 'FACT',
-                                     f'Set-Cookie: {cookie[:200]}',
-                                     '添加 SameSite=Lax/Strict，降低 CSRF 与跨站携带面。', tags=['cookies', 'csrf']))
+                           ('sess', 'token', 'auth', 'login', 'jsession', 'csrf', 'sid', 'jwt'))
+        if session_like and not cookie['secure']:
+            findings.append(_finding('cookie-no-secure', 'cookies', f'会话 Cookie {name} 未加 Secure',
+                                     'HIGH', 'FACT', f"Set-Cookie: {name}=... (no Secure)",
+                                     '为会话 Cookie 添加 Secure。', tags=['cookies', 'session']))
+        if session_like and not cookie['httponly']:
+            findings.append(_finding('cookie-no-httponly', 'cookies', f'会话 Cookie {name} 未加 HttpOnly',
+                                     'MEDIUM', 'FACT', f"Set-Cookie: {name}=... (no HttpOnly)",
+                                     '添加 HttpOnly。', tags=['cookies', 'session']))
+        if session_like and not cookie['samesite']:
+            findings.append(_finding('cookie-no-samesite', 'cookies', f'会话 Cookie {name} 未加 SameSite',
+                                     'LOW', 'FACT', f"Set-Cookie: {name}=... (no SameSite)",
+                                     '添加 SameSite=Lax/Strict。', tags=['cookies', 'csrf']))
     return findings
 
 
-FINGERPRINT_RULES = (
-    ('WordPress', ('wp-content', 'wp-includes')),
-    ('Drupal', ('drupal.js', 'sites/all/', 'drupal.settings')),
-    ('Joomla', ('/media/jui/', 'joomla!')),
-    ('PHP', ('phpsessid',)),
-    ('ASP.NET', ('asp.net', '__viewstate')),
-    ('Next.js', ('__next_data__', '_next/static/')),
-    ('Nuxt', ('__nuxt', '_nuxt/')),
-    ('React', ('data-reactroot', 'react-dom', '__react')),
-    ('Vue.js', ('data-v-app', 'vue.runtime', 'vue.global')),
-    ('Angular', ('ng-version', 'angular.js')),
-    ('Laravel', ('laravel_session', 'xsrf-token', 'laravel_session')),
-    ('jQuery', ('jquery.js', 'jquery.min.js', 'jquery-migrate')),
-)
+def analyze_tech(tech):
+    if not tech or tech.get('error'):
+        return []
+    detected = tech.get('detected') or {}
+    generator = tech.get('generator')
+    versions = tech.get('version_hints') or []
+    if not detected and not generator:
+        return []
+    names = ', '.join(sorted(detected))
+    line = names + (f'; generator="{generator}"' if generator else '')
+    return [_finding('tech-stack', 'fingerprint', f'识别到技术栈：{line}', 'INFO', 'INFERENCE',
+                     f'被动特征匹配：{json.dumps(detected, ensure_ascii=False)}'
+                     + (f'；meta generator="{generator}"' if generator else '')
+                     + (f'；版本线索 {versions}' if versions else ''),
+                     '指纹用于确定后续测试方向；版本号需与组件实际版本核对后才可对应 CVE。',
+                     observed={'stack': sorted(detected), 'generator': generator,
+                               'version_hints': versions},
+                     tags=['fingerprint', 'tech'])]
 
 
-def analyze_fingerprint(headers, body_text):
-    """Passive technology fingerprint. Every hit is INFERENCE with the exact
-    bytes/hdr it matched; no CVE is claimed from a version string."""
-    haystack_headers = ' '.join(f'{key}:{value}' for key, value in headers.items()).lower()
-    haystack = haystack_headers + ' ' + body_text.lower()
-    detected = []
-    for name, markers in FINGERPRINT_RULES:
-        matched = [marker for marker in markers if marker in haystack]
-        if matched:
-            detected.append({'name': name, 'matched_markers': matched[:3],
-                             'source': 'response headers + first bytes of body'})
-    generator = None
-    for marker in ('generator',):
-        lowered = body_text.lower()
-        position = lowered.find(f'<meta name="{marker}"')
-        if position >= 0:
-            snippet = body_text[position:position + 160]
-            generator = snippet.split('content="', 1)[-1].split('"', 1)[0] if 'content="' in snippet else snippet
-            break
+def analyze_firewall(firewall):
+    if not firewall or firewall.get('error'):
+        return []
+    vendors = firewall.get('vendors') or []
+    if vendors:
+        return [_finding('waf-detected', 'fingerprint', f"检测到边缘防护：{', '.join(vendors)}",
+                         'INFO', 'INFERENCE',
+                         f"响应头特征匹配到 {vendors}；Server={firewall.get('server')}",
+                         '防护存在会影响载荷可达性；攻击阶段需考虑绕过策略。',
+                         observed=vendors, tags=['fingerprint', 'waf'])]
+    return [_finding('waf-none', 'fingerprint', '未从响应头识别到 WAF/CDN', 'INFO', 'INFERENCE',
+                     '响应头中没有 Cloudflare/CloudFront/Akamai/Imperity 等特征。',
+                     '无头特征不等于无防护（可能仅对攻击流量触发），需以实际探测结果为准。',
+                     tags=['fingerprint', 'waf'])]
+
+
+def analyze_injection_surface(surface):
+    """Canary-probe results from recon → findings that also arm the attack stage."""
+    if not surface or surface.get('error'):
+        return []
     findings = []
-    stack_line = ', '.join(item['name'] for item in detected) + (f'; meta generator="{generator}"' if generator else '')
-    if detected or generator:
-        findings.append(_finding('tech-stack', 'fingerprint', f'识别到技术栈：{stack_line}', 'INFO', 'INFERENCE',
-                                 f'基于响应头与正文的被动特征匹配：{json.dumps(detected, ensure_ascii=False)}'
-                                 + (f'；正文 meta generator="{generator}"' if generator else ''),
-                                 '该指纹仅为识别结果，不代表已证实漏洞；如需组件×漏洞库比对，请上传源码或 SBOM 走离线审计线。',
-                                 observed={'stack': [item['name'] for item in detected], 'generator': generator}))
-    return findings
-
-
-def _looks_like_git_head(body_text):
-    return body_text.startswith('ref:') or body_text.startswith('0000000')
-
-
-def _looks_like_env(body_text):
-    return '=' in body_text and any(token in body_text.upper() for token in
-                                    ('KEY', 'PASSWORD', 'SECRET', 'TOKEN', 'DB_', 'API_'))
-
-
-CANARY = 'fcq7k2p'
-
-
-def analyze_injection_surface(probe_results):
-    """Harmless-payload injection-surface probes, benchmarked against the
-    first layer of open-source scanners (sqlmap error-based echo, reflected
-    XSS reflection check): a unique canary is injected via GET parameters and
-    judged only on what the response actually echoes back. No time-based
-    blind payloads, no writes, no destructive syntax — one request each.
-    """
-    findings = []
-    reflection = probe_results.get('reflection')
-    if reflection and reflection['status'] == 200:
-        text = reflection['body_text']
-        position = text.find(CANARY)
-        if position >= 0:
-            window = text[position + len(CANARY):position + len(CANARY) + 24]
-            unescaped = any(marker in window for marker in ("'", '"', '<', '>', '{', '}'))
-            if unescaped:
-                findings.append(_finding(
-                    'reflected-unencoded', 'injection', '查询参数反射且未转义（XSS 注入面）', 'HIGH', 'FACT',
-                    f'GET /?facai_probe={CANARY}\'"><{{}} 的响应在 HTML 中原样回显 payload：'
-                    f'…{text[max(0, position - 16):position + 40]!r}…',
-                    '对全部输出点按上下文做 HTML/属性/JS 编码；反射本身不等于可利用 XSS，需人工确认执行上下文。',
-                    observed={'canary': CANARY, 'echo_context': window},
-                    tags=['xss', 'injection', 'reflection']))
-            else:
-                findings.append(_finding(
-                    'reflected-encoded', 'injection', '查询参数反射已转义', 'INFO', 'FACT',
-                    f'GET /?facai_probe=… 的响应回显了标记 {CANARY}，但紧跟的引号/尖括号已被编码：{window!r}',
-                    '保持现有输出编码；新增参数时延续同一转义策略。',
-                    tags=['xss', 'reflection']))
-    sql = probe_results.get('sqlerror')
-    if sql and sql['status'] == 200:
-        lowered = sql['body_text'].lower()
-        hit = next((marker for marker in SQL_ERROR_MARKERS if marker in lowered), None)
-        if hit:
-            position = lowered.find(hit)
+    reflection = surface.get('reflection') or {}
+    if reflection.get('reflected'):
+        if reflection.get('unescaped'):
             findings.append(_finding(
-                'sql-error-echo', 'injection', f'SQL 错误信息回显（特征：{hit}）', 'HIGH', 'FACT',
-                f'GET /?id={CANARY}\' 使响应回显数据库错误：…{sql["body_text"][max(0, position - 40):position + 80]!r}…',
-                '错误回显给攻击者提供了数据库指纹与注入 oracle；关闭生产环境详细错误输出，参数化查询，'
-                '并用该响应在授权下做进一步注入验证。',
-                observed={'marker': hit},
-                tags=['sqli', 'injection', 'error-based']))
-    admin_hits = []
-    for entry in probe_results.get('adminpanel', []):
-        if entry['status'] == 200:
-            admin_hits.append(entry['path'])
+                'reflected-unencoded', 'injection', '查询参数反射且未转义（XSS 注入面）',
+                'HIGH', 'FACT',
+                f"GET /?facai_probe=… 响应中原样回显：{reflection.get('excerpt', '')!r}",
+                '按上下文做输出编码；反射本身需人工确认执行上下文才等同可利用 XSS。',
+                observed={'context': reflection.get('context')},
+                tags=['xss', 'injection', 'reflection']))
+        else:
+            findings.append(_finding(
+                'reflected-encoded', 'injection', '查询参数反射已转义', 'INFO', 'FACT',
+                f"响应回显了标记但引号/尖括号已编码：{reflection.get('context')!r}",
+                '保持现有输出编码策略。', tags=['xss', 'reflection']))
+    sql_error = surface.get('sql_error') or {}
+    if sql_error.get('marker'):
+        findings.append(_finding(
+            'sql-error', 'injection', f"SQL 错误回显（{sql_error['marker']}）", 'HIGH', 'FACT',
+            f"GET /?id=…' 触发数据库错误：{sql_error.get('excerpt', '')!r}",
+            '关闭生产环境详细错误；参数化查询。已自动派发注入验证。',
+            observed={'marker': sql_error['marker']},
+            tags=['sqli', 'injection', 'error-based']))
+    admin_hits = surface.get('admin') or []
     if admin_hits:
         findings.append(_finding(
-            'admin-panel-reachable', 'exposure', f'管理入口匿名可达（{"、".join(admin_hits)}）', 'LOW', 'FACT',
-            '；'.join(f'GET {path} 返回 200' for path in admin_hits)
-            + '。公开可及不等于弱口令，但它是爆破与漏洞匹配的首选入口。',
-            '限制管理入口来源 IP 或加网关鉴权，确认强口令与 2FA。',
-            observed={'paths': admin_hits},
-            tags=['exposure', 'misconfig', 'panel']))
+            'admin-panel', 'exposure',
+            f"管理入口匿名可达（{', '.join(item['path'] for item in admin_hits[:4])}）",
+            'LOW', 'FACT',
+            '；'.join(f"GET {item['path']} → {item['status']}" for item in admin_hits[:6]),
+            '限制管理入口来源 IP 或加网关鉴权；确认强口令与 2FA。',
+            observed={'paths': [item['path'] for item in admin_hits]},
+            tags=['exposure', 'panel']))
+    upload_hits = surface.get('upload') or []
+    if upload_hits:
+        findings.append(_finding(
+            'upload-surface', 'injection',
+            f"上传表单匿名暴露（{', '.join(item['path'] for item in upload_hits[:3])}）",
+            'MEDIUM', 'FACT',
+            '；'.join(f"GET {item['path']} → 200，页面含 file input" for item in upload_hits[:4]),
+            '上传入口需鉴权、类型白名单与隔离存储；已标记为攻击面。',
+            observed={'paths': [item['path'] for item in upload_hits]},
+            tags=['upload', 'injection', 'attack-surface']))
     return findings
 
 
-def analyze_exposure(probe_results):
-    """The two highest-value read-only probes, judged only on direct observation."""
+def analyze_exposure(paths_result):
+    if not paths_result or paths_result.get('error'):
+        return []
     findings = []
-    git = probe_results.get('git')
-    if git and git['status'] == 200 and _looks_like_git_head(git['body_text']):
-        findings.append(_finding('git-exposed', 'exposure', '.git 仓库公开可读', 'CRITICAL', 'FACT',
-                                 f'GET /.git/HEAD 返回 200，内容以 git 引用开头：{git["body_text"][:80]!r}',
-                                 '在 Web 服务器拒绝 /.git/ 路径（deny 规则），并将仓库移出站点根目录。',
-                                 tags=['exposure', 'git', 'source-disclosure']))
-    env = probe_results.get('env')
-    if env and env['status'] == 200 and _looks_like_env(env['body_text']):
-        findings.append(_finding('env-exposed', 'exposure', '.env 凭据文件公开可读', 'CRITICAL', 'FACT',
-                                 f'GET /.env 返回 200，内容含 KEY/PASSWORD/SECRET 类赋值：{env["body_text"][:80]!r}',
-                                 '立即从站点根移除该文件并轮换其中全部凭据。',
-                                 tags=['exposure', 'credentials', 'config']))
-    checked_pass = []
-    for kind, path in (('git', '/.git/HEAD'), ('env', '/.env')):
-        result = probe_results.get(kind)
-        if result and result['status'] != 200:
-            checked_pass.append(f'{path} → HTTP {result["status"]}')
-    if checked_pass:
-        findings.append(_finding('exposure-clear', 'exposure', '高危暴露点探测未命中', 'INFO', 'FACT',
-                                 '；'.join(checked_pass),
-                                 '当前配置未直接暴露这两项，保持观察。',
-                                 tags=['exposure']))
+    critical = {
+        'git': ('.git 仓库公开可读', 'CRITICAL', '立即用 Web 服务器规则拒绝 /.git/ 并把仓库移出站点根目录。'),
+        'env': ('.env 凭据文件公开可读', 'CRITICAL', '立即移除该文件并轮换其中全部凭据。'),
+        'backup_sql': ('数据库备份文件公开可读', 'CRITICAL', '立即删除备份文件，检查是否已被下载。'),
+        'wp_config': ('wp-config 备份泄露数据库凭据', 'CRITICAL', '删除备份并轮换数据库口令。'),
+        'config_bak': ('配置备份文件泄露', 'CRITICAL', '删除备份并轮换相关凭据。'),
+        'svn': ('.svn 元数据公开可读', 'HIGH', '拒绝 /.svn/ 路径。'),
+        'ds_store': ('.DS_Store 泄露目录结构', 'LOW', '禁止访问隐藏文件。'),
+        'actuator': ('Spring Actuator 端点暴露', 'HIGH', '限制 /actuator 端点，仅内网可访问。'),
+        'server_status': ('server-status 暴露运行信息', 'MEDIUM', '限制该端点来源 IP。'),
+        'phpinfo': ('phpinfo 页面暴露', 'MEDIUM', '删除 phpinfo 文件。'),
+    }
+    for kind, entry in paths_result.items():
+        if not isinstance(entry, dict) or entry.get('status') != 200 or entry.get('unconfirmed'):
+            continue
+        if kind in critical:
+            title, severity, recommendation = critical[kind]
+            findings.append(_finding(f'{kind}-exposed', 'exposure', title, severity, 'FACT',
+                                     f"GET {entry['path']} 返回 200，内容：{entry.get('excerpt', '')[:160]}",
+                                     recommendation, observed=entry['path'],
+                                     tags=['exposure', kind]))
+        elif kind == 'swagger':
+            findings.append(_finding('swagger-exposed', 'exposure', '接口文档页面暴露', 'MEDIUM', 'FACT',
+                                     f"GET {entry['path']} 返回 200，包含 swagger 字样。",
+                                     '生产环境关闭接口文档或加鉴权。',
+                                     observed=entry['path'], tags=['exposure', 'api']))
+    if not any(item['severity'] in ('CRITICAL', 'HIGH') for item in findings):
+        checked = [f"{entry['path']} → {entry['status']}" for entry in paths_result.values()
+                   if isinstance(entry, dict)]
+        if checked:
+            findings.append(_finding('exposure-clear', 'exposure', '高危文件暴露探测未命中', 'INFO', 'FACT',
+                                     '；'.join(checked[:12]),
+                                     '当前配置未直接暴露这些路径。', tags=['exposure']))
+    return findings
+
+
+def analyze_dns(dns_result, dnssec_result, whois_result):
+    findings = []
+    if dnssec_result and dnssec_result.get('signed') is False:
+        findings.append(_finding('dnssec-off', 'dns', '未启用 DNSSEC', 'LOW', 'FACT',
+                                 f"权威服务器 {dnssec_result.get('nameserver')} 返回的回答未带 RRSIG。",
+                                 '为域名启用 DNSSEC 签名，防止 DNS 投毒与劫持。',
+                                 tags=['dns', 'dnssec']))
+    if whois_result and isinstance(whois_result, dict):
+        expires = whois_result.get('expires')
+        if expires:
+            import re as _re
+            match = _re.search(r'(\d{4})-(\d{2})-(\d{2})', expires)
+            if match:
+                from datetime import date
+                try:
+                    expiry = date(int(match.group(1)), int(match.group(2)), int(match.group(3)))
+                    days = (expiry - date.today()).days
+                    if days < 0:
+                        findings.append(_finding('domain-expired', 'dns', '域名已过期', 'CRITICAL', 'FACT',
+                                                 f'WHOIS 到期日 {expires}，已过期。',
+                                                 '立即续费域名。', tags=['dns', 'domain']))
+                    elif days < 30:
+                        findings.append(_finding('domain-expiring', 'dns', '域名即将到期', 'HIGH', 'FACT',
+                                                 f'WHOIS 到期日 {expires}，剩余 {days} 天。',
+                                                 '尽快续费。', tags=['dns', 'domain']))
+                except ValueError:
+                    pass
+        if whois_result.get('registrar'):
+            findings.append(_finding('whois-info', 'dns', f"注册商：{whois_result['registrar']}",
+                                     'INFO', 'FACT',
+                                     f"注册商={whois_result.get('registrar')}；创建={whois_result.get('created')}；"
+                                     f"到期={whois_result.get('expires')}；状态={whois_result.get('status')}",
+                                     '用于确认资产归属与到期管理。', tags=['dns', 'whois']))
+    if dns_result and isinstance(dns_result, dict) and not dns_result.get('error'):
+        mx = dns_result.get('MX') or []
+        txt = ' '.join(dns_result.get('TXT') or [])
+        if mx and 'v=spf1' not in txt.lower():
+            findings.append(_finding('spf-missing', 'dns', '配置了邮件但缺少 SPF', 'LOW', 'FACT',
+                                     f'MX={mx[:3]}，TXT 记录中无 v=spf1。',
+                                     '添加 SPF 记录，降低伪造发信风险。', tags=['dns', 'email']))
+        if 'v=dmarc1' not in txt.lower() and mx:
+            findings.append(_finding('dmarc-missing', 'dns', '缺少 DMARC 策略', 'LOW', 'FACT',
+                                     'TXT 记录中没有 v=DMARC1。',
+                                     '发布 DMARC 策略并配置报告地址。', tags=['dns', 'email']))
+        if not dns_result.get('CAA'):
+            findings.append(_finding('caa-missing', 'dns', '未设置 CAA 记录', 'INFO', 'FACT',
+                                     '查询无 CAA 记录，任何 CA 均可为该域名签发证书。',
+                                     '添加 CAA 记录限定可签发证书的 CA。', tags=['dns', 'caa']))
+    return findings
+
+
+def analyze_redirects(chain):
+    if not chain or not isinstance(chain, list):
+        return []
+    findings = []
+    hops = [hop for hop in chain if hop.get('status')]
+    if len(hops) > 3:
+        findings.append(_finding('redirect-long', 'transport', f'重定向链过长（{len(hops)} 跳）',
+                                 'LOW', 'FACT',
+                                 f"链：{' → '.join(str(hop.get('url')) for hop in hops)}",
+                                 '精简跳转，减少延迟与开放重定向风险面。',
+                                 tags=['redirect', 'performance']))
+    for hop in hops:
+        location = (hop.get('location') or '').lower()
+        if location.startswith('http://'):
+            findings.append(_finding('redirect-downgrade', 'transport', '重定向降级到 HTTP',
+                                     'HIGH', 'FACT',
+                                     f"{hop.get('url')} → {hop.get('location')}",
+                                     '改为 HTTPS 目标，避免明文传输。',
+                                     tags=['redirect', 'tls']))
+            break
+    if any(hop.get('note') for hop in chain):
+        findings.append(_finding('redirect-external', 'transport', '存在跨域重定向', 'INFO', 'FACT',
+                                 '; '.join(hop['note'] for hop in chain if hop.get('note')),
+                                 '确认跨域跳转目标可信，防止开放重定向。',
+                                 tags=['redirect']))
+    return findings
+
+
+def analyze_methods(methods_result):
+    if not methods_result or methods_result.get('error'):
+        return []
+    dangerous = methods_result.get('dangerous_advertised') or []
+    if dangerous:
+        return [_finding('dangerous-methods', 'headers', f"OPTIONS 暴露危险方法：{', '.join(dangerous)}",
+                         'MEDIUM', 'FACT',
+                         f"Allow: {methods_result.get('allow')}",
+                         '关闭不需要的 HTTP 方法，尤其 TRACE 与 PUT/DELETE。',
+                         observed=dangerous, tags=['misconfig', 'methods'])]
+    return []
+
+
+def analyze_robots(robots_result, sitemap_result, security_txt):
+    findings = []
+    if robots_result and robots_result.get('disallow'):
+        sensitive = [path for path in robots_result['disallow']
+                     if any(token in path.lower() for token in
+                            ('admin', 'backup', 'config', 'private', 'internal', 'api', 'db', 'sql', '.git'))]
+        if sensitive:
+            findings.append(_finding('robots-disclosure', 'exposure', 'robots.txt 暴露敏感路径',
+                                     'MEDIUM', 'FACT',
+                                     f"Disallow 中含敏感路径：{sensitive[:8]}",
+                                     'robots.txt 是公开提示文件，不应作为访问控制；改为服务端鉴权。',
+                                     observed=sensitive[:8], tags=['exposure', 'robots']))
+    if security_txt and security_txt.get('found'):
+        findings.append(_finding('security-txt', 'dns', '已发布 security.txt', 'INFO', 'FACT',
+                                 f"Contact: {security_txt.get('contact')}；Expires: {security_txt.get('expires')}",
+                                 '保持更新，便于漏洞上报。', tags=['governance']))
     return findings
 
 
 def grade_report(findings):
     score = sum(SEVERITY_WEIGHT.get(item['severity'], 0) for item in findings)
-    if score == 0:
-        grade = 'A+'
-    elif score <= 2:
-        grade = 'A'
-    elif score <= 5:
-        grade = 'B'
-    elif score <= 9:
-        grade = 'C'
-    elif score <= 15:
-        grade = 'D'
-    else:
-        grade = 'F'
+    grade = ('A+' if score == 0 else 'A' if score <= 2 else 'B' if score <= 5
+             else 'C' if score <= 9 else 'D' if score <= 15 else 'F')
     counts = {level: sum(1 for item in findings if item['severity'] == level)
               for level in ('CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'INFO')}
     return {'score': score, 'grade': grade, 'severity_counts': counts}
 
 
+def derive_findings(recon_results, canary_findings=None):
+    """Turn raw recon output into the finding list, in one place."""
+    findings = []
+    findings.extend(analyze_tls(recon_results.get('tls')))
+    findings.extend(analyze_headers(recon_results.get('security_headers')))
+    findings.extend(analyze_server_disclosure(recon_results.get('tech_stack'),
+                                              recon_results.get('security_headers')))
+    findings.extend(analyze_cookies(recon_results.get('cookies')))
+    findings.extend(analyze_tech(recon_results.get('tech_stack')))
+    findings.extend(analyze_firewall(recon_results.get('firewall')))
+    findings.extend(analyze_exposure(recon_results.get('path_exposure')))
+    findings.extend(analyze_dns(recon_results.get('dns'), recon_results.get('dnssec'),
+                                recon_results.get('whois')))
+    findings.extend(analyze_redirects(recon_results.get('redirects')))
+    findings.extend(analyze_methods(recon_results.get('http_methods')))
+    findings.extend(analyze_robots(recon_results.get('robots'), recon_results.get('sitemap'),
+                                   recon_results.get('security_txt')))
+    findings.extend(analyze_injection_surface(recon_results.get('injection_surface')))
+    findings.extend(canary_findings or [])
+    findings.sort(key=lambda item: -SEVERITY_WEIGHT.get(item['severity'], 0))
+    return findings
+
+
+def attack_targets(findings):
+    """Which findings justify spending real payloads on this host."""
+    return [item['id'] for item in findings if item['id'] in ATTACK_TRIGGERS]
+
+
 class QuickScans:
-    def __init__(self, store, fetch=None, tls_probe=None):
+    def __init__(self, store, recon_runner=None, attack_runner=None):
         self.store = store
-        self.fetch = fetch or (lambda host, path, max_bytes=8192: _fetch(host, path, max_bytes=max_bytes))
-        self.tls_probe = tls_probe or _tls_probe
+        self.recon_runner = recon_runner or recon.run_all
+        self.attack_runner = attack_runner or attack_agent.attack
         with store.connect() as db:
             db.execute('''CREATE TABLE IF NOT EXISTS quick_scans (
                 id TEXT PRIMARY KEY, host TEXT NOT NULL, source_ip TEXT,
@@ -406,8 +492,6 @@ class QuickScans:
                 rate_key TEXT PRIMARY KEY, last REAL NOT NULL, report_id TEXT)''')
 
     def _rate_take(self, db, rate_key, cooldown):
-        """Cross-worker reservation; returns the cached report id when the same
-        key is still cooling down (cache semantics, not an error)."""
         db.execute('BEGIN IMMEDIATE')
         row = db.execute('SELECT last, report_id FROM quick_scan_rate WHERE rate_key=?',
                          (rate_key,)).fetchone()
@@ -420,10 +504,6 @@ class QuickScans:
                    (rate_key, now))
         return {'blocked': False}
 
-    def _release_host_slot(self, rate_key, report_id):
-        with self.store.connect() as db:
-            db.execute('UPDATE quick_scan_rate SET report_id=? WHERE rate_key=?', (report_id, rate_key))
-
     def _cached_report(self, report_id):
         if not report_id:
             return None
@@ -431,18 +511,14 @@ class QuickScans:
             row = db.execute('SELECT report_json FROM quick_scans WHERE id=?', (report_id,)).fetchone()
         return json.loads(row['report_json']) if row else None
 
-    def scan(self, url, source_ip):
+    def scan(self, url, source_ip, run_attack=True):
         host = normalize_site(url)
-        # Host gate first: a cache hit for a recently scanned site returns the
-        # stored report instantly without consuming the caller's IP quota.
         cached = None
         with self.store.connect() as db:
             host_gate = self._rate_take(db, f'host:{host}', HOST_COOLDOWN_SECONDS)
             if host_gate['blocked']:
                 cached = self._cached_report(host_gate['cached_report_id'])
                 if cached is None:
-                    # A previous attempt against this host failed and is still
-                    # cooling down; do not hammer an unreachable target.
                     return {'status': 'RATE_LIMITED', 'retry_after': host_gate['retry_after']}
         if cached is not None:
             return {'status': 'OK', 'report': cached, 'cached': True}
@@ -453,7 +529,7 @@ class QuickScans:
         if not _scan_slots.acquire(timeout=0.1):
             return {'status': 'BUSY', 'retry_after': 5}
         try:
-            report = self._collect_and_analyze(host)
+            report = self._collect(host, run_attack)
         finally:
             _scan_slots.release()
         scan_id = 'qs_' + secrets.token_urlsafe(18)
@@ -461,76 +537,124 @@ class QuickScans:
             db.execute('INSERT INTO quick_scans VALUES (?,?,?,?,?)',
                        (scan_id, host, source_ip, json.dumps(report, ensure_ascii=False),
                         datetime.now(timezone.utc).isoformat()))
-        self._release_host_slot(f'host:{host}', scan_id)
+            db.execute('UPDATE quick_scan_rate SET report_id=? WHERE rate_key=?',
+                       (scan_id, f'host:{host}'))
         return {'status': 'OK', 'report': report, 'id': scan_id, 'cached': False}
 
-    def _collect_and_analyze(self, host):
+    def _collect(self, host, run_attack=True):
+        started = time.perf_counter()
         collected_at = datetime.now(timezone.utc).isoformat()
-        tls = self.tls_probe(host)
-        root = None
-        probes = {}
-        errors = []
-        for path, max_bytes, kind in PROBES:
+        try:
+            recon_results = self.recon_runner(host)
+        except TransportError as exc:
+            raise SiteAssessmentError(str(exc)) from exc
+        findings = derive_findings(recon_results)
+        if not findings and recon_results.get('root', {}).get('error') \
+                and (recon_results.get('tls') or {}).get('ok') is False:
+            raise SiteAssessmentError('站点在预算内不可达：'
+                                      + str(recon_results['root'].get('error'))[:200])
+        # Auto-dispatch: any high-value signal hands the host to the attack agent.
+        triggers = attack_targets(findings)
+        attack_result = None
+        attack_skipped = None
+        if run_attack and triggers:
             try:
-                response = self.fetch(host, path, max_bytes=max_bytes)
-            except SiteAssessmentError as exc:
-                errors.append(f'{path}: {exc}')
-                continue
-            # Keep the full bounded body for reflection/SQL echo matching (the
-            # interesting byte can sit past the first screen); evidence strings
-            # slice their own short excerpts at render time.
-            entry = {'path': path, 'status': response['status'],
-                     'body_text': response['body'].decode('utf-8', 'replace')}
-            if kind == 'root':
-                root = {'status': response['status'], 'headers': response['headers'], 'body': response['body']}
-            elif kind == 'adminpanel':
-                probes.setdefault('adminpanel', []).append(entry)
-            else:
-                probes[kind] = entry
-        findings = []
-        if root is None and not tls.get('ok'):
-            raise SiteAssessmentError('站点在预算内不可达：' + '; '.join(errors[:3]))
-        if root is not None:
-            body_text = root['body'].decode('utf-8', 'replace')
-            findings.extend(analyze_headers(root['status'], root['headers']))
-            findings.extend(analyze_fingerprint(root['headers'], body_text))
-        else:
-            findings.append(_finding('root-unreachable', 'transport', '首页 HTTP 不可达', 'HIGH', 'FACT',
-                                     '; '.join(errors[:3]), '检查 Web 服务是否监听 443 并允许公网访问。',
-                                     tags=['availability']))
-        findings.extend(analyze_tls(tls))
-        findings.extend(analyze_injection_surface(probes))
-        findings.extend(analyze_exposure(probes))
-        findings.sort(key=lambda item: -SEVERITY_WEIGHT.get(item['severity'], 0))
+                attack_result = self.attack_runner(host)
+            except Exception as exc:  # noqa: BLE001 - attack stage must not lose the recon
+                attack_result = {'verdict': 'ATTACK_STAGE_ERROR',
+                                 'error': f'{type(exc).__name__}: {exc}'}
+            if attack_result:
+                findings.extend(_attack_findings(attack_result))
+                findings.sort(key=lambda item: -SEVERITY_WEIGHT.get(item['severity'], 0))
+        elif not triggers:
+            attack_skipped = '侦察未产生可攻击信号（无参数反射/无 DB 错误/无暴露文件/无管理入口）'
+        summary = grade_report(findings)
         report = {
-            'host': host, 'collected_at': collected_at, 'tls': tls,
-            'findings': findings, 'summary': grade_report(findings),
-            'scope': 'login-free bounded scan: 1 TLS handshake + 8 read-only GET requests '
-                     '(root, /.git/HEAD, /.env, /robots.txt, canary reflection, SQL-error echo, '
-                     '/admin, /phpmyadmin); no crawling beyond these, no forms, no login, '
-                     'no time-based or destructive payloads',
-            'limitations': '指纹为被动推断（INFERENCE）；注入面探测为无害单发载荷的回显判定，'
-                           '证实可利用性需授权下的深入验证；深层页面与源码级漏洞不在本模式范围。',
-            'request_count': 1 + len(PROBES),
+            'host': host, 'collected_at': collected_at,
+            'summary': summary, 'findings': findings,
+            'recon': _slim_recon(recon_results),
+            'attack': attack_result,
+            'attack_triggers': triggers,
+            'attack_skipped': attack_skipped,
+            'timing': {'total_ms': round((time.perf_counter() - started) * 1000, 1),
+                       'recon_ms': (recon_results.get('_meta') or {}).get('elapsed_ms'),
+                       'attack_ms': (attack_result or {}).get('elapsed_ms')},
+            'scope': 'recon: 17 concurrent read-only checks (DNS/DNSSEC/WHOIS/TLS/headers/cookies/'
+                     'tech/WAF/redirects/robots/sitemap/security.txt/methods/path-exposure/'
+                     'ip-ownership/injection-surface). attack: real payloads only when recon '
+                     'raised a signal',
+            'limitations': '指纹与 WAF 判定为 INFERENCE；攻击结论仅在被差分 oracle 复现时标记 CONFIRMED；'
+                           '未做全端口扫描、未做目录爆破、未登录后台。',
             'evidence_sha256': hashlib.sha256(json.dumps(
-                {'host': host, 'tls': tls, 'root_status': root and root['status'],
-                 'headers': root and {k.lower(): v for k, v in root['headers'].items()},
-                 'probes': {path: status for path, _, _ in PROBES
-                            for status in [self._probe_status(probes, path)]}},
-                sort_keys=True).encode()).hexdigest(),
+                {'host': host, 'recon': _hashable(recon_results),
+                 'attack': attack_result}, sort_keys=True, default=str).encode()).hexdigest(),
         }
         return report
-
-    @staticmethod
-    def _probe_status(probes, path):
-        for value in probes.values():
-            entries = value if isinstance(value, list) else [value]
-            for entry in entries:
-                if entry['path'] == path:
-                    return entry['status']
-        return 'ERR'
 
     def get(self, scan_id):
         with self.store.connect() as db:
             row = db.execute('SELECT report_json FROM quick_scans WHERE id=?', (scan_id,)).fetchone()
         return json.loads(row['report_json']) if row else None
+
+
+def _attack_findings(attack_result):
+    """Convert confirmed attack output into findings with real severity."""
+    findings = []
+    confirmed = attack_result.get('confirmed') or []
+    if confirmed:
+        techniques = sorted({item.get('technique') for item in confirmed})
+        params = sorted({f"{item.get('path')}?{item.get('param')}" for item in confirmed
+                         if item.get('param')})
+        data_read = [item for item in confirmed if item.get('technique') == 'union-extract']
+        severity = 'CRITICAL' if data_read else 'CRITICAL'
+        evidence = (f"已在 {len(confirmed)} 处复现注入，技术：{', '.join(techniques)}；"
+                    f"注入点：{', '.join(params[:6])}")
+        if data_read:
+            extracted = data_read[0]
+            evidence += (f"；已读出数据库元信息：version={extracted.get('version')} "
+                         f"user={extracted.get('user')} db={extracted.get('database')}")
+        findings.append(_finding(
+            'sqli-confirmed', 'injection', f'SQL 注入已实证（{", ".join(techniques)}）',
+            severity, 'FACT', evidence,
+            '参数化查询；注入点立即下线或加 WAF 规则；轮换数据库口令并审计已泄露数据范围。',
+            observed={'techniques': techniques, 'points': params[:10],
+                      'extracted': data_read[0] if data_read else None},
+            tags=['sqli', 'injection', 'confirmed']))
+    elif attack_result.get('verdict') == 'NO_CONFIRMED_INJECTION':
+        targets = attack_result.get('targets') or []
+        if targets:
+            findings.append(_finding(
+                'sqli-not-confirmed', 'injection', '注入面已测试但未确认',
+                'INFO', 'FACT',
+                f"已对 {len(targets)} 个参数点发送错误/布尔/时间载荷，未出现可复现差分："
+                + '; '.join(f"{item['path']}({','.join(item['params'][:4])})" for item in targets[:4]),
+                '未确认不等于安全：可能存在过滤、WAF 或非 SQL 型注入，需要人工带上下文复核。',
+                tags=['sqli', 'tested']))
+    elif attack_result.get('verdict') == 'ATTACK_STAGE_ERROR':
+        findings.append(_finding('attack-error', 'injection', '攻击阶段执行异常', 'INFO', 'FACT',
+                                 str(attack_result.get('error'))[:300],
+                                 '重试或人工执行同一链路。', tags=['attack', 'error']))
+    return findings
+
+
+def _slim_recon(recon_results):
+    """Keep the report readable: full raw output would bury the findings."""
+    keep = ('tls', 'security_headers', 'cookies', 'tech_stack', 'firewall', 'dns',
+            'dnssec', 'whois', 'robots', 'sitemap', 'security_txt', 'http_methods',
+            'redirects', 'ip_info', 'injection_surface', '_meta')
+    slim = {key: recon_results.get(key) for key in keep}
+    exposure = recon_results.get('path_exposure') or {}
+    slim['path_exposure'] = {kind: entry.get('status')
+                             for kind, entry in exposure.items() if isinstance(entry, dict)}
+    root = recon_results.get('root') or {}
+    slim['root'] = {'status': root.get('status'), 'elapsed_ms': root.get('elapsed_ms'),
+                    'server': (root.get('headers') or {}).get('Server'),
+                    'content_type': (root.get('headers') or {}).get('Content-Type')}
+    return slim
+
+
+def _hashable(recon_results):
+    """Stable digest input: drop timings and byte bodies, keep the observations."""
+    slim = _slim_recon(recon_results)
+    slim.pop('_meta', None)
+    return slim
