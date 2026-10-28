@@ -346,3 +346,16 @@ Owner 要求：VPS 上把出口伪装、IP 轮换、工具调用、SQL 注入打
   `FACAI_EGRESS_FILE` 已写入 `/etc/facai-cloud/facai.env`。
 - 测试：`test_egress.py` 13 例（空池拒绝、自有域名放行、两次失败 park、扫描级固定、
   线程隔离、失败换线、SSRF 先于代理）+ 原 41 例全绿。
+
+**第三轮收尾实测与回归（诚实记录）**
+- 全量回归：**1515 通过 / 9 跳过 / 3 失败**。3 个失败全部是 Playwright 真浏览器
+  测试（test_console_layout / test_mobile_ui / test_ui_theme），**逐个单独跑全部通过**
+  （6.7–8.4s/例），失败模式是满载并发下浏览器启动超时/竞态——这些模块不 import
+  任何本轮改动的文件（egress/net_client/recon/attack_agent/sqlmap/quick_scan），
+  属既有环境性抖动，非本轮引入。
+- 生产验证：`systemctl show facai-cloud` 的进程环境含 `FACAI_EGRESS_FILE`（/proc
+  environ 实证）；venv 内显式加载池=50 出口全部健康；经代理请求 example.org
+  200 via=proxy fingerprint=chrome131；公网扫描报告 `egress` 字段显示
+  `mode=pinned exit=isp.decodo.com:10002`，2.09s 完成。
+- 待办（下一步）：sqlmap 深挖路径已在生产就绪（VPS 有 /usr/bin/sqlmap），尚未对
+  真实确认注入的目标跑过一次端到端 `_deep_enumerate`；代理池月度流量配额监控。

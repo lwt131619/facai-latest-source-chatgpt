@@ -161,7 +161,7 @@ function render(data){
     <p>${chips}${data.cached?'<span class="badge">10 分钟内缓存</span>':''}</p>
     <p style="color:#8fa3b8;font-size:12.5px">采集 ${esc(r.collected_at)} · 总分 ${s.score} ·
       总耗时 ${esc(t.total_ms??'—')}ms（侦察 ${esc(t.recon_ms??'—')}ms / 攻击 ${esc(t.attack_ms??'—')}ms）</p>
-    ${r.egress?`<p style="color:#8fa3b8;font-size:12.5px">出口：${r.egress.mode==='pinned'?'固定 '+(r.egress.exit||'直连(自有域名)'):'轮换'} · 池 ${r.egress.pool_size} 条 · 健康 ${r.egress.healthy?'是':'否'}</p>`:''}
+    ${r.egress?`<p style="color:#8fa3b8;font-size:12.5px">出口：${r.egress.mode==='pinned'?'固定 '+(r.egress.exit||'直连(自有域名)'):'轮换'} · 池 ${r.egress.pool_size} 条（健康 ${r.egress.pool_healthy??'—'}） · 本线 ${r.egress.exit_healthy?'正常':'异常'}</p>`:''}
     ${trig?'<p>攻击触发信号：'+trig+'</p>':''}
     ${r.attack_skipped?'<p style="color:#8fa3b8">'+esc(r.attack_skipped)+'</p>':''}
   </section>

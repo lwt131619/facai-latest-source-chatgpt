@@ -224,8 +224,12 @@ class PinnedEgress:
             return bool(state) and state['fails'] < 2
 
     def snapshot(self):
-        return {'mode': 'pinned', 'exit': (self.proxy or '').split('@')[-1] if self.proxy else None,
-                'pool_size': len(self.proxies), 'healthy': self.healthy(),
+        parent = self.parent or shared()
+        return {'mode': 'pinned',
+                'exit': (self.proxy or '').split('@')[-1] if self.proxy else None,
+                'exit_healthy': self.healthy(),
+                'pool_size': len(parent.proxies),
+                'pool_healthy': len(parent.available()) if isinstance(parent, Egress) else None,
                 'stats': dict(self._stats)}
 
 
