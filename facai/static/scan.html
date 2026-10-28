@@ -130,7 +130,25 @@ function attackHtml(a){
     <p style="color:#8fa3b8">耗时 ${esc(a.elapsed_ms??'—')}ms · 测试参数点 ${(a.targets||[]).length} 个</p>
     ${chain}${rows}
     ${!confirmed&&(a.targets||[]).length?'<p style="color:#8fa3b8">已发送错误/布尔/时间载荷，未复现稳定差分。</p>':''}
+    ${sqlmapHtml(a.sqlmap)}
   </section>`;
+}
+
+function sqlmapHtml(s){
+  if(!s)return '';
+  if(!s.ok)return `<h3>深度枚举（sqlmap）</h3><p style="color:#8fa3b8">未执行：${esc(s.error||'不可用')}</p>`;
+  const rows=[];
+  if(s.dbms)rows.push(['DBMS', s.dbms]);
+  if(s.banner)rows.push(['Banner', s.banner]);
+  if(s.current_db)rows.push(['当前库', s.current_db]);
+  if(s.current_user)rows.push(['当前用户', s.current_user]);
+  if((s.techniques||[]).length)rows.push(['技术', s.techniques.join(', ')]);
+  if((s.databases||[]).length)rows.push(['库列表', s.databases.join(', ')]);
+  const cards=rows.map(([k,v])=>`<div class="kv"><b>${esc(k)}</b>${esc(v)}</div>`).join('');
+  const dumps=(s.dumps||[]).map(d=>`<div class="kv" style="margin:6px 0"><b>${esc(d.database)} / ${esc(d.table)}</b>${d.row_count} 行<pre>${esc((d.sample||[]).join('
+'))}</pre></div>`).join('');
+  return `<h3>深度枚举（sqlmap · ${esc(s.elapsed_s??'—')}s）</h3>
+    <div class="grid">${cards}</div>${dumps}`;
 }
 
 function render(data){
@@ -143,6 +161,7 @@ function render(data){
     <p>${chips}${data.cached?'<span class="badge">10 分钟内缓存</span>':''}</p>
     <p style="color:#8fa3b8;font-size:12.5px">采集 ${esc(r.collected_at)} · 总分 ${s.score} ·
       总耗时 ${esc(t.total_ms??'—')}ms（侦察 ${esc(t.recon_ms??'—')}ms / 攻击 ${esc(t.attack_ms??'—')}ms）</p>
+    ${r.egress?`<p style="color:#8fa3b8;font-size:12.5px">出口：${r.egress.mode==='pinned'?'固定 '+(r.egress.exit||'直连(自有域名)'):'轮换'} · 池 ${r.egress.pool_size} 条 · 健康 ${r.egress.healthy?'是':'否'}</p>`:''}
     ${trig?'<p>攻击触发信号：'+trig+'</p>':''}
     ${r.attack_skipped?'<p style="color:#8fa3b8">'+esc(r.attack_skipped)+'</p>':''}
   </section>

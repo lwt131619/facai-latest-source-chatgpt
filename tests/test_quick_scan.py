@@ -11,6 +11,41 @@ from facai.quick_scan import (QuickScans, analyze_cookies, analyze_dns, analyze_
 from facai.site_assessment import SiteAssessmentError
 
 
+
+class _StubPool:
+    """Minimal pinned pool so scans run without a real proxy in tests."""
+
+    proxy = 'http://stub:8080'
+
+    def require(self, host, exclude=()):
+        return self.proxy
+
+    def pick(self, exclude=()):
+        return self.proxy
+
+    def report(self, proxy, ok=True):
+        pass
+
+    def is_self_host(self, host):
+        return False
+
+    def snapshot(self):
+        return {'mode': 'pinned', 'exit': 'stub:8080', 'pool_size': 1, 'healthy': True,
+                'stats': {}}
+
+    def healthy(self):
+        return True
+
+
+@pytest.fixture(autouse=True)
+def stub_egress(monkeypatch):
+    """Every scan in this module runs with a pinned stub exit."""
+    import facai.egress as eg
+    monkeypatch.setattr(eg, 'for_scan', lambda host=None: _StubPool())
+    eg.reset_shared()
+    yield
+    eg.reset_shared()
+
 # ------------------------------------------------------------------ analyzers
 
 def test_tls_findings():
@@ -173,7 +208,7 @@ def test_attack_verdict_and_param_discovery(monkeypatch):
     assert ('/product', 'GET') in paths and ('/search', 'POST') in paths
     assert ['q', 'page'] in [item['params'] for item in targets]
 
-    monkeypatch.setattr(attack_agent, 'discover_params', lambda host: [])
+    monkeypatch.setattr(attack_agent, 'discover_params', lambda host, pool=None: [])
     result = attack_agent.attack('h')
     assert result['verdict'] == 'NO_CONFIRMED_INJECTION'
 
@@ -227,7 +262,7 @@ def test_scan_auto_dispatches_attack_and_reports_confirmed(tmp_path, monkeypatch
     monkeypatch.setenv('FACAI_SKIP_CREDENTIAL_PREFLIGHT', '1')
     attacked = {'hosts': []}
 
-    def fake_attack(host):
+    def fake_attack(host, egress_pool=None):
         attacked['hosts'].append(host)
         return {'host': host, 'verdict': 'CONFIRMED_INJECTION', 'elapsed_ms': 900,
                 'targets': [{'path': '/item', 'params': ['id']}],
@@ -272,7 +307,7 @@ def test_scan_skips_attack_without_signals(tmp_path, monkeypatch):
                                   'admin': [], 'upload': []}
     called = {'n': 0}
 
-    def fake_attack(host):
+    def fake_attack(host, egress_pool=None):
         called['n'] += 1
         return {'verdict': 'NO_CONFIRMED_INJECTION', 'confirmed': [], 'targets': []}
 
@@ -323,7 +358,7 @@ def test_scan_rejects_unsafe_urls(tmp_path, monkeypatch):
 
     def patched_init(self, store):
         original_init(self, store, recon_runner=_fake_recon,
-                      attack_runner=lambda host: {'confirmed': [], 'targets': []})
+                      attack_runner=lambda host, egress_pool=None: {'confirmed': [], 'targets': []})
 
     monkeypatch.setattr('facai.quick_scan.QuickScans.__init__', patched_init)
     app = create_app(tmp_path)

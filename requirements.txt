@@ -10,3 +10,6 @@ cryptography>=42
 # Python without intermediate certs does not report false "untrusted chain".
 dnspython>=2.6,<3
 certifi>=2024.2.2
+# Browser-grade TLS/JA3 fingerprint. The stdlib stack is refused outright by
+# Cloudflare-class edges, so proxied requests require this.
+curl_cffi>=0.7

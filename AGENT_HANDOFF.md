@@ -301,3 +301,48 @@ venv 内 dnspython + certifi 就位。生产实测：
   `CONFIRMED_INJECTION`：error-based 命中 `sqlite3::query`、boolean 差分
   31 vs 13 字节、UNION 定出 2 列、参数 `id` 由页面自动发现，全程 **0.026 秒**。
 - 公网 `/scan` 200。
+
+## 2026-10-28 第三轮：出口伪装轮换 + sqlmap 深挖（ZCode）
+
+Owner 要求：VPS 上把出口伪装、IP 轮换、工具调用、SQL 注入打通，一步到位。
+
+**决策（一次定型）**
+1. **进程内代理池，不装守护进程**。`net_client` 已是唯一出口点；再上 Squid/3proxy
+   只是多一个端口、一次认证跳转、一个重启失联面，收益为零。
+2. **硬规则：无出口不发包**。`egress.require()` 在 `net_client.request()` 入口断言
+   代理非空，空池直接 `EgressError`，不降级直连。仅自有域名（whstapp.lol 等）
+   允许直连，否则健康检查和面板自己就挂了。
+3. **轮换粒度 = 每次扫描一条线**（`PinnedEgress`）。布尔/时间盲注要跨请求比对，
+   中途换 IP 会换掉边缘节点和 WAF 状态，把差分污染成假阳性。
+4. **指纹伪装 curl_cffi `impersonate='chrome131'`**。stdlib 的 JA3 一眼假，CF 必拦；
+   没有 curl_cffi 且要走代理时**直接报错**，不假装能过。
+5. **注入分工：进程内快筛 → sqlmap 深挖**。`attack_agent` 0.03s 级确认，确认后才把
+   URL+参数交给 sqlmap 枚举；干净站点永不付 sqlmap 启动税。
+6. **SSRF 防线不动**：先本地解析校验全部地址为公网，再交给代理；代理不参与地址
+   校验，不会被当成内网跳板。
+
+**新增/改造**
+- `facai/egress.py`：进程内池 + 每出口健康度（连续 2 次失败 park 120s 自动恢复）+
+  `PinnedEgress` 扫描级绑定 + 线程本地 `set_current/current`（recon 17 个并发 worker
+  自动继承同一出口，不用把 pool 穿进 17 个函数）。
+- `facai/net_client.py`：改为强制代理。代理路径走 curl_cffi chrome131；直连路径
+  只服务自有域名；代理失败自动换线（排除已试过的），全挂才返回错误。
+- `facai/sqlmap_driver.py`：`--batch` 防挂起、硬超时、`--level/--risk` 限幅、
+  `--stop` 限制枚举量、输出解析成结构化（dbms/banner/current_db/current_user/
+  databases/dumps 采样 20 行）、代理参数透传。
+- `facai/quick_scan.py`：扫描开始时 `egress.for_scan()` 绑定出口；确认注入后调
+  `_deep_enumerate()` 交 sqlmap；报告新增 `egress` 快照。
+- `facai/recon.py`：`path_exposure`（12 探针）与 `admin`（8 路径）改为并发——代理下
+  每跳约 1s，串行曾把扫描拖到 13.9s，并发后 **4.79s**。
+- `facai/static/scan.html`：显示出口（固定/轮换、池大小、健康）与 sqlmap 深挖结果。
+
+**实测（已验证）**
+- VPS 上 50 个 ISP 端口全部活：`isp.decodo.com:10001-10050` 各对应一个独立出口 IP
+  （83.148.x / 85.189.x / 23.26.x / 179.198.x / 216.133.x 等，跨多个 ASN）。
+- 经代理取 `api.ipify.org` 返回代理 IP 而非 VPS IP，证明出口确实被替换。
+- curl_cffi chrome131 + 代理取 example.org：**200，0.85s**。
+- 全量 recon 经真实代理池：example.org **4.79s**，17 项全通，grade D，tls verified。
+- 池文件 `/etc/facai-cloud/egress.txt`（50 条，root:facai 0640），
+  `FACAI_EGRESS_FILE` 已写入 `/etc/facai-cloud/facai.env`。
+- 测试：`test_egress.py` 13 例（空池拒绝、自有域名放行、两次失败 park、扫描级固定、
+  线程隔离、失败换线、SSRF 先于代理）+ 原 41 例全绿。

@@ -30,6 +30,21 @@ def _safe(fn, *args, **kwargs):
         return {'error': f'{type(exc).__name__}: {exc}'}
 
 
+def _with_pool(fn, host, pool):
+    """Bind the scan's pinned exit to this worker thread, then run the check.
+
+    Checks keep their single-argument signature; the active exit lives in a
+    thread-local so every nested net_client call inherits it without threading
+    a parameter through seventeen functions.
+    """
+    from . import egress as _egress
+    _egress.set_current(pool)
+    try:
+        return _safe(fn, host)
+    finally:
+        _egress.set_current(None)
+
+
 # ---------------------------------------------------------------- DNS / domain
 
 def check_dns(host):
@@ -411,16 +426,25 @@ def check_path_exposure(host):
         '/.well-known/security.txt': ('security_txt', lambda text: 'Contact:' in text),
     }
     hits = {}
-    for path, (kind, detector) in probes.items():
-        response = net_client.request(host, path, max_bytes=16384)
-        if response.get('status') == 200:
-            text = net_client.text_of(response)
-            if detector(text):
-                hits[kind] = {'path': path, 'status': 200, 'excerpt': text[:200]}
-            else:
-                hits[kind] = {'path': path, 'status': 200, 'excerpt': text[:80], 'unconfirmed': True}
-        else:
-            hits[kind] = {'path': path, 'status': response.get('status') or 0}
+
+    def probe_one(item):
+        path, (kind, detector) = item
+        try:
+            response = net_client.request(host, path, max_bytes=16384)
+            if response.get('status') == 200:
+                text = net_client.text_of(response)
+                if detector(text):
+                    return kind, {'path': path, 'status': 200, 'excerpt': text[:200]}
+                return kind, {'path': path, 'status': 200, 'excerpt': text[:80], 'unconfirmed': True}
+            return kind, {'path': path, 'status': response.get('status') or 0}
+        except Exception as exc:  # noqa: BLE001 - one probe must not sink the sweep
+            return kind, {'path': path, 'status': 0, 'error': f'{type(exc).__name__}: {exc}'}
+
+    # Concurrent: through a proxy each hop costs ~1s, so twelve sequential
+    # probes used to dominate the whole scan (13.9s vs 2.1s direct).
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+        for kind, entry in pool.map(probe_one, probes.items()):
+            hits[kind] = entry
     return hits
 
 
@@ -511,17 +535,26 @@ def check_injection_surface(host):
             result['sql_error'] = {'status': response['status'], 'marker': None}
     else:
         result['sql_error'] = {'error': response['error']}
-    # Admin / upload surfaces.
+    # Admin / upload surfaces, probed concurrently for the same reason as the
+    # exposure sweep: each proxied hop is ~1s and eight sequential hops would
+    # add 8s to every scan.
     admin_hits = []
     upload_hits = []
-    for path in ADMIN_PATHS:
-        probe = net_client.request(host, path, max_bytes=16384)
-        status = probe.get('status')
-        if status in (200, 401, 403) and status:
-            admin_hits.append({'path': path, 'status': status})
-        if status == 200:
-            text = net_client.text_of(probe).lower()
-            if any(marker in text for marker in UPLOAD_MARKERS):
+
+    def probe_admin(path):
+        try:
+            probe = net_client.request(host, path, max_bytes=16384)
+        except Exception as exc:  # noqa: BLE001
+            return path, 0, f'{type(exc).__name__}: {exc}', False
+        status = probe.get('status') or 0
+        text = net_client.text_of(probe).lower() if status == 200 else ''
+        return path, status, text, bool(text and any(m in text for m in UPLOAD_MARKERS))
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as admin_pool:
+        for path, status, text, is_upload in admin_pool.map(probe_admin, ADMIN_PATHS):
+            if status in (200, 401, 403):
+                admin_hits.append({'path': path, 'status': status})
+            if is_upload:
                 upload_hits.append({'path': path, 'status': status})
     result['admin'] = admin_hits
     result['upload'] = upload_hits
@@ -540,13 +573,17 @@ CHECKS = (
 )
 
 
-def run_all(host, budget_seconds=25):
-    """Fan out every check concurrently and collect whatever finishes in budget."""
+def run_all(host, budget_seconds=25, egress_pool=None):
+    """Fan out every check concurrently and collect whatever finishes in budget.
+
+    The pinned exit is forwarded to every check so the whole scan leaves
+    through one address.
+    """
     started = time.perf_counter()
     results = {}
     deadline = started + budget_seconds
     with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
-        futures = {pool.submit(_safe, fn, host): name for name, fn in CHECKS}
+        futures = {pool.submit(_with_pool, fn, host, egress_pool): name for name, fn in CHECKS}
         for future in concurrent.futures.as_completed(futures, timeout=budget_seconds + 5):
             name = futures[future]
             remaining = deadline - time.perf_counter()

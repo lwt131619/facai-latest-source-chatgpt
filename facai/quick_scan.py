@@ -20,7 +20,7 @@ import threading
 import time
 from datetime import datetime, timezone
 
-from . import attack_agent, recon
+from . import attack_agent, egress, recon, sqlmap_driver
 from .net_client import TransportError
 from .site_assessment import SiteAssessmentError, normalize_site
 
@@ -544,6 +544,12 @@ class QuickScans:
     def _collect(self, host, run_attack=True):
         started = time.perf_counter()
         collected_at = datetime.now(timezone.utc).isoformat()
+        # Bind one exit for the whole scan: the injection oracle compares
+        # responses across requests, so the exit must not change mid-scan.
+        try:
+            pool = egress.for_scan(host)
+        except egress.EgressError as exc:
+            raise SiteAssessmentError(str(exc)) from exc
         try:
             recon_results = self.recon_runner(host)
         except TransportError as exc:
@@ -559,11 +565,15 @@ class QuickScans:
         attack_skipped = None
         if run_attack and triggers:
             try:
-                attack_result = self.attack_runner(host)
+                attack_result = self.attack_runner(host, egress_pool=pool)
             except Exception as exc:  # noqa: BLE001 - attack stage must not lose the recon
                 attack_result = {'verdict': 'ATTACK_STAGE_ERROR',
                                  'error': f'{type(exc).__name__}: {exc}'}
             if attack_result:
+                # Deep enumeration only after the fast path confirmed a real
+                # injection: sqlmap's startup cost is never paid on clean sites.
+                if attack_result.get('verdict') == 'CONFIRMED_INJECTION':
+                    attack_result['sqlmap'] = self._deep_enumerate(host, attack_result, pool)
                 findings.extend(_attack_findings(attack_result))
                 findings.sort(key=lambda item: -SEVERITY_WEIGHT.get(item['severity'], 0))
         elif not triggers:
@@ -576,20 +586,37 @@ class QuickScans:
             'attack': attack_result,
             'attack_triggers': triggers,
             'attack_skipped': attack_skipped,
+            'egress': pool.snapshot(),
             'timing': {'total_ms': round((time.perf_counter() - started) * 1000, 1),
                        'recon_ms': (recon_results.get('_meta') or {}).get('elapsed_ms'),
                        'attack_ms': (attack_result or {}).get('elapsed_ms')},
             'scope': 'recon: 17 concurrent read-only checks (DNS/DNSSEC/WHOIS/TLS/headers/cookies/'
                      'tech/WAF/redirects/robots/sitemap/security.txt/methods/path-exposure/'
                      'ip-ownership/injection-surface). attack: real payloads only when recon '
-                     'raised a signal',
+                     'raised a signal; confirmed injections are handed to sqlmap for enumeration. '
+                     'All outbound traffic exits through a rotated proxy with a Chrome fingerprint.',
             'limitations': '指纹与 WAF 判定为 INFERENCE；攻击结论仅在被差分 oracle 复现时标记 CONFIRMED；'
-                           '未做全端口扫描、未做目录爆破、未登录后台。',
+                           'sqlmap 枚举以 --level/--risk 限制且设硬超时；未做全端口扫描、未做目录爆破、'
+                           '未登录后台。',
             'evidence_sha256': hashlib.sha256(json.dumps(
                 {'host': host, 'recon': _hashable(recon_results),
                  'attack': attack_result}, sort_keys=True, default=str).encode()).hexdigest(),
         }
         return report
+
+    def _deep_enumerate(self, host, attack_result, pool):
+        """Hand a confirmed injection point to sqlmap, bounded and time-capped."""
+        if not sqlmap_driver.available():
+            return {'ok': False, 'error': 'sqlmap not installed',
+                    'hint': 'install sqlmap on the host to enable deep enumeration'}
+        confirmed = attack_result.get('confirmed') or []
+        point = next((item for item in confirmed if item.get('param') and item.get('path')), None)
+        if point is None:
+            return {'ok': False, 'error': 'no parameterised injection point to enumerate'}
+        url = f'https://{host}{point["path"]}'
+        result = sqlmap_driver.enumerate_injection(
+            url, params=[point['param']], proxy=pool.proxy if pool else None)
+        return sqlmap_driver.as_evidence(result)
 
     def get(self, scan_id):
         with self.store.connect() as db:
