@@ -1,0 +1,16 @@
+[Unit]
+Description=Facai Portal - member login + detail panel (BFF over New API)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/facai-portal
+ExecStart=/usr/local/bin/uvicorn app:app --host 127.0.0.1 --port 9910 --workers 1 --proxy-headers --forwarded-allow-ips=127.0.0.1
+Restart=always
+RestartSec=3
+Environment=PYTHONUNBUFFERED=1
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

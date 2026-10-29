@@ -1,0 +1,5 @@
+secret.key
+.reg.lock
+owner_ledger.json
+__pycache__/
+*.bak.*

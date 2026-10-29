@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>雾核 · 注册开通</title>
+<meta name="robots" content="noindex,nofollow">
+<style>
+  :root{--bg:#08090c;--card:#101218;--line:#1e2230;--fg:#e8ecf4;--mut:#8b93a7;--acc:#d4af37;--ok:#3ddc84;--err:#ff5d5d}
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(1200px 600px at 50% -10%,#141822 0,#08090c 60%);color:var(--fg);
+       font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+       min-height:100vh;display:flex;align-items:center;justify-content:center;padding:32px 16px}
+  .wrap{width:100%;max-width:520px}
+  .brand{display:flex;align-items:center;gap:10px;margin-bottom:18px}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--acc);box-shadow:0 0 12px var(--acc)}
+  h1{font-size:20px;margin:0;letter-spacing:.5px}
+  .sub{color:var(--mut);font-size:13px;margin:4px 0 22px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px}
+  label{display:block;font-size:12px;color:var(--mut);margin:14px 0 6px;letter-spacing:.4px}
+  input{width:100%;padding:11px 13px;background:#0b0d13;border:1px solid var(--line);border-radius:9px;
+        color:var(--fg);font-size:14px;outline:none}
+  input:focus{border-color:var(--acc)}
+  button{width:100%;margin-top:20px;padding:12px;border:0;border-radius:9px;background:var(--acc);
+         color:#12130f;font-weight:700;font-size:15px;cursor:pointer;letter-spacing:1px}
+  button:disabled{opacity:.5;cursor:default}
+  .msg{margin-top:14px;font-size:13px;min-height:18px}
+  .msg.err{color:var(--err)} .msg.ok{color:var(--ok)}
+  .keybox{margin-top:16px;background:#0b0d13;border:1px dashed var(--acc);border-radius:10px;padding:14px}
+  .keybox code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;word-break:break-all;color:var(--acc)}
+  .row{display:flex;gap:8px;margin-top:10px}
+  .row button{margin:0;padding:8px;font-size:12px;background:#1a1e29;color:var(--fg);border:1px solid var(--line)}
+  pre{background:#0b0d13;border:1px solid var(--line);border-radius:10px;padding:12px;overflow:auto;
+      font-size:12px;color:#b8c1d4;margin:12px 0 0}
+  a{color:var(--acc);text-decoration:none}
+  .foot{margin-top:16px;color:var(--mut);font-size:12.5px;text-align:center}
+  .hide{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand"><span class="dot"></span><h1>雾核 · 开通 API</h1></div>
+  <div class="sub">填邮箱 + 密码，立刻拿到中转站 key，直接用 URL 调用（OpenAI 兼容，必须流式）。</div>
+
+  <div class="card" id="formCard">
+    <form id="regForm" autocomplete="on">
+      <label>邮箱</label>
+      <input id="email" type="email" placeholder="you@example.com" required>
+      <label>密码（≥8 位）</label>
+      <input id="pw" type="password" placeholder="至少 8 位" required minlength="8">
+      <label>确认密码</label>
+      <input id="pw2" type="password" placeholder="再输一次" required minlength="8">
+      <label>验证码（点图可换）</label>
+      <div style="display:flex;gap:10px;align-items:center">
+        <input id="cap" placeholder="输入图中 5 位" required autocomplete="off"
+               style="flex:1;letter-spacing:3px;text-transform:uppercase">
+        <span id="capImg" title="点击刷新" style="cursor:pointer;line-height:0"></span>
+      </div>
+      <button id="go" type="submit">注 册 并 拿 K E Y</button>
+      <div class="msg" id="msg"></div>
+    </form>
+  </div>
+
+  <div class="card hide" id="okCard">
+    <div class="msg ok">✅ 开通成功，下面是你的 key（只在本页显示一次，请立刻保存）</div>
+    <div class="keybox"><code id="keyText">—</code>
+      <div class="row"><button id="copyKey" type="button">复制 key</button>
+      <button id="copyCurl" type="button">复制调用示例</button></div>
+    </div>
+    <pre id="snippet"></pre>
+    <div class="foot"><a href="/portal/member">进入我的用量 →</a></div>
+  </div>
+
+  <div class="foot">已有账号？<a href="/portal/">去登录</a></div>
+</div>
+<script>
+const $ = id => document.getElementById(id);
+let KEY = '', CAP_ID = '';
+async function loadCap(){
+  try{
+    const r = await fetch('/portal/api/captcha', {cache:'no-store'});
+    const j = await r.json();
+    CAP_ID = j.data.id;
+    $('capImg').innerHTML = j.data.svg;
+    $('cap').value = '';
+  }catch(_){ $('capImg').textContent = '加载失败，点此重试'; }
+}
+function toast(t){ const m=$('msg'); m.className='msg ok'; m.textContent=t; }
+$('regForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const btn = $('go'), m = $('msg');
+  const email = $('email').value.trim(), pw = $('pw').value, pw2 = $('pw2').value;
+  const cap = $('cap').value.trim();
+  if(pw !== pw2){ m.className='msg err'; m.textContent='两次密码不一致'; return; }
+  if(!cap){ m.className='msg err'; m.textContent='请填验证码'; return; }
+  btn.disabled = true; btn.textContent = '开 通 中…'; m.textContent='';
+  try{
+    const r = await fetch('/portal/api/register', {method:'POST', credentials:'same-origin',
+      headers:{'Content-Type':'application/json'}, body: JSON.stringify({email, password: pw, captcha_id: CAP_ID, captcha_code: cap})});
+    const j = await r.json().catch(()=>({}));
+    if(!r.ok || !j.success){ m.className='msg err'; m.textContent = j.message || ('注册失败 HTTP '+r.status); loadCap(); return; }
+    KEY = j.data.key;
+    $('keyText').textContent = KEY;
+    const snip = `curl -N https://openingcode.top/v1/chat/completions \\
+  -H "Authorization: Bearer ${KEY}" \\
+  -H "Content-Type: application/json" \\
+  -d '{"model":"Facai-DS","stream":true,"messages":[{"role":"user","content":"你好"}]}'`;
+    $('snippet').textContent = snip;
+    $('formCard').classList.add('hide'); $('okCard').classList.remove('hide');
+  }catch(err){ m.className='msg err'; m.textContent='网络异常，请重试'; }
+  finally{ btn.disabled=false; btn.textContent='注 册 并 拿 K E Y'; }
+});
+async function cp(text, label){
+  try{ if(navigator.clipboard) await navigator.clipboard.writeText(text);
+       else { const ta=document.createElement('textarea'); ta.value=text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); }
+       toast(label+' 已复制');
+  }catch(_){ toast('复制失败，请手动选中'); }
+}
+$('capImg').onclick = loadCap;
+loadCap();
+$('copyKey').onclick = () => cp(KEY, 'key');
+$('copyCurl').onclick = () => cp($('snippet').textContent, '调用示例');
+</script>
+</body>
+</html>

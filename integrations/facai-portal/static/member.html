@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>雾核 · 我的用量</title>
+<meta name="robots" content="noindex,nofollow">
+<style>
+  :root{--bg:#08090c;--card:#101218;--line:#1e2230;--fg:#e8ecf4;--mut:#8b93a7;--acc:#d4af37;--ok:#3ddc84;--err:#ff5d5d}
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(1200px 600px at 50% -10%,#141822 0,#08090c 60%);color:var(--fg);
+       font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+       min-height:100vh;padding:36px 16px}
+  .wrap{max-width:660px;margin:0 auto}
+  .brand{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--acc);box-shadow:0 0 12px var(--acc)}
+  h1{font-size:19px;margin:0}
+  .sub{color:var(--mut);font-size:13px;margin:2px 0 22px}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:13px;padding:16px}
+  .k{font-size:11.5px;color:var(--mut);letter-spacing:.5px}
+  .v{font-size:22px;font-weight:700;margin-top:6px;font-variant-numeric:tabular-nums}
+  .v small{font-size:11px;color:var(--mut);font-weight:400;margin-left:3px}
+  .row{display:flex;justify-content:space-between;align-items:center;padding:11px 0;border-bottom:1px dashed var(--line);font-size:13.5px}
+  .row:last-child{border-bottom:0}
+  .row span:first-child{color:var(--mut)}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;color:var(--acc);word-break:break-all}
+  pre{background:#0b0d13;border:1px solid var(--line);border-radius:10px;padding:12px;overflow:auto;font-size:12px;color:#b8c1d4;margin:10px 0 0}
+  button{padding:8px 12px;border-radius:8px;border:1px solid var(--line);background:#1a1e29;color:var(--fg);font-size:12.5px;cursor:pointer}
+  button:hover{border-color:var(--acc)}
+  .foot{margin-top:18px;display:flex;gap:10px;justify-content:space-between;align-items:center;color:var(--mut);font-size:12.5px}
+  a{color:var(--acc);text-decoration:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand"><span class="dot"></span><h1>雾核 · 我的用量</h1></div>
+  <div class="sub" id="who">读取中…</div>
+
+  <div class="grid">
+    <div class="card"><div class="k">累计消费</div><div class="v"><span id="usd">0</span><small>USDT</small></div></div>
+    <div class="card"><div class="k">输入 tokens</div><div class="v" id="tin">0</div></div>
+    <div class="card"><div class="k">输出 tokens</div><div class="v" id="tout">0</div></div>
+  </div>
+
+  <div class="card">
+    <div class="row"><span>请求数</span><span id="req">0</span></div>
+    <div class="row"><span>档位</span><span id="tier">default</span></div>
+    <div class="row"><span>最近调用</span><span id="last">—</span></div>
+    <div class="row"><span>API Key</span><span><code id="keyMask">—</code> <button id="showKey">显示</button></span></div>
+    <div class="row"><span>接入地址</span><span><code>https://openingcode.top/v1</code></span></div>
+    <div class="row"><span>可用模型</span><span><code id="models">Facai-DS · Facai-168</code></span></div>
+    <pre id="snip">加载中…</pre>
+    <div class="row" style="border:0;padding-top:12px">
+      <span></span><button id="copySnip">复制调用示例</button>
+    </div>
+  </div>
+
+  <div class="foot"><a href="/portal/register">再开一个账号</a><a href="#" id="logout">退出登录</a></div>
+</div>
+<script>
+const $ = id => document.getElementById(id);
+let DATA = null, SHOWN = false;
+const nf = n => (n||0).toLocaleString('en-US');
+(async () => {
+  try{
+    const r = await fetch('/portal/api/member/me', {credentials:'same-origin', cache:'no-store'});
+    if(!r.ok){ location.href = '/portal/'; return; }
+    const j = await r.json();
+    DATA = j.data;
+    $('who').textContent = DATA.email + ' · 开通于 ' + (DATA.created || '—');
+    const u = DATA.usage || {};
+    $('usd').textContent = (u.usd||0).toFixed(4);
+    $('tin').textContent = nf(u.tokens_in);
+    $('tout').textContent = nf(u.tokens_out);
+    $('req').textContent = nf(u.requests);
+    $('tier').textContent = DATA.tier || 'default';
+    $('last').textContent = u.last_used || '还没调用过';
+    $('keyMask').textContent = DATA.key_masked;
+    $('models').textContent = (DATA.models||[]).join(' · ');
+    $('snip').textContent = `curl -N https://openingcode.top/v1/chat/completions \\\n  -H "Authorization: Bearer ${DATA.key}" \\\n  -H "Content-Type: application/json" \\\n  -d '{"model":"Facai-DS","stream":true,"messages":[{"role":"user","content":"你好"}]}'`;
+  }catch(_){ $('who').textContent = '读取失败，请刷新'; }
+})();
+$('showKey').onclick = () => {
+  if(!DATA) return;
+  SHOWN = !SHOWN;
+  $('keyMask').textContent = SHOWN ? DATA.key : DATA.key_masked;
+  $('showKey').textContent = SHOWN ? '隐藏' : '显示';
+};
+$('copySnip').onclick = async () => {
+  try{ if(navigator.clipboard) await navigator.clipboard.writeText($('snip').textContent);
+       else { const ta=document.createElement('textarea'); ta.value=$('snip').textContent; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); }
+       $('copySnip').textContent = '已复制'; setTimeout(()=>$('copySnip').textContent='复制调用示例',1500);
+  }catch(_){}
+};
+$('logout').onclick = async e => {
+  e.preventDefault();
+  try{ await fetch('/portal/api/logout', {method:'POST', credentials:'same-origin'}); }catch(_){}
+  location.href = '/portal/';
+};
+</script>
+</body>
+</html>

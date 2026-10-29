@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>雾核 · 会员控制台</title>
+<meta name="robots" content="noindex, nofollow">
+<style>
+  :root{
+    --bg:#080b12; --bg2:#0c111b; --card:rgba(18,24,38,.86); --line:rgba(255,255,255,.08);
+    --fg:#e9edf6; --mute:#8b97ad; --dim:#5d6a80;
+    --acc:#7c5cff; --acc2:#22d3ee; --ok:#2dd4a7; --warn:#f5b544; --bad:#f26d6d;
+    --r:16px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--fg);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    -webkit-font-smoothing:antialiased}
+  body{min-height:100vh;background:
+    radial-gradient(1200px 600px at 12% -10%, rgba(124,92,255,.18), transparent 60%),
+    radial-gradient(900px 500px at 92% 0%, rgba(34,211,238,.12), transparent 55%),
+    linear-gradient(180deg,#080b12,#0a0e17 55%,#080b12)}
+  a{color:var(--acc2);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .hidden{display:none!important}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+
+  /* ── 登录 ── */
+  #login{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+  .login-card{width:100%;max-width:404px;background:var(--card);border:1px solid var(--line);
+    border-radius:22px;padding:34px 30px 26px;backdrop-filter:blur(14px);
+    box-shadow:0 30px 80px -30px rgba(0,0,0,.9), inset 0 1px 0 rgba(255,255,255,.06)}
+  .logo{display:flex;align-items:center;gap:10px;margin-bottom:22px}
+  .logo-mark{width:32px;height:32px;border-radius:10px;background:linear-gradient(135deg,var(--acc),var(--acc2));
+    display:grid;place-items:center;font-weight:800;font-size:15px;color:#080b12}
+  .logo b{font-size:15px;letter-spacing:.14em}
+  .login-card h1{font-size:22px;margin:0 0 6px;letter-spacing:.02em}
+  .login-card .sub{color:var(--mute);font-size:13px;margin:0 0 24px}
+  label{display:block;font-size:12px;color:var(--mute);margin:0 0 7px;letter-spacing:.06em}
+  .field{margin-bottom:16px}
+  input[type=text],input[type=password]{width:100%;padding:13px 14px;border-radius:11px;
+    background:#0a0f19;border:1px solid rgba(255,255,255,.1);color:var(--fg);font-size:14px;outline:none;
+    transition:border-color .15s, box-shadow .15s}
+  input:focus{border-color:rgba(124,92,255,.75);box-shadow:0 0 0 3px rgba(124,92,255,.14)}
+  button{font-family:inherit;cursor:pointer;border:0;border-radius:11px;font-size:14px;font-weight:600}
+  #loginBtn{width:100%;padding:13px;background:linear-gradient(135deg,var(--acc),#4f7cff);color:#fff;
+    margin-top:6px;letter-spacing:.04em;transition:filter .15s, transform .05s}
+  #loginBtn:hover{filter:brightness(1.08)}
+  #loginBtn:active{transform:translateY(1px)}
+  #loginBtn[disabled]{opacity:.6;cursor:not-allowed}
+  .err{color:var(--bad);font-size:13px;min-height:18px;margin-top:12px}
+  .foot{margin-top:18px;padding-top:16px;border-top:1px solid var(--line);color:var(--dim);font-size:12.5px;
+    display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+
+  /* ── 面板 ── */
+  header.top{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:14px;
+    padding:14px 22px;background:rgba(8,11,18,.82);backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
+  header.top .who{margin-left:auto;display:flex;align-items:center;gap:12px}
+  .badge{font-size:11.5px;padding:4px 10px;border-radius:999px;border:1px solid rgba(124,92,255,.5);
+    background:rgba(124,92,255,.14);color:#c7b9ff;letter-spacing:.04em}
+  .ghost{background:transparent;border:1px solid var(--line);color:var(--mute);padding:7px 13px;font-size:12.5px}
+  .ghost:hover{color:var(--fg);border-color:rgba(255,255,255,.22)}
+  main{max-width:1160px;margin:0 auto;padding:24px 22px 70px}
+  .grid{display:grid;gap:16px}
+  .g3{grid-template-columns:1.15fr .85fr .85fr}
+  .g2{grid-template-columns:1.4fr 1fr}
+  @media (max-width:940px){.g3,.g2{grid-template-columns:1fr}}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:18px 18px 16px;
+    backdrop-filter:blur(8px)}
+  .card h3{margin:0 0 14px;font-size:12.5px;letter-spacing:.14em;color:var(--mute);font-weight:600;text-transform:uppercase}
+  .tier-name{font-size:21px;font-weight:700;letter-spacing:.01em;margin:0 0 4px}
+  .tier-meta{font-size:12.5px;color:var(--mute);margin:0 0 16px}
+  .kv{display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-top:1px dashed rgba(255,255,255,.07);font-size:13.5px}
+  .kv span:first-child{color:var(--mute)}
+  .kv span:last-child{font-variant-numeric:tabular-nums}
+  .big{font-size:30px;font-weight:700;letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+  .big small{font-size:13px;color:var(--mute);font-weight:500;margin-left:5px;letter-spacing:0}
+  .bar{height:7px;border-radius:99px;background:rgba(255,255,255,.07);overflow:hidden;margin:12px 0 6px}
+  .bar i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--acc),var(--acc2))}
+  .stat-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:6px}
+  .stat{background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:12px;padding:11px 12px}
+  .stat b{display:block;font-size:18px;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+  .stat s{display:block;text-decoration:none;color:var(--mute);font-size:11.5px;margin-top:3px;letter-spacing:.05em}
+  .chart{display:flex;align-items:flex-end;gap:5px;height:96px;margin-top:14px}
+  .chart .col{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:5px;height:100%}
+  .chart .col i{width:100%;border-radius:5px 5px 2px 2px;background:linear-gradient(180deg,rgba(34,211,238,.95),rgba(124,92,255,.65));
+    min-height:3px;transition:opacity .15s}
+  .chart .col i:hover{opacity:.75}
+  .chart .col u{font-size:9.5px;color:var(--dim);text-decoration:none}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{text-align:left;color:var(--mute);font-weight:600;font-size:11.5px;letter-spacing:.08em;
+    padding:0 8px 9px;border-bottom:1px solid var(--line);text-transform:uppercase}
+  td{padding:10px 8px;border-bottom:1px solid rgba(255,255,255,.045);font-variant-numeric:tabular-nums}
+  tr:last-child td{border-bottom:0}
+  .num{text-align:right}
+  .tag{font-size:11px;padding:3px 8px;border-radius:999px;background:rgba(45,212,167,.14);color:#7ee7c7;
+    border:1px solid rgba(45,212,167,.3)}
+  .tag.off{background:rgba(242,109,109,.12);color:#f8a5a5;border-color:rgba(242,109,109,.3)}
+  .tag.plan{background:rgba(124,92,255,.14);color:#c7b9ff;border-color:rgba(124,92,255,.35)}
+  .tk{display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid rgba(255,255,255,.05)}
+  .tk:last-child{border-bottom:0}
+  .tk .nm{font-size:13.5px;font-weight:600}
+  .tk .meta{font-size:11.5px;color:var(--dim);margin-top:2px}
+  .tk .key{flex:1;text-align:right;color:var(--mute);font-size:12px}
+  .mini{background:rgba(255,255,255,.06);color:var(--fg);padding:5px 10px;font-size:11.5px;border:1px solid var(--line)}
+  .mini:hover{background:rgba(124,92,255,.2);border-color:rgba(124,92,255,.4)}
+  pre{margin:10px 0 0;padding:13px 14px;background:#060a11;border:1px solid var(--line);border-radius:11px;
+    font-size:12px;line-height:1.65;overflow:auto;color:#b8c4d9}
+  pre b{color:var(--acc2);font-weight:500}
+  .plans{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+  @media (max-width:820px){.plans{grid-template-columns:repeat(2,1fr)}.stat-row{grid-template-columns:1fr}}
+  .plan{border:1px solid var(--line);border-radius:13px;padding:13px;background:rgba(255,255,255,.025)}
+  .plan.cur{border-color:rgba(124,92,255,.6);background:rgba(124,92,255,.1)}
+  .plan b{display:block;font-size:13px;margin-bottom:3px}
+  .plan .p{font-size:17px;font-weight:700;margin:6px 0 3px;font-variant-numeric:tabular-nums}
+  .plan small{color:var(--mute);font-size:11px}
+  .empty{color:var(--dim);font-size:13px;padding:14px 0}
+  .toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(20px);opacity:0;
+    background:#161d2c;border:1px solid var(--line);color:var(--fg);padding:11px 18px;border-radius:11px;
+    font-size:13px;transition:.22s;pointer-events:none;z-index:60;box-shadow:0 18px 40px -18px #000}
+  .toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+
+<!-- 登录进程 -->
+<div id="login">
+  <div class="login-card">
+    <div class="logo"><div class="logo-mark">雾</div><b>WUHECORE · 雾核</b></div>
+    <h1>会员控制台</h1>
+    <p class="sub">登录后查看会员档位、剩余额度与调用详情</p>
+    <form id="loginForm" autocomplete="on">
+      <div class="field">
+        <label for="u">账号</label>
+        <input id="u" name="username" type="text" autocomplete="username" placeholder="用户名" required>
+      </div>
+      <div class="field">
+        <label for="p">密码</label>
+        <input id="p" name="password" type="password" autocomplete="current-password" placeholder="登录密码" required>
+      </div>
+      <button id="loginBtn" type="submit">登 录</button>
+      <div class="err" id="loginErr"></div>
+    </form>
+    <div class="foot"><span>还没有账号？<a href="/portal/register">立即注册</a></span><span><a href="/login">官网登录入口</a></span></div>
+  </div>
+</div>
+
+<!-- 详情面板 -->
+<div id="panel" class="hidden">
+  <header class="top">
+    <div class="logo" style="margin:0"><div class="logo-mark">雾</div><b>WUHECORE</b></div>
+    <span class="badge" id="tierBadge">—</span>
+    <div class="who">
+      <span style="font-size:13px;color:var(--mute)" id="whoName">—</span>
+      <button class="ghost" id="logoutBtn">退出登录</button>
+    </div>
+  </header>
+  <main>
+    <div class="grid g3" style="margin-bottom:16px">
+      <section class="card">
+        <h3>会员状态</h3>
+        <p class="tier-name" id="tierName">—</p>
+        <p class="tier-meta" id="tierMeta">—</p>
+        <div class="kv"><span>计费倍率</span><span id="tierRatio">—</span></div>
+        <div class="kv"><span>到期时间</span><span id="tierEnd">—</span></div>
+        <div class="kv"><span>入网时间</span><span id="userSince">—</span></div>
+        <div class="kv"><span>最近登录</span><span id="lastLogin">—</span></div>
+      </section>
+      <section class="card">
+        <h3>额度余额</h3>
+        <div class="big" id="remainUsd">—<small>USDT</small></div>
+        <div class="bar"><i id="usedBar" style="width:0"></i></div>
+        <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--dim)">
+          <span id="usedLabel">已用 —</span><span id="totalLabel">总额 —</span>
+        </div>
+        <div class="kv" style="margin-top:12px"><span>累计请求</span><span id="reqCount">—</span></div>
+        <div class="kv" id="srcRow" style="display:none"><span>口径</span><span id="srcNote">—</span></div>
+      </section>
+    </div>
+
+    <section class="card" id="liveCard" style="margin-bottom:16px">
+      <h3>实时计费流动 <span id="liveStamp" style="float:right;color:var(--dim);letter-spacing:0;text-transform:none;font-weight:400;font-size:11.5px">连接中…</span></h3>
+      <div class="grid g3" style="margin-bottom:6px">
+        <div class="stat"><b id="lvUsd">—</b><s>累计消耗 (USD)</s></div>
+        <div class="stat"><b id="lvIn">—</b><s>输入 tokens</s></div>
+        <div class="stat"><b id="lvOut">—</b><s>输出 tokens</s></div>
+      </div>
+      <div style="font-size:11px;color:var(--dim);margin-bottom:4px">价目 输入 $296 / 1M · 输出 $357 / 1M · 每 2 秒同步</div>
+      <div id="lvRows"></div>
+      <div id="lvTicks" style="max-height:180px;overflow:auto;margin-top:10px"></div>
+    </section>
+
+    <div class="grid g3" style="display:none">
+      <section class="card">
+        <h3>今日用量</h3>
+        <div class="big" id="todayTokens">—<small>tokens</small></div>
+        <div class="kv" style="margin-top:12px"><span>请求数</span><span id="todayReq">—</span></div>
+        <div class="kv"><span>消耗</span><span id="todayCost">—</span></div>
+        <div class="kv"><span>7 日消耗</span><span id="d7Cost">—</span></div>
+      </section>
+    </div>
+
+    <div class="grid" id="ipWrap" style="margin-bottom:16px;display:none">
+      <section class="card">
+        <h3>IP 池 · 资源用量 <span id="ipMeta" style="float:right;color:var(--dim);letter-spacing:0;text-transform:none;font-weight:400"></span></h3>
+        <div class="stat-row" style="grid-template-columns:repeat(auto-fit,minmax(104px,1fr))">
+          <div class="stat"><b id="ipTotal">—</b><s>累计使用 IP 枚</s></div>
+          <div class="stat"><b id="ipRecent">—</b><s>近期使用 IP 枚</s></div>
+          <div class="stat"><b id="ipLeft">—</b><s>剩余 IP 枚</s></div>
+          <div class="stat"><b id="ipUnit">—</b><s>单价 USDT</s></div>
+          <div class="stat"><b id="ipAmount">—</b><s>累计采购 USDT</s></div>
+          <div class="stat"><b id="ip7">—</b><s>近 7 天枚数</s></div>
+          <div class="stat"><b id="ip7amt">—</b><s>近 7 天金额 USDT</s></div>
+          <div class="stat"><b id="ip5">—</b><s>近 5 天枚数</s></div>
+          <div class="stat"><b id="ip5amt">—</b><s>近 5 天金额 USDT</s></div>
+        </div>
+        <div class="bar"><i id="ipBar" style="width:0"></i></div>
+        <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--dim);flex-wrap:wrap;gap:8px">
+          <span id="ipBarL">近 7 天占累计 —</span><span id="ipBarR">日均 —</span>
+        </div>
+      </section>
+    </div>
+
+    <div class="grid g2" style="margin-bottom:16px">
+      <section class="card">
+        <h3>用量趋势 · 近 14 天</h3>
+        <div class="stat-row">
+          <div class="stat"><b id="s30tok">—</b><s>30 天 TOKENS</s></div>
+          <div class="stat"><b id="s30req">—</b><s>30 天请求</s></div>
+          <div class="stat"><b id="s30cost">—</b><s>30 天消耗 USDT</s></div>
+        </div>
+        <div class="chart" id="chart"></div>
+      </section>
+      <section class="card">
+        <h3>模型用量 · 近 30 天</h3>
+        <div id="modelList"><div class="empty">暂无调用</div></div>
+      </section>
+    </div>
+
+    <div class="grid g2" style="margin-bottom:16px">
+      <section class="card">
+        <h3>最近调用</h3>
+        <div style="overflow:auto">
+          <table>
+            <thead><tr><th>时间</th><th>模型</th><th class="num">入</th><th class="num">出</th><th class="num">耗时</th><th class="num">消耗</th></tr></thead>
+            <tbody id="logBody"><tr><td colspan="6" class="empty">暂无调用记录</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+      <section class="card">
+        <h3>我的令牌</h3>
+        <div id="tokenList"><div class="empty">暂无令牌</div></div>
+      </section>
+    </div>
+
+    <div class="grid g2">
+      <section class="card">
+        <h3>接入方式</h3>
+        <div class="kv" style="border-top:0;padding-top:0"><span>Base URL</span><span class="mono" id="baseUrl">https://openingcode.top/v1</span></div>
+        <div class="kv"><span>可用模型</span><span class="mono" id="modelNames">Facai-DS · Facai-168</span></div>
+        <label style="margin-top:14px">接入串（点右侧一键复制）</label>
+        <div class="tk" style="border-bottom:0;padding-top:4px">
+          <div class="key mono" id="connectLine" style="flex:1;text-align:left;font-size:12px;word-break:break-all;color:var(--fg)">—</div>
+          <button class="mini" id="copyConn">复制</button>
+        </div>
+      </section>
+      <section class="card">
+        <h3>档位与资费</h3>
+        <div class="plans" id="planList"></div>
+      </section>
+    </div>
+  </main>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  const $ = s => document.querySelector(s);
+  const api = async (p, o) => {
+    const r = await fetch(p, Object.assign({credentials:'same-origin',headers:{'Content-Type':'application/json'}}, o||{}));
+    let j = null; try { j = await r.json(); } catch(e) {}
+    if (r.status === 401) { showLogin(); throw new Error('unauth'); }
+    if (!r.ok || (j && j.success === false)) throw new Error((j && j.message) || ('HTTP '+r.status));
+    return j;
+  };
+  const nf = n => (n==null?0:Number(n)).toLocaleString('en-US');
+  const usd = n => (Number(n||0)).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  let toastTimer=null, OWNER=null;
+  const toast = m => { const t=$('#toast'); t.textContent=m; t.classList.add('on');
+    clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove('on'),1800); };
+
+  function showLogin(){ $('#panel').classList.add('hidden'); $('#login').classList.remove('hidden'); }
+  function showPanel(){ $('#login').classList.add('hidden'); $('#panel').classList.remove('hidden'); }
+
+  // ── 登录 ──
+  $('#loginForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const btn=$('#loginBtn'), err=$('#loginErr');
+    err.textContent=''; btn.disabled=true; btn.textContent='登录中…';
+    try{
+      const r = await fetch('/portal/api/login',{method:'POST',credentials:'same-origin',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({username:$('#u').value.trim(),password:$('#p').value})});
+      const j = await r.json().catch(()=>({}));
+      if(!r.ok || !j.success){ err.textContent = j.message || '登录失败'; }
+      else { $('#p').value=''; if(j.data && j.data.kind==='member'){ location.href='/portal/member'; return; } await boot(); }
+    }catch(_){ err.textContent='网络异常，请重试'; }
+    finally{ btn.disabled=false; btn.textContent='登 录'; }
+  });
+
+  $('#logoutBtn').addEventListener('click', async () => {
+    try{ await fetch('/portal/api/logout',{method:'POST',credentials:'same-origin'}); }catch(_){}
+    showLogin(); toast('已退出登录');
+  });
+
+  // ── 面板渲染 ──
+  function renderMe(d){
+    const u=d.user, t=d.tier, q=d.quota;
+    $('#whoName').textContent = u.display_name || u.username;
+    $('#tierBadge').textContent = t.level || t.name;
+    $('#tierName').textContent = t.name + (t.level && t.level !== t.name ? '　' + t.level : '');
+    $('#tierMeta').textContent = t.desc || '';
+    $('#tierRatio').textContent = t.ratio;
+    $('#tierEnd').textContent = d.sub ? (d.sub.end_text + '（剩 ' + d.sub.days_left + ' 天）') : '未开通月卡';
+    $('#userSince').textContent = u.created_at;
+    $('#lastLogin').textContent = u.last_login_at;
+    $('#remainUsd').innerHTML = usd(q.remain_usd) + '<small>USDT</small>';
+    $('#usedBar').style.width = Math.min(100, q.used_pct) + '%';
+    $('#usedLabel').textContent = '已用 ' + usd(q.used_usd);
+    $('#totalLabel').textContent = '总额 ' + usd(q.total_usd);
+    $('#reqCount').textContent = nf(u.request_count);
+    $('#planList').innerHTML = (d.plans||[]).map(p =>
+      `<div class="plan ${p.group===u.group?'cur':''}">
+         <b>${p.title}</b><div class="p">${nf(p.price)}<small> ${p.currency||'USDT'}/${p.period}</small></div>
+         <small>${p.group==='svip'?'无上限':p.group}</small></div>`).join('') || '<div class="empty">暂无套餐</div>';
+    if (q.source) { $('#srcRow').style.display=''; $('#srcNote').textContent = q.source; }
+
+    OWNER = d.owner || null;
+    if (OWNER && OWNER.ip && OWNER.ip.total_count) {
+      const ip = OWNER.ip;
+      $('#ipWrap').style.display='';
+      $('#ipMeta').textContent = '单价 ' + usd(ip.unit_price) + ' ' + (ip.currency||'USDT') + ' · 数据更新 ' + String(OWNER.updated_at||'').slice(0,10);
+      $('#ipTotal').textContent = nf(ip.total_count);
+      $('#ipRecent').textContent = nf(ip.recent_count != null ? ip.recent_count : 0);
+      $('#ipLeft').textContent = nf(ip.remaining_count != null ? ip.remaining_count : 0);
+      $('#ipUnit').textContent = usd(ip.unit_price);
+      $('#ipAmount').textContent = usd(ip.total_amount);
+      $('#ip7').textContent = nf(ip.window_count);
+      $('#ip7amt').textContent = usd(ip.window_amount);
+      $('#ip5').textContent = nf(ip.window5_count != null ? ip.window5_count : 0);
+      $('#ip5amt').textContent = usd(ip.window5_amount);
+      const pct = ip.total_count ? Math.min(100, ip.window_count*100/ip.total_count) : 0;
+      $('#ipBar').style.width = pct.toFixed(1)+'%';
+      $('#ipBarL').textContent = '近 ' + (ip.window_days||7) + ' 天占累计 ' + pct.toFixed(2) + '%';
+      $('#ipBarR').textContent = '日均 ' + nf(Math.round(ip.daily_avg||0)) + ' 枚 / ' + usd(ip.daily_amount||0) + ' USDT · 月化 ' + usd(ip.month_projection||0) + ' USDT';
+    }
+  }
+
+  function renderUsage(d){
+    const t=d.today;
+    $('#todayTokens').innerHTML = nf(t.tokens) + '<small>tokens</small>';
+    $('#todayReq').textContent = nf(t.requests);
+    $('#todayCost').textContent = usd(t.cost_usd) + ' USDT';
+    if (OWNER && OWNER.ledger && OWNER.ledger.today_usdt != null) {
+      $('#todayCost').textContent = usd(OWNER.ledger.today_usdt) + ' USDT（账本口径）';
+    }
+    $('#d7Cost').textContent = usd(d.d7.cost_usd) + ' USDT';
+    $('#s30tok').textContent = nf(d.d30.tokens);
+    $('#s30req').textContent = nf(d.d30.requests);
+    $('#s30cost').textContent = usd(d.d30.cost_usd);
+    const s=d.series||[], max=Math.max(1,...s.map(x=>x.tokens));
+    $('#chart').innerHTML = s.map(x=>`<div class="col" title="${x.date} · ${nf(x.tokens)} tokens">
+      <i style="height:${Math.max(3,Math.round(x.tokens/max*100))}%"></i><u>${x.date.slice(3)}</u></div>`).join('');
+    $('#modelList').innerHTML = (d.models&&d.models.length)
+      ? d.models.map(m=>`<div class="kv"><span class="mono" style="font-size:12.5px">${m.model}</span>
+          <span>${nf(m.requests)} 次 · ${usd(m.cost_usd)}</span></div>`).join('')
+      : '<div class="empty">近 30 天暂无调用</div>';
+  }
+
+  function renderLogs(rows){
+    $('#logBody').innerHTML = (rows&&rows.length) ? rows.map(r=>`<tr>
+      <td class="mono" style="font-size:11.5px;color:var(--mute)">${r.time}</td>
+      <td class="mono" style="font-size:12px">${r.model}</td>
+      <td class="num">${nf(r.tokens_in)}</td><td class="num">${nf(r.tokens_out)}</td>
+      <td class="num">${(r.ms/1000).toFixed(1)}s</td><td class="num">${usd(r.cost_usd)}</td></tr>`).join('')
+      : '<tr><td colspan="6" class="empty">暂无调用记录</td></tr>';
+  }
+
+  function renderTokens(rows){
+    $('#tokenList').innerHTML = (rows&&rows.length) ? rows.map(t=>`
+      <div class="tk">
+        <div><div class="nm">${t.name} <span class="tag ${t.status==='启用'?'':'off'}">${t.status}</span></div>
+          <div class="meta">创建 ${t.created} · 最近 ${t.accessed} · 已用 ${usd(t.used_usd)} USDT</div></div>
+        <div class="key mono">${t.masked}</div>
+        <button class="mini" data-reveal="${t.id}">显示</button>
+      </div>`).join('') : '<div class="empty">暂无令牌，去官网控制台创建</div>';
+    $('#tokenList').querySelectorAll('[data-reveal]').forEach(b=>{
+      b.addEventListener('click', async ()=>{
+        try{
+          const j = await api('/portal/api/tokens/'+b.dataset.reveal+'/key');
+          if(navigator.clipboard) await navigator.clipboard.writeText(j.key).catch(()=>{});
+          b.textContent='已复制'; setTimeout(()=>b.textContent='显示',1600); toast('令牌已复制到剪贴板');
+        }catch(e){ toast('获取令牌失败'); }
+      });
+    });
+  }
+
+  async function boot(){
+    try{
+      const me = await api('/portal/api/me');
+      showPanel(); renderMe(me.data);
+      const [u,tk,lg,ep] = await Promise.all([
+        api('/portal/api/usage?days=14'), api('/portal/api/tokens'),
+        api('/portal/api/logs?limit=20'), api('/portal/api/endpoint')
+      ]);
+      renderUsage(u); renderTokens(tk.data); renderLogs(lg.data);
+      if(ep.base_url) $('#baseUrl').textContent = ep.base_url;
+      if(ep.models && ep.models.length) $('#modelNames').textContent = ep.models.join(' · ');
+      loadConnect();
+    }catch(e){ if(e.message!=='unauth') console.warn(e); }
+  }
+
+  let CONNECT='';
+  async function loadConnect(){
+    try{
+      const c = await api('/portal/api/connect');
+      CONNECT = c.line || c.base_url || '';
+      $('#connectLine').textContent = CONNECT || '—';
+      $('#copyConn').disabled = !CONNECT;
+    }catch(_){ $('#connectLine').textContent = '获取失败，请刷新'; }
+  }
+  $('#copyConn').addEventListener('click', async () => {
+    if(!CONNECT) return;
+    try{
+      if(navigator.clipboard) await navigator.clipboard.writeText(CONNECT);
+      else { const ta=document.createElement('textarea'); ta.value=CONNECT; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); }
+      const b=$('#copyConn'); b.textContent='已复制'; setTimeout(()=>b.textContent='复制',1600);
+      toast('接入串已复制');
+    }catch(_){ toast('复制失败，请手动选中复制'); }
+  });
+
+  boot();
+})();
+</script>
+<script>
+(function(){
+  const $ = id => document.getElementById(id);
+  const fmt = n => (n||0).toLocaleString('en-US');
+  const money = n => '$' + (n||0).toFixed(4);
+  let prev = null, ticks = [];
+  function render(d){
+    $('lvUsd').textContent = money(d.total.usd);
+    $('lvIn').textContent = fmt(d.total.tokens_in);
+    $('lvOut').textContent = fmt(d.total.tokens_out);
+    $('liveStamp').textContent = '同步 ' + d.updated + ' · ' + fmt(d.total.requests) + ' 次请求 · ' + d.keys.length + ' key';
+    if(prev){
+      for(const k of d.keys){
+        const p = prev.find(x => x.key === k.key); if(!p) continue;
+        const di = k.in - p.in, doo = k.out - p.out, du = k.usd - p.usd;
+        if(di > 0 || doo > 0 || du > 0){
+          ticks.unshift({t:new Date().toLocaleTimeString('zh-CN',{hour12:false}), k:k.key,
+                         m:(k.models||[])[0] || '—', d:'+'+fmt(di)+' / +'+fmt(doo), u:'+'+money(du)});
+        }
+      }
+      ticks = ticks.slice(0, 40);
+    }
+    prev = d.keys;
+    const max = Math.max.apply(null, d.keys.map(k => k.usd).concat([0.000001]));
+    const box = $('lvRows'); box.innerHTML = '';
+    for(const k of d.keys){
+      const pct = Math.max(1.5, k.usd / max * 100);
+      const row = document.createElement('div');
+      row.style.margin = '12px 0';
+      row.innerHTML =
+        '<div style="display:flex;gap:10px;align-items:baseline;font-size:12.5px;flex-wrap:wrap">' +
+          '<span style="font-family:ui-monospace,monospace;color:#cfe3ff">' + k.key + '</span>' +
+          '<span style="font-size:10.5px;padding:1px 7px;border-radius:20px;border:1px solid rgba(255,255,255,.09);color:var(--dim)">' + (k.label||k.tier) + '</span>' +
+          '<span style="font-size:10.5px;color:var(--dim)">' + ((k.models||[]).slice(0,3).join(' · ')||'—') + '</span>' +
+          '<span style="margin-left:auto;color:var(--dim);font-variant-numeric:tabular-nums">in <b style="color:#4cc9ff">' + fmt(k.in) + '</b> · out <b style="color:#b06bff">' + fmt(k.out) + '</b> · req <b style="color:#e8ecf4">' + fmt(k.req) + '</b> · <b style="color:#ffd48a">' + money(k.usd) + '</b></span>' +
+        '</div>' +
+        '<div class="bar" style="height:8px;margin-top:8px"><i style="width:' + pct + '%;background:linear-gradient(90deg,#1f7fff,#4cc9ff,#b06bff);transition:width .7s"></i></div>';
+      box.appendChild(row);
+    }
+    if(!d.keys.length) box.innerHTML = '<div style="color:var(--dim);font-size:12.5px">还没有计费记录</div>';
+    $('lvTicks').innerHTML = ticks.map(x =>
+      '<div style="display:flex;gap:10px;font-size:12px;padding:6px 0;border-bottom:1px dashed rgba(255,255,255,.06)">' +
+      '<span style="color:var(--dim)">' + x.t + '</span><span style="font-family:ui-monospace,monospace">' + x.k + '</span>' +
+      '<span style="color:var(--dim);flex:1">' + x.m + '</span><span style="color:#2ee6a8">' + x.d + '</span>' +
+      '<span style="color:#ffd48a">' + x.u + '</span></div>').join('');
+  }
+  async function tick(){
+    try{
+      const r = await fetch('/portal/api/live', {cache:'no-store'});
+      if(!r.ok) throw new Error('HTTP ' + r.status);
+      render(await r.json());
+    }catch(e){ $('liveStamp').textContent = '同步失败 ' + e.message; }
+  }
+  tick(); setInterval(tick, 2000);
+})();
+</script>
+</body>
+</html>
