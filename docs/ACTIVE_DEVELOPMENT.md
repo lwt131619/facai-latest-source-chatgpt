@@ -1,3 +1,31 @@
+## Satellite sources consolidated into the repo (2026-10-29)
+
+Owner asked for every latest source to be consolidated, GitHub included. Audit
+covered 7 local git copies, a full `find / -iname '*facai*'` on the VPS, and
+every GitHub ref. GitHub had no stray commits (main a8b15d4; production-build,
+audn-round2 and egress-rotation are all fully merged; tag snapshot-20261029
+added). The local `main` pointer was behind because checkpoint pushes HEAD:main
+without moving the local branch — fast-forwarded.
+
+The VPS runs four facai processes: facai-cloud and facai-tron-sync (main tree,
+deployed from staging at a8b15d4, zero diff), facai-whatsapp-relay (its
+index.mjs is byte-identical to bridge/whatsapp-relay/index.mjs — already in the
+repo), facai-portal (:9910, no git) and /var/www/facai-landing (no git). Only
+the last two were genuinely outside version control; they are now imported as
+`integrations/facai-portal/` (app.py, three static pages, admin scripts, the
+production systemd unit, README) and `integrations/facai-landing/`
+(index/robots/sitemap), with `integrations/README.md` mapping the four-process
+topology. Runtime secrets and data stay out of the repo by design: secret.key,
+wa-auth, owner_ledger.json, .reg.lock, *.bak.*, node_modules, __pycache__.
+A pre-commit scan found no hardcoded credentials.
+
+Capability clarification recorded in that README: PHP vulnerability
+verification (VENOM) lives in the main tree — facai/venom_agent.py, dispatched
+by quick_scan.py on PHP fingerprints, registered in arsenal.py, surfaced in
+scan.html — not in integrations/. Portal is the member/credits panel (BFF over
+New API) and landing is static. No main-service code changed, so no VPS
+redeploy is needed; test_quick_scan.py 18 passed as the smoke check.
+
 ## Test isolation governed: single-process full suite green (2026-10-29)
 
 The 2026-10-28 handoff debt ("single-process full run wedges, files must be

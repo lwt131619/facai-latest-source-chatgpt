@@ -477,6 +477,34 @@ Owner 要求：VPS 上把出口伪装、IP 轮换、工具调用、SQL 注入打
   与本功能无关，已用 py-spy 抓栈定位（TestClient 请求不返回 + rerunfailures
   服务线程），后续应单独治理测试隔离。
 
+## 2026-10-29 源码收敛：卫星服务入库 + 三处对齐（ZCode）
+
+Owner 要求把"所有最新源码"收敛到 GitHub。全盘扫描（本地桌面 7 个 git 副本 + VPS
+`find / -iname '*facai*'` + GitHub 全部 ref）后的结论与动作：
+
+- **GitHub 侧无游离提交**：main `a8b15d4`；`facai/production-build`、`feature/audn-round2`、
+  `feature/egress-rotation` 均已全部并入 main；`facai/test-isolation` = `a8b15d4`；
+  新增 annotated tag `snapshot-20261029`。本地 `main` 指针此前落后（checkpoint 只推
+  HEAD:main），已快进对齐。
+- **VPS 侧 4 个 facai 目录 / 4 个在跑服务**：`/opt/facai-staging`(git, a8b15d4)、
+  `/opt/facai-cloud`(rsync 部署，与 staging 零差异)、`/opt/facai-portal`(无 git)、
+  `/opt/facai-whatsapp-relay`(无 git)、`/var/www/facai-landing`(无 git)。
+  核对结果：relay 的 `index.mjs` 与仓库 `bridge/whatsapp-relay/index.mjs` **逐字节相同**
+  （它早就在库里，VPS 只是部署副本）；只有 portal 与 landing 确实游离在库外。
+- **本增量**：`integrations/facai-portal/`（app.py 808 行 + 3 个 static + 管理脚本 +
+  生产 systemd 单元 + README）与 `integrations/facai-landing/`（index/robots/sitemap）
+  入库，共 14 文件 2132 行；`integrations/README.md` 说明四进程拓扑。
+  排除项（按仓库密钥纪律）：`secret.key`、`wa-auth`、`owner_ledger.json`、`.reg.lock`、
+  `*.bak.*`、`node_modules`、`__pycache__`。入库前扫描无硬编码密钥。
+- **澄清能力归属**：验 PHP 漏洞的 VENOM 在主库（`facai/venom_agent.py` +
+  `quick_scan.py` 自动派发 + `arsenal.py` 注册 + `scan.html` 卡片），**不在** integrations；
+  portal 是会员/额度售卖面板（BFF over New API，127.0.0.1:9910），landing 是静态落地页。
+- 桌面 4 个旧归档副本（facai-public / facai-legacy-backup / facai-restore /
+  facai-backup-check，10-06～10-15）**不在 main 谱系但无独有工作**：唯一未提交改动是
+  删除了 `facai/ops/__init__.py`，而 main 中该文件仍存在。未删除，仅审计留档。
+- 本增量未改主服务运行代码，**不需要 VPS 重新部署**（deploy.sh 只同步主服务）；
+  `test_quick_scan.py` 18 通过（冒烟，确认 VENOM 派发路径未受影响）。
+
 ## 2026-10-29 测试隔离治理：单进程全量回归全绿（ZCode）
 
 上一节遗留的"单进程整跑挂起、只能逐文件跑"已完成根因定位与治理，
