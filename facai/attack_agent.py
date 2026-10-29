@@ -64,12 +64,30 @@ SLEEP_SECONDS = 3
 SLEEP_MARGIN = 0.8
 
 
+def _fetch(host, path, *, max_bytes, timeout=8, pool=None, attempts=3):
+    """One request with bounded transport-level retries.
+
+    A mid-chain reset (WAF, middlebox, dropped local connection) must cost
+    one retry, not the whole technique. Only responses that reached the
+    target are returned; when every attempt fails, the last error response
+    is returned unchanged so callers keep their honest failure semantics.
+    """
+    response = {}
+    for attempt in range(attempts):
+        response = net_client.request(host, path, max_bytes=max_bytes,
+                                      timeout=timeout, egress_pool=pool)
+        if not response.get('error'):
+            return response
+        if attempt + 1 < attempts:
+            time.sleep(0.2 * (attempt + 1))
+    return response
+
+
 def _probe(url_base, path, params, timeout=8, pool=None):
     """GET the target path with the given params; return the normalised response."""
     query = urlencode(params, doseq=True)
     full_path = f'{path}?{query}' if query else path
-    return net_client.request(url_base, full_path, max_bytes=65536, timeout=timeout,
-                              egress_pool=pool)
+    return _fetch(url_base, full_path, max_bytes=65536, timeout=timeout, pool=pool)
 
 
 def _signature(response):
@@ -81,7 +99,7 @@ def _signature(response):
 def discover_params(host, pool=None):
     """Find injectable parameters: URL query in links, and GET/POST form fields."""
     found = []
-    root = net_client.request(host, '/', max_bytes=262144, egress_pool=pool)
+    root = _fetch(host, '/', max_bytes=262144, pool=pool)
     if root.get('error'):
         return found
     text = net_client.text_of(root)

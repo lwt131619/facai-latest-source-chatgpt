@@ -1,3 +1,36 @@
+## Test isolation governed: single-process full suite green (2026-10-29)
+
+The 2026-10-28 handoff debt ("single-process full run wedges, files must be
+run individually") is closed. Root cause, measured on this Windows host with
+a dedicated socketpair hammer and thread dumps: host security software
+intermittently drops/aborts loopback connections. Three faces of one cause:
+(1) dropped SYNs during CPython's Windows socketpair fallback — its
+unbounded accept() wedged every later event-loop creation forever
+(hammer: 7/2000 single-thread, 61/3200 at 8 threads, accept delays
+quantised at 2/4/6s retransmit steps); (2) aborted ESTABLISHED connections
+(WinError 10053) kill an event loop's self-pipe wake channel, stranding
+callbacks and any run_sync_from_thread waiter (TestClient portal exits);
+(3) Chromium connects to the local test server hit ETIMEDOUT — the
+previously recorded "3 browser flakes" were this, not browser races.
+
+Hardening (all pinned by tests): conftest replaces the Windows socketpair
+fallback with a bounded-accept (10s) + 3-retry version; a session stall
+watchdog (300s default, `FACAI_TEST_STALL_LIMIT` override) dumps all thread
+stacks to a temp file (bypassing pytest fd capture) and exits 70 so no
+unknown wedge can ever hang a run again; `attack_agent._fetch` retries
+transport-level failures boundedly without loosening the differential
+oracle; `trust.export` pins ZIP entry mtimes to the proof's `created_at`,
+making one proof always export byte-identical bytes (immutable-proof
+contract; a rare closed-loop restart flake came from zipfile's wall-clock
+mtimes). New pins: tests/test_socketpair_hardening.py (4),
+tests/test_attack_agent.py (3, offline), test_trust_workflow determinism
+(1). Windows single-process full suite: 1553 passed / 10 skipped / 0
+failed in 521s (two earlier complete runs 1550/2 and 1551/2; the residual
+failures were browser ETIMEDOUT environment flakes that pass solo, and the
+closed-loop proof failure is gone). Two other runs were bounded-terminated
+by the watchdog exactly as designed (exit 70 + on-disk dumps). Linux CI
+verdicts come from GitHub Actions, not from these local numbers.
+
 ## Skill source version visibility (2026-10-17)
 
 Owner-scoped `/registries/skills/{key}/versions` lists immutable source

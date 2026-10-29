@@ -4,6 +4,7 @@ This additive layer never changes legacy build_proof.verified, dispatches work,
 fetches a URL, or treats a content hash as proof that an assertion is true.
 """
 from contextlib import contextmanager
+from datetime import datetime
 import io
 import hashlib
 import json
@@ -742,10 +743,24 @@ class TrustStore:
         files['proof.json'] = canonical(proof).encode()
         files['manifest.json'] = (canonical({'algorithm': 'sha256', 'files': {
             name: hashlib.sha256(content).hexdigest() for name, content in files.items()}})+'\n').encode()
+        # Deterministic export: the immutable-proof contract means one proof
+        # must always export byte-identical bytes. zipfile pins entry mtimes
+        # to "now" by default, which made two downloads of the same proof
+        # differ whenever the clock ticked between them; pin every entry to
+        # the proof's own created_at instead.
+        try:
+            stamped = datetime.fromisoformat(
+                proof['created_at'].replace('Z', '+00:00'))
+            entry_time = stamped.utctimetuple()[:6]
+        except (ValueError, AttributeError, KeyError):
+            entry_time = (1980, 1, 1, 0, 0, 0)  # ZIP epoch: still deterministic
         output = io.BytesIO()
         with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as archive:
             for name, content in files.items():
-                archive.writestr(name, content)
+                info = zipfile.ZipInfo(name, date_time=entry_time)
+                info.compress_type = zipfile.ZIP_DEFLATED
+                info.external_attr = 0o600 << 16
+                archive.writestr(info, content)
         return output.getvalue()
 
     def save_knowledge(self, owner, mission_id, proof_id, sha256, title, tags=()):

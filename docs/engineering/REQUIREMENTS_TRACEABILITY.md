@@ -31,6 +31,7 @@
 | ENGINES-001 | Shannon/Kali/BlackArch附属接入 | PLANNED | P3 | AUTH-001, SKILL-001, RUNTIME-001 |
 | SEC-001 | 既有隔离/密钥/账单/渠道能力保留 | PARTIAL | P2 | AUTH-001, DB-001 |
 | ACCEPT-001 | 完整Production v1.0端到端验收 | NOT_VERIFIED | P4 | SETUP-001, MISSION-001, RUNTIME-001, OPS-001, PROOF-001, MOBILE-001, DESKTOP-001, PKG-001, UPDATE-001, SYNC-001 |
+| QA-001 | 免登录极速检测 + 自动注入攻击（对标 Web-Check/Obscura） | VERIFIED_LOCAL | Phigh |  |
 
 ## DIR-001 — 统一方向与接手入口
 
@@ -50,7 +51,7 @@
 
 源码真实状态优先，已验证范围可复现
 
-**现有定位**：`FACAI_CURRENT_STATE_REPORT.md`、`docs/BUILD_VALIDATION_2026-10-15.md`
+**现有定位**：`FACAI_CURRENT_STATE_REPORT.md`、`docs/BUILD_VALIDATION_2026-10-15.md`、`tests/conftest.py`、`facai/attack_agent.py`、`facai/trust.py`、`tests/test_socketpair_hardening.py`、`tests/test_attack_agent.py`
 
 **验收**：
 
@@ -58,7 +59,7 @@
 - 保留已有有效行为，相关回归及失败路径测试通过
 - 验证命令/结果/提交与外部局限写入交接记录
 
-**下一步**：2026-10-21 Git工作树全量测试1447通过/7跳过/0失败(df7deb9)，真实Chromium启用；上一个ZIP从零解压全量测试1441通过/8跳过/0失败，源码快照938ebe5，额外跳过项仅因部署树无.git。新ZIP需另行验证，包内结果以dist/package-validation.json为准；尚非生产验收。
+**下一步**：2026-10-29 测试隔离治理后，本机 Windows 单进程全量 1553通过/10跳过/0失败(521秒)；此前单进程整跑会随机永久挂起、只能逐文件跑。根因是主机安全软件阵发性丢弃/中止 loopback 连接（socketpair 创建期 SYN 丢弃、已建立连接WinError 10053、Chromium connect ETIMEDOUT 三种表现），已以 conftest 有界 socketpair + 会话停滞看门狗(FACAI_TEST_STALL_LIMIT) + attack_agent 传输重试 + Proof ZIP 确定性导出治理，详见 AGENT_HANDOFF.md 2026-10-29 节。浏览器 ETIMEDOUT 类抖动在本机仍可能偶发（环境源未消除），单跑/重跑即过；Linux CI 以 GitHub Actions 为准。真实 Provider/生产验收仍未覆盖。
 
 ## SYNC-001 — GitHub检查点与断点备份
 
@@ -409,3 +410,163 @@ FACAI Core总控，Shannon执行附属，工具库独立子系统
 - GitHub备份与正式安装包可复现，不假报Production完成
 
 **下一步**：按验收矩阵逐项实测；未通过项不删除、不用单元测试总数替代最终交付。A26 闭环结构已钉住(2026-10-23):tests/test_acceptance_closed_loop.py 在同一使命同一Trace上全链通过:自然语言→修订→确认(原话保留)→独立授权→每步骤真实执行路径(OpenCodeAdapter+受控runner,不调模型)→执行事件同事务自动采集为证据→Owner补充证据+独立复核→断言未审UNKNOWN→Owner审查INFERENCE→证据快照→Owner验收(验收待办为空)→下载ZIP→知识收录→重启恢复→全局事件流重启前后逐字节一致。受控runner不等于真实Provider执行:矩阵A26保持NOT_VERIFIED,直至真实链路与真实界面验收通过。
+
+## QA-001 — 免登录极速检测 + 自动注入攻击（对标 Web-Check/Obscura）
+
+Owner 2026-10-28：对标 Web-Check（44 检查项）与 Obscura（反检测浏览器）的优势能力，做最快检测；侦察出高危信号后自动派发后端攻击 Agent 真发载荷、差分验证、能取数就取数。弃掉拖慢速度的检查（端口扫描/traceroute/截图/第三方情报 API/CT 子域），保留覆盖面。
+
+**现有定位**：`facai/net_client.py`、`facai/recon.py`、`facai/attack_agent.py`、`facai/quick_scan.py`、`facai/quick_scan_routes.py`、`facai/static/scan.html`、`tests/test_quick_scan.py`、`tests/test_attack_integration.py`、`requirements.txt`、`facai/arsenal.py`、`tests/test_arsenal.py`、`tests/test_sqlmap_driver.py`
+
+**验收**：
+
+- 1
+- 7
+-  
+- 项
+- 检
+- 查
+- 并
+- 发
+- 完
+- 成
+- （
+- 实
+- 测
+-  
+- e
+- x
+- a
+- m
+- p
+- l
+- e
+- .
+- o
+- r
+- g
+-  
+- 1
+- .
+- 4
+- –
+- 3
+- .
+- 1
+- s
+- ）
+- ；
+- 攻
+- 击
+- 链
+- 在
+- 真
+- 实
+-  
+- S
+- Q
+- L
+- i
+- t
+- e
+-  
+- 注
+- 入
+- 靶
+- 场
+- 上
+-  
+- e
+- r
+- r
+- o
+- r
+- -
+- b
+- a
+- s
+- e
+- d
+-  
+- +
+-  
+- b
+- o
+- o
+- l
+- e
+- a
+- n
+-  
+- 双
+- 确
+- 认
+- 并
+- 自
+- 动
+- 发
+- 现
+- 参
+- 数
+- ；
+- V
+- P
+- S
+-  
+- 生
+- 产
+- 环
+- 境
+- 同
+- 代
+- 码
+- 复
+- 现
+-  
+- C
+- O
+- N
+- F
+- I
+- R
+- M
+- E
+- D
+- _
+- I
+- N
+- J
+- E
+- C
+- T
+- I
+- O
+- N
+- ；
+- 公
+- 网
+-  
+- /
+- s
+- c
+- a
+- n
+-  
+- 2
+- 0
+- 0
+- ；
+- 全
+- 量
+- 回
+- 归
+-  
+- 1
+- 5
+- 0
+- 5
+-  
+- 通
+- 过
+- 。
+
+**下一步**：交付收口（2026-10-28）：sqlmap 端到端已实证（真靶场确认+dbms+两表全量取数）；武器库 arsenal.py 注册调度上线（sqlmap+nmap 占位）；任务流水 recent API+UI 上线；解析器假阳性已修并有负向测试。生产 /scan 可用。后续可选：UNION 盲注并行位提取、POST 表单注入、nmap 受限变体接线。

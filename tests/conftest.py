@@ -11,6 +11,150 @@ import pytest
 import facai.billing
 from facai.api import create_app
 
+
+# --- Windows loopback socketpair hardening ----------------------------------
+#
+# Root cause of the single-process full-suite wedges recorded in
+# AGENT_HANDOFF.md (2026-10-28): on this Windows host loopback SYNs are
+# occasionally dropped in bursts (measured with a dedicated hammer: accept
+# delays quantise at 2/4/6s = SYN retransmit backoff, and some never
+# complete). CPython's Windows socketpair fallback swallows the failed
+# non-blocking connect and then blocks in accept() with NO timeout, so a
+# single dropped SYN wedges every later event-loop creation (anyio portals,
+# uvicorn loops) forever -- the suite hangs until killed, at a random test.
+#
+# Replace the fallback with a bounded-accept + retry version: a dropped SYN
+# costs seconds (the stack's own retransmit usually recovers inside one
+# attempt) instead of the whole run, and a persistent drop raises loudly.
+# POSIX keeps the native socketpair syscall untouched.
+
+if os.name == "nt":
+    _native_socketpair = socket.socketpair
+
+    def _hardened_socketpair(
+        family=socket.AF_INET, type=socket.SOCK_STREAM, proto=0
+    ):
+        if (family, type, proto) != (socket.AF_INET, socket.SOCK_STREAM, 0):
+            return _native_socketpair(family, type, proto)
+        last_exc: OSError | None = None
+        for _ in range(3):
+            listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            try:
+                listener.bind(("127.0.0.1", 0))
+                listener.listen(1)
+                client.setblocking(False)
+                try:
+                    client.connect(("127.0.0.1", listener.getsockname()[1]))
+                except OSError:
+                    pass  # EWOULDBLOCK while the handshake completes is expected
+                client.setblocking(True)
+                listener.settimeout(10.0)
+                peer, _addr = listener.accept()
+                listener.close()
+                return peer, client
+            except OSError as exc:
+                last_exc = exc
+                listener.close()
+                client.close()
+        raise OSError(
+            f"loopback socketpair failed after 3 attempts "
+            f"(dropped loopback SYNs?): {last_exc}"
+        ) from last_exc
+
+    socket.socketpair = _hardened_socketpair  # type: ignore[assignment]
+
+
+# --- Session stall watchdog ---------------------------------------------------
+#
+# The same host interference that drops loopback SYNs can also abort an
+# ESTABLISHED loopback connection (WinError 10053): when it hits an event
+# loop's self-pipe wake channel, the loop sleeps forever with callbacks
+# stranded in its queue, and any thread waiting on run_sync_from_thread --
+# a TestClient portal exit, an app shutdown -- waits forever. That cannot
+# be prevented from user code, so the suite must terminate loudly instead
+# of wedging: this watchdog dumps all thread stacks and exits nonzero when
+# no test/collection progress is observed for STALL_LIMIT seconds.
+
+STALL_LIMIT_SECONDS = 300
+
+# The real stderr fd, saved before pytest's fd-level capture replaces fd 2.
+_real_stderr_fd = os.dup(2)
+
+
+class _StallWatchdog:
+    def __init__(self, limit: float = STALL_LIMIT_SECONDS):
+        try:
+            limit = float(os.environ.get("FACAI_TEST_STALL_LIMIT", limit))
+        except ValueError:
+            pass
+        self.limit = limit
+        self._beat = time.monotonic()
+        self._lock = threading.Lock()
+
+    def touch(self) -> None:
+        with self._lock:
+            self._beat = time.monotonic()
+
+    def stalled_for(self, now: float) -> float:
+        with self._lock:
+            return now - self._beat
+
+    def _run(self) -> None:
+        import faulthandler
+        import tempfile
+
+        while True:
+            time.sleep(min(10, max(1, self.limit / 3)))
+            stalled = self.stalled_for(time.monotonic())
+            if stalled <= self.limit:
+                continue
+            # The full dump MUST survive pytest's capture: fd-level capture
+            # and os._exit would discard anything written to sys.stderr, so
+            # the dump always goes to a file on disk; the banner is
+            # best-effort on the real (dup'ed) stderr fd.
+            banner = (
+                f"!!! watchdog: no suite progress for {stalled:.0f}s "
+                f"(> {self.limit:.0f}s); this host intermittently kills "
+                f"loopback connections (AGENT_HANDOFF.md test-isolation "
+                f"notes). Full thread dump follows in this file.\n"
+            )
+            dump_path = os.path.join(
+                tempfile.gettempdir(), f"facai-pytest-stall-{int(time.time())}.dump"
+            )
+            try:
+                with open(dump_path, "w", encoding="utf-8") as fh:
+                    fh.write(banner)
+                    faulthandler.dump_traceback(file=fh)
+                try:
+                    os.write(
+                        _real_stderr_fd,
+                        (banner + f"full dump: {dump_path}\n").encode(
+                            "utf-8", "replace"
+                        ),
+                    )
+                except OSError:
+                    pass
+            except OSError:
+                pass
+            os._exit(70)
+
+
+_watchdog = _StallWatchdog()
+threading.Thread(target=_watchdog._run, daemon=True).start()
+
+
+@pytest.hookimpl(trylast=True)
+def pytest_collection_modifyitems(items):
+    _watchdog.touch()
+
+
+@pytest.hookimpl(trylast=True)
+def pytest_runtest_logreport(report):
+    _watchdog.touch()
+
+
+
 # Balance-pool semantics (operator directive): production customers start at
 # balance 0 and cannot dispatch until topped up. Most tests exercise other
 # features and need a FUNDED world, so this default applies everywhere except

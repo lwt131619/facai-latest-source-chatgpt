@@ -476,3 +476,45 @@ Owner 要求：VPS 上把出口伪装、IP 轮换、工具调用、SQL 注入打
   单进程整跑会因既有跨文件线程泄漏在 `test_channel_host.py` 等位置挂起，
   与本功能无关，已用 py-spy 抓栈定位（TestClient 请求不返回 + rerunfailures
   服务线程），后续应单独治理测试隔离。
+
+## 2026-10-29 测试隔离治理：单进程全量回归全绿（ZCode）
+
+上一节遗留的"单进程整跑挂起、只能逐文件跑"已完成根因定位与治理，
+最终单进程全量 **1553 通过 / 10 跳过 / 0 失败，521 秒**（此前两次完整跑为
+1550过/2败/462s、1551过/2败/537s，失败均为下述浏览器抖动且闭环失败已消失）。
+
+**根因（本机实测带证据，非推测）**：本 Windows 主机的安全软件会阵发性
+丢弃/中止 loopback 连接。三种表现、一个来源：
+1. socketpair 创建期 SYN 丢弃：CPython Windows 兜底 socketpair
+   （bind/listen/connect/accept）静默吞掉失败的 connect 且 accept 无超时。
+   专用压测实测：单线程 2000 次 7 次失败、8 线程 3200 次 61 次异常，accept
+   延迟整齐落在 2/4/6s（SYN 重传退避档），部分永不完成。事件循环 self-pipe
+   撞上即永久卡死（anyio portal / uvicorn loop），suite 在随机测试上挂死。
+2. 已建立连接被中止（WinError 10053）：事件循环 self-pipe 作为已建立连接
+   被杀后，循环睡死在 `_poll`、回调滞留队列，等待 `run_sync_from_thread`
+   的线程（如 TestClient portal 退出）永等。用户代码无法预防，只能有界化。
+3. Chromium→本地测试服务器 connect ETIMEDOUT：此前记录的"3 个浏览器竞态"
+   实为同源环境干扰（`APIRequestContext.post: connect ETIMEDOUT
+   127.0.0.1:port`），并非浏览器启动竞态；单跑必过、重跑即绿。
+
+**治理（4 项，均有回归钉或实测记录）**：
+- `tests/conftest.py`：Windows 下以有界 accept(10s)+3 次重试的 hardened
+  socketpair 替换兜底实现（POSIX 原生 syscall 不动）。SYN 丢弃从永久卡死
+  降为秒级延迟（协议栈重传通常 2-6s 内自愈），持续失败响亮报错。
+- `tests/conftest.py`：会话停滞看门狗——默认 300s（`FACAI_TEST_STALL_LIMIT`
+  可调）无测试/收集进展即转储全部线程栈到临时文件并以 exit 70 终止；转储
+  落盘以绕过 pytest 的 fd 级捕获。任何未知卡点从此"有界失败+可诊断"，
+  本轮实测两次按设计终止（exit 70 + 转储文件齐全）。
+- `facai/attack_agent.py`：`_fetch` 传输级错误有界重试（3 次）——差分链上
+  单发被 RST/丢弃只损失一次重试而非整条技术线报废；确认语义不变（只重试
+  传输失败，不放宽差分标准）。
+- `facai/trust.py`：Proof ZIP 导出确定性——zipfile 默认用当前时间做条目
+  mtime，同一 Proof 跨秒两次下载字节不同（曾致闭环重启测试偶发失败，也
+  违反不可变 Proof 承诺）；现钉死为 proof 的 `created_at`，同一 Proof 永远
+  字节一致（DOS 时间戳 2 秒粒度属格式固有）。
+
+**验证**：新增 `tests/test_socketpair_hardening.py`（4 例）、
+`tests/test_attack_agent.py`（3 例，纯桩不连网）、`tests/test_trust_workflow.py`
+增加确定性导出钉；定向全绿。本机 Windows 单进程全量如上；Linux CI 以远端
+Actions 结果为准，不得把本机数字写成 CI 通过。浏览器 ETIMEDOUT 类抖动在
+本机仍可能偶发（环境源未消除），单跑/重跑即过，看门狗保证最坏有界终止。

@@ -206,6 +206,36 @@ def test_export_hashes_and_snapshot_integrity_no_paths_or_event_payloads(tmp_pat
         service.export('alice', id, proof['id'])
 
 
+def test_export_is_byte_deterministic_across_time(tmp_path):
+    """The immutable-proof contract: one proof, byte-identical export forever.
+
+    zipfile pins entry mtimes to the wall clock by default, so two downloads
+    straddling a second boundary used to produce different bytes for the same
+    proof (observed as a rare closed-loop restart flake).
+    """
+    import time
+    from datetime import datetime
+
+    store, service, id = mission(tmp_path)
+    revision = service.get('alice', id)['revision']
+    proof = service.snapshot('alice', id, revision)
+    first = service.export('alice', id, proof['id'])
+    time.sleep(1.1)  # cross a second boundary deterministically
+    second = service.export('alice', id, proof['id'])
+    assert first == second
+    with store.connect() as db:
+        created_at = db.execute('SELECT created_at FROM trust_proofs WHERE id=?',
+                                (proof['id'],)).fetchone()[0]
+    stamped = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+    utc = stamped.utctimetuple()
+    # DOS ZIP timestamps carry seconds in 2s steps: the odd bit is lost on
+    # the round trip, so compare at the format's own granularity.
+    expected = utc[:5] + (utc[5] // 2 * 2,)
+    with zipfile.ZipFile(io.BytesIO(first)) as archive:
+        for info in archive.infolist():
+            assert info.date_time == expected
+
+
 def test_spec_failure_rolls_back_intent_confirmation(tmp_path, monkeypatch):
     store = Store(tmp_path); intents = IntentWorkspace(store)
     intent = intents.compile('alice', '分析 project', {'target': '/repo'})
