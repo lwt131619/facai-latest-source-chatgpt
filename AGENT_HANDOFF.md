@@ -7,7 +7,13 @@
 同日代码增量：`facai/skills.py` 导入时计算整份 `SKILL.md` 的
 `document_sha256`，可选 `source_commit` 限完整 40 位 Git SHA；注册表
 校验字段形状，导入响应返回两项溯源信息。旧 Skill 保持兼容，不自动填造来源。
-Skill 导入/生命周期/注册定向回归 171 passed；全量回归尚未在此增量重跑。
+第一断点 Skill 导入/生命周期/注册定向回归 171 passed；Linux 工作树全量
+`1554 passed / 11 skipped / 0 failed`（真实 Chromium，237.81 秒）。跳过项：
+deploy-now.py 不在树 5、真实模型 Key 未配置 1、Windows-only socketpair 4、
+vendor authority manifests 缺失 1。随后第二断点补导入前元数据校验：不合法来源
+不再先写正文造成孤儿源记录；定向回归 172 passed（含新增失败路径）。
+最后这处修复尚未重跑全量；`source_commit` 仅为提交者声明的 SHA 形状，未自动
+核对远端树中的文件，不得写成已验证来源内容。
 
 URL 被动体检开源选型与接入边界：docs/PASSIVE_SITE_ASSESSMENT_UPSTREAM.md。
 

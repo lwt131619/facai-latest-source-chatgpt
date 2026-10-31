@@ -273,6 +273,23 @@ def test_skill_import_endpoint_registers_approved_enabled_able_skill(tmp_path, m
     assert client.post("/api/v1/skills/import", json={"content": refused}).status_code == 422
 
 
+def test_invalid_skill_metadata_does_not_persist_orphan_source(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+    from facai.api import create_app
+
+    monkeypatch.setenv("FACAI_ADMIN_PASSWORD", "skill-pass-123")
+    client = TestClient(create_app(tmp_path))
+    session = client.post("/api/v1/auth/login",
+                          json={"username": "admin", "password": "skill-pass-123"}).json()
+    client.headers.update({"X-CSRF-Token": session["csrf_token"]})
+    content = _frontmatter_only({"name": "bad-source", "description": "test",
+                                  "source_url": "https://127.0.0.1/private"})
+    response = client.post("/api/v1/skills/import", json={"content": content})
+    assert response.status_code == 422
+    with client.app.state.store.connect() as db:
+        assert db.execute("SELECT count(*) FROM skill_sources WHERE skill_id='bad-source'").fetchone()[0] == 0
+
+
 def test_skill_import_requires_authentication(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
     from facai.api import create_app

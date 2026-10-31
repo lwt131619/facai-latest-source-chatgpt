@@ -2522,6 +2522,9 @@ def create_app(data_dir=None, opencode_adapter=None, goose_adapter=None):
             if body.source_url and not parsed.get("source_url"):
                 parsed["source_url"] = body.source_url.strip()
             metadata = build_skill_metadata(parsed)
+            # Validate before persisting source: a malformed source URL or
+            # metadata must not leave an orphaned body in skill_sources.
+            _validate_skill_metadata(parsed["name"], metadata)
             metadata["body_sha256"] = store.skill_source_register(
                 parsed["name"], metadata.get("version") or "", parsed["_body"],
                 owner_id=current_owner())
