@@ -1,5 +1,9 @@
 # FACAI 开源 Agent Skill 情报目录
 
+2026-10-31 增量：格式、组件漏洞情报与资产检查候选的固定提交和许可证实证见
+`docs/CAPABILITY_SOURCE_CATALOG_2026-10-31.md`；后续 Skill 原件收录用
+`docs/SKILL_INTAKE_TEMPLATE.md`。该增量不改变本文件早期候选的启用状态。
+
 > 用途：为 FACAI 收集、登记与筛选可用的开源 Agent Skill 资源来源。
 > 范围：workflow orchestration、代码质量/测试、API 集成、消息渠道、安全审核等方向。
 > 说明：本目录基于公开一手来源做了情报核对，**不复制第三方正文或代码**；FACAI 运行时不会因本目录自动调用外网/API，也不表示任何技能已安装或已导入。所有候选均需逐项复核后才能启用。

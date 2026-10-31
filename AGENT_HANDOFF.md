@@ -1,5 +1,10 @@
 # FACAI / ICS — 当前接手入口
 
+2026-10-31 能力情报增量：`docs/CAPABILITY_SOURCE_CATALOG_2026-10-31.md`
+固定 Agent Skills 格式、OSV-Scanner、Trivy 的上游 commit 与许可证；
+`docs/SKILL_INTAKE_TEMPLATE.md` 供后续 Owner 提供的 Skill 原件逐项收录。
+仅来源核对，未安装、未启用，也未在本环境复验外部扫描能力。
+
 URL 被动体检开源选型与接入边界：docs/PASSIVE_SITE_ASSESSMENT_UPSTREAM.md。
 
 记录源/ZCode版本与智能路由完整配置：docs/WORKSTATION_ROUTING_STORAGE.md。
