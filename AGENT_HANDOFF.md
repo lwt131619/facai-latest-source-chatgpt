@@ -1,5 +1,12 @@
 # FACAI / ICS — 当前接手入口
 
+2026-10-31 7×24 Skill 巡检增量：`facai/ops/skill_refresh.py` 改为已安装同名项
+只观察原件哈希，变化进入 `reingest.changed` 并告警，不覆盖 Owner 禁用/版本，
+软删墓碑不复活；演习排除 disabled。`deploy/facai-skill-refresh.service`
+把报告写入可写 `data/skill-refresh/latest.json`。定向 108 passed / 5 skipped；
+`deploy/validate_config.sh` 通过，nginx 未安装故 `nginx -t` 跳过。VPS timer
+实机运行及告警送达未验证；本增量全量回归未跑。
+
 2026-10-31 能力情报增量：`docs/CAPABILITY_SOURCE_CATALOG_2026-10-31.md`
 固定 Agent Skills 格式、OSV-Scanner、Trivy 的上游 commit 与许可证；
 `docs/SKILL_INTAKE_TEMPLATE.md` 供后续 Owner 提供的 Skill 原件逐项收录。

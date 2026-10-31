@@ -6,4 +6,4 @@ After=network-online.target facai-cloud.service
 Type=oneshot
 User=facai
 WorkingDirectory=/opt/facai-cloud
-ExecStart=/opt/facai-cloud/.venv/bin/python -m facai.ops.skill_refresh --data /opt/facai-cloud/data --out /opt/facai-cloud/docs/SKILL_REFRESH_latest.json
+ExecStart=/opt/facai-cloud/.venv/bin/python -m facai.ops.skill_refresh --data /opt/facai-cloud/data --out /opt/facai-cloud/data/skill-refresh/latest.json

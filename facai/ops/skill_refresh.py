@@ -26,6 +26,7 @@ from ..boundary import BoundaryGovernor
 from ..conversion import _skill_score
 from ..ops.case_ingest import ingest_cases
 from ..registries import Registries
+from ..skills import build_skill_metadata, parse_skill_md
 from ..store import Store
 
 # 策展爬取源：产品可观测面 + 参考教程（差分收录进案例库）
@@ -55,9 +56,32 @@ EXERCISE_PROBES = {
 
 
 def _re_ingest_skills(governor, registries, vendor_dir: Path) -> dict:
-    admitted, blocked = [], []
+    admitted, blocked, unchanged, changed, owner_removed = [], [], [], [], []
+    live = registries.store.registry_list("skills", owner_id="admin")
     for md in sorted(vendor_dir.glob("*/SKILL.md")):
-        result = governor.intake(md.read_text(encoding="utf-8"), source_url=None)
+        content = md.read_text(encoding="utf-8")
+        try:
+            parsed = parse_skill_md(content)
+            metadata = build_skill_metadata(parsed)
+        except ValueError as exc:
+            blocked.append({"skill": md.parent.name, "violations": [str(exc)]})
+            continue
+        skill_id = parsed["name"]
+        if registries.store.registry_tombstone("skills", skill_id, owner_id="admin"):
+            owner_removed.append(skill_id)
+            continue
+        current = live.get(skill_id)
+        if current is not None:
+            if current.get("document_sha256") == metadata["document_sha256"]:
+                unchanged.append(skill_id)
+            else:
+                changed.append({"skill": skill_id,
+                                "candidate_sha256": metadata["document_sha256"],
+                                "installed_sha256": current.get("document_sha256")})
+            # Refresh observes changes; it never overrides Owner enablement,
+            # pinned versions, or the current source of an installed Skill.
+            continue
+        result = governor.intake(content, source_url=None)
         if result["decision"] == "admitted":
             registries.register("skills", result["skill"], result["metadata"],
                                 owner_id="admin")
@@ -65,13 +89,17 @@ def _re_ingest_skills(governor, registries, vendor_dir: Path) -> dict:
         else:
             blocked.append({"skill": result["skill"],
                             "violations": result["violations"]})
-    return {"admitted": admitted, "blocked": blocked}
+    return {"admitted": admitted, "blocked": blocked, "unchanged": unchanged,
+            "changed": changed, "owner_removed": owner_removed}
 
 
 def _exercise(governor, registries, owner_id="admin") -> dict:
     skills = registries.list("skills", owner_id=owner_id)
-    rows = []
+    rows, disabled = [], []
     for skill_id, skill in sorted(skills.items()):
+        if skill.get("enabled") is False:
+            disabled.append(skill_id)
+            continue
         best_skill, best_probe = 0.0, ""
         for probe_label, probe_text in EXERCISE_PROBES.items():
             score = _skill_score(probe_label, probe_text, skill or {})
@@ -82,6 +110,7 @@ def _exercise(governor, registries, owner_id="admin") -> dict:
                      "orphan": best_skill <= 0.0})
     orphans = [r["skill"] for r in rows if r["orphan"]]
     return {"exercised": len(rows) - len(orphans), "orphans": orphans,
+            "disabled": disabled,
             "rows": rows}
 
 
@@ -115,7 +144,8 @@ def run_daily(data_dir: Path, out: Path | None = None,
     inv = governor.below_local_report()
     report["invariant"] = inv
 
-    failed = bool(report["reingest"]["blocked"]) or bool(inv is None or not inv["holds"]) \
+    failed = bool(report["reingest"]["blocked"] or report["reingest"]["changed"]) \
+        or bool(inv is None or not inv["holds"]) \
         or bool(report["exercise"]["orphans"])
     if out:
         out = Path(out)

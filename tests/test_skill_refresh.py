@@ -18,6 +18,12 @@ CLEAN_PAGE = ("<html><head><title>产品页</title></head><body>"
               "<p>某无代码平台支持从描述生成应用并一键部署。</p></body></html>")
 
 
+def test_timer_report_path_is_inside_facai_writable_data():
+    unit = (REPO_ROOT / 'deploy/facai-skill-refresh.service').read_text()
+    assert '--out /opt/facai-cloud/data/skill-refresh/latest.json' in unit
+    assert '--out /opt/facai-cloud/docs/' not in unit
+
+
 def _transport(request: httpx.Request) -> httpx.Response:
     return httpx.Response(200, text=CLEAN_PAGE,
                           headers={"content-type": "text/html"})
@@ -57,9 +63,49 @@ class TestDailyLoop:
                           http_client=client)
         second = run_daily(tmp_path / "d", None, sources=["https://x.example/p"],
                            http_client=client)
-        assert second["reingest"]["admitted"] == first["reingest"]["admitted"]
+        assert second["reingest"]["admitted"] == []
+        assert second["reingest"]["unchanged"] == first["reingest"]["admitted"]
         assert second["crawl"]["registered"] == 0          # 内容未变全部跳过
         assert second["_exit"] == 0
+
+    def test_refresh_preserves_owner_disable_and_tombstone(self, tmp_path):
+        from facai.store import Store
+
+        (tmp_path / "vendor").mkdir()
+        shutil.copytree(VENDOR, tmp_path / "vendor" / "skills")
+        data_dir = tmp_path / "d"
+        first = run_daily(data_dir, None, sources=[])
+        skill_a, skill_b = first["reingest"]["admitted"][:2]
+        store = Store(data_dir)
+        live = store.registry_list("skills", owner_id="admin")
+        store.registry_register("skills", skill_a, {**live[skill_a], "enabled": False}, owner_id="admin")
+        store.registry_delete("skills", skill_b, owner_id="admin", deleted_by="admin")
+        report = run_daily(data_dir, None, sources=[])
+        current = store.registry_list("skills", owner_id="admin")
+        assert current[skill_a]["enabled"] is False
+        assert skill_b not in current
+        assert store.registry_tombstone("skills", skill_b, owner_id="admin") is not None
+        assert skill_b in report["reingest"]["owner_removed"]
+        assert skill_b not in report["reingest"]["admitted"]
+        assert skill_a in report["exercise"]["disabled"]
+        assert all(row["skill"] != skill_a for row in report["exercise"]["rows"])
+
+    def test_changed_vendor_source_is_reported_without_overwriting(self, tmp_path):
+        from facai.store import Store
+
+        (tmp_path / "vendor").mkdir()
+        shutil.copytree(VENDOR, tmp_path / "vendor" / "skills")
+        data_dir = tmp_path / "d"
+        first = run_daily(data_dir, None, sources=[])
+        skill_id = first["reingest"]["admitted"][0]
+        store = Store(data_dir)
+        original = store.registry_list("skills", owner_id="admin")[skill_id]
+        md = tmp_path / "vendor" / "skills" / skill_id / "SKILL.md"
+        md.write_text(md.read_text() + "\nAdditional source revision.\n", encoding="utf-8")
+        report = run_daily(data_dir, None, sources=[])
+        assert report["_exit"] == 1
+        assert report["reingest"]["changed"][0]["skill"] == skill_id
+        assert store.registry_list("skills", owner_id="admin")[skill_id] == original
 
     def test_orphan_skill_gets_flagged(self, tmp_path, monkeypatch):
         import facai.ops.skill_refresh as sr

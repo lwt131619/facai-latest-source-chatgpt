@@ -100,3 +100,13 @@ systemd timer → 数据备份、摘要、Skill 刷新（逐项启用和验证�
 每阶段结束后更新 `task-registry.json` 和验收矩阵的**实际证据**，正常提交并推送
 GitHub；未实测的项目保留 PARTIAL/NOT_VERIFIED。正式 Production v1.0 发布仍
 以全部必要验收项通过为准。
+
+## 2026-10-31 Skill 日巡检稳定性增量
+
+`facai.ops.skill_refresh` 仍按每日 timer 检查来源并做路由演习，但已安装同名 Skill
+不再因定时重收而覆盖 Owner 的禁用、版本或软删墓碑。上游原件哈希有变化时记录
+`reingest.changed` 并返回非零退出码，留给 Owner 审查更新；未变化记
+`reingest.unchanged`。已禁用的 Skill 单列 `exercise.disabled`，不计入“演习成功”。
+定时报告写入 `/opt/facai-cloud/data/skill-refresh/latest.json`，属于部署脚本创建的
+服务用户可写数据目录，不再写到只读源码目录 `docs/`。本轮只完成本地定向测试及
+配置静态校验；VPS timer 的真实启动、告警到达和跨日恢复仍须在服务器验收。
