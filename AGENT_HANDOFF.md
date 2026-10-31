@@ -1,5 +1,10 @@
 # FACAI / ICS — 当前接手入口
 
+2026-10-31 候选引擎评审：`docs/ENGINE_LINK_ASSISTANT_REVIEW.md` 已核对
+`link-assistant/agent` 固定提交、Unlicense、Bun 实现及事件/模型路由/续接
+合同，登记为来源已核验的附属引擎候选。未安装或执行；上游现在有可选权限模式，
+不能再把“没有权限系统”写作该版本事实。FACAI 适配与 VPS 验收均未做。
+
 2026-10-31 7×24 Skill 巡检增量：`facai/ops/skill_refresh.py` 改为已安装同名项
 只观察原件哈希，变化进入 `reingest.changed` 并告警，不覆盖 Owner 禁用/版本，
 软删墓碑不复活；演习排除 disabled。`deploy/facai-skill-refresh.service`

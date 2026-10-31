@@ -26,6 +26,9 @@ GitHub API 受本执行环境代理阻断，因此以 Git 浅克隆实证为准�
 
 ## 后续红队 Skill 收录
 
+候选附属引擎 `link-assistant/agent` 的固定提交、许可证、事件流与模型路由
+接入映射见 `docs/ENGINE_LINK_ASSISTANT_REVIEW.md`；未安装、未启用。
+
 收到 Skill 原件后按 `docs/SKILL_INTAKE_TEMPLATE.md` 逐项登记。先固定来源与
 哈希，检查许可证、依赖、权限需求和真实测试证据；未审查的条目保持
 `CANDIDATE`，不因名称或自述自动取得执行权限。用户原始用途与授权范围
