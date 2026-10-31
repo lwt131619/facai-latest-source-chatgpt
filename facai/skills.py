@@ -18,6 +18,7 @@ frontmatter is parsed with a minimal "key: value" parser instead of a
 full YAML implementation.
 """
 
+import hashlib
 import re
 from datetime import datetime, timezone
 
@@ -162,6 +163,7 @@ def parse_skill_md(text: str) -> dict:
         "description": description,
         "warnings": warnings,
         "_body": body,
+        "_document_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
     }
     if license_val:
         parsed["license"] = license_val
@@ -170,6 +172,11 @@ def parse_skill_md(text: str) -> dict:
     source_url = data.get("source_url") or data.get("homepage")
     if source_url:
         parsed["source_url"] = source_url
+    source_commit = data.get("source_commit")
+    if source_commit is not None:
+        if not isinstance(source_commit, str) or not re.fullmatch(r"[0-9a-fA-F]{40}", source_commit):
+            raise ValueError("SKILL.md source_commit 必须是完整的 40 位 Git commit SHA")
+        parsed["source_commit"] = source_commit.lower()
     return parsed
 
 
@@ -200,7 +207,10 @@ def build_skill_metadata(parsed: dict) -> dict:
         "review_status": "approved",
         "imported_at": datetime.now(timezone.utc).isoformat(),
         "warnings": list(parsed.get("warnings", [])),
+        "document_sha256": parsed["_document_sha256"],
     }
+    if parsed.get("source_commit"):
+        metadata["source_commit"] = parsed["source_commit"]
     # SKILL-001 ①: version is registry data, not a pass-through field. A
     # re-registration carries the NEW version verbatim (the registry row is
     # replaced whole); pre-existing rows without a version simply keep having

@@ -139,6 +139,13 @@ def _validate_skill_metadata(key, value):
         if len(version) > 64:
             raise ValueError("Skill version must be <= 64 characters")
 
+    for field, length in (("document_sha256", 64), ("source_commit", 40)):
+        digest = value.get(field)
+        if digest is not None and (not isinstance(digest, str)
+                                   or len(digest) != length
+                                   or not re.fullmatch(r"[0-9a-f]+", digest)):
+            raise ValueError(f"Skill {field} must be a lowercase {length}-character hex digest")
+
     # SKILL-001 ⑥: dependencies name other registry skills. Shape validation
     # only — presence is checked at routing time (conversion.assign_stage),
     # and nothing is ever auto-installed.

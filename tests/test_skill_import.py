@@ -6,6 +6,7 @@ rejection paths, curl|sh hard rejection, bash-block warnings, and
 compatibility with the skills registry validator.
 """
 
+import hashlib
 import json
 
 import pytest
@@ -46,8 +47,22 @@ class TestValidParse:
         assert metadata["review_status"] == "approved"
         assert metadata["name"] == "code-review"
         assert metadata["license"] == "MIT"
+        assert metadata["document_sha256"] == hashlib.sha256(VALID_SKILL_MD.encode()).hexdigest()
         assert "imported_at" in metadata
         assert metadata["warnings"] == []
+
+    def test_fixed_source_commit_is_normalized_and_persisted(self):
+        commit = "A" * 40
+        content = VALID_SKILL_MD.replace("license: MIT", f"license: MIT\nsource_commit: {commit}")
+        metadata = build_skill_metadata(parse_skill_md(content))
+        assert metadata["source_commit"] == commit.lower()
+        assert metadata["document_sha256"] == hashlib.sha256(content.encode()).hexdigest()
+        _validate_skill_metadata("code-review", metadata)
+
+    def test_invalid_source_commit_rejected(self):
+        content = VALID_SKILL_MD.replace("license: MIT", "license: MIT\nsource_commit: latest")
+        with pytest.raises(ValueError, match="source_commit"):
+            parse_skill_md(content)
 
     def test_metadata_passes_registries_validation_with_license(self):
         metadata = build_skill_metadata(parse_skill_md(VALID_SKILL_MD))
@@ -238,9 +253,12 @@ def test_skill_import_endpoint_registers_approved_enabled_able_skill(tmp_path, m
     assert response.status_code == 201, response.text
     body = response.json()
     assert body["registered"] is True and body["review_status"] == "approved"
+    assert body["document_sha256"] == hashlib.sha256(content.encode()).hexdigest()
+    assert body["source_commit"] is None
 
     skills = client.get("/api/v1/registries/skills").json()
     assert skills["demo-skill"]["review_status"] == "approved"
+    assert skills["demo-skill"]["document_sha256"] == body["document_sha256"]
     assert "正文指令不应入库" not in json.dumps(skills)
 
     # The imported skill is immediately enabled-able and resolvable.

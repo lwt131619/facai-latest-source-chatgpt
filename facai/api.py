@@ -2530,6 +2530,8 @@ def create_app(data_dir=None, opencode_adapter=None, goose_adapter=None):
             raise HTTPException(422, str(exc)) from None
         return {"id": parsed["name"], "registered": True,
                 "review_status": metadata.get("review_status", "approved"),
+                "document_sha256": metadata["document_sha256"],
+                "source_commit": metadata.get("source_commit"),
                 "warnings": metadata.get("warnings", [])}
 
     @app.post("/api/v1/registries/skills/{key}/update")

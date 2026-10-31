@@ -4,6 +4,10 @@
 固定 Agent Skills 格式、OSV-Scanner、Trivy 的上游 commit 与许可证；
 `docs/SKILL_INTAKE_TEMPLATE.md` 供后续 Owner 提供的 Skill 原件逐项收录。
 仅来源核对，未安装、未启用，也未在本环境复验外部扫描能力。
+同日代码增量：`facai/skills.py` 导入时计算整份 `SKILL.md` 的
+`document_sha256`，可选 `source_commit` 限完整 40 位 Git SHA；注册表
+校验字段形状，导入响应返回两项溯源信息。旧 Skill 保持兼容，不自动填造来源。
+Skill 导入/生命周期/注册定向回归 171 passed；全量回归尚未在此增量重跑。
 
 URL 被动体检开源选型与接入边界：docs/PASSIVE_SITE_ASSESSMENT_UPSTREAM.md。
 

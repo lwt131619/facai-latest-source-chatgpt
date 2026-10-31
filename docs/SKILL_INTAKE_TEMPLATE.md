@@ -24,3 +24,9 @@
 
 收录完成仅代表可追溯。`ENABLED` 还需通过 FACAI 现有注册表版本校验、Owner
 控制面、依赖检查与定向回归；运行结果是否可信由 Evidence/Proof 单独判定。
+
+2026-10-31 起，`SKILL.md` frontmatter 可带 `source_commit: <完整40位Git SHA>`。
+导入响应和注册表均保留 `document_sha256`（整份提交文本的 UTF-8 SHA256），
+与已有 `body_sha256`（正文哈希）并列；缺少 commit 的本地原件仍可导入，
+但来源提交状态应如实标为未固定。此字段用于核对原件，不证明来源内容可信或
+Skill 已按说明执行。
