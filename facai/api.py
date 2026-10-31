@@ -96,6 +96,7 @@ class RegisterRequest(BaseModel):
 class SkillImport(BaseModel):
     content: str = Field(min_length=1, max_length=100_000)
     source_url: str | None = Field(default=None, max_length=500)
+    source_commit: str | None = Field(default=None, pattern=r"^[0-9a-fA-F]{40}$")
 
 
 class SkillVersionUpdate(BaseModel):
@@ -2521,6 +2522,11 @@ def create_app(data_dir=None, opencode_adapter=None, goose_adapter=None):
             parsed = parse_skill_md(body.content)
             if body.source_url and not parsed.get("source_url"):
                 parsed["source_url"] = body.source_url.strip()
+            if body.source_commit:
+                claimed = body.source_commit.lower()
+                if parsed.get("source_commit") and parsed["source_commit"] != claimed:
+                    raise ValueError("Skill source_commit differs between content and import request")
+                parsed["source_commit"] = claimed
             metadata = build_skill_metadata(parsed)
             # Validate before persisting source: a malformed source URL or
             # metadata must not leave an orphaned body in skill_sources.

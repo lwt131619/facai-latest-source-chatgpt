@@ -31,3 +31,19 @@
 但来源提交状态应如实标为未固定。此字段用于核对原件，不证明来源内容可信或
 Skill 已按说明执行。`source_commit` 是提交者声明的来源版本；FACAI 当前只校验
 其 SHA 形状，尚不自动比对远端仓库中对应文件。
+
+推荐把 `source_commit` 放在 `POST /api/v1/skills/import` 的请求字段里，
+而不是写入源仓库同一份 `SKILL.md`；否则文件内容随 commit 字段变化，无法
+自然表示“包含自身的提交”。旧 frontmatter 字段继续兼容；两处同时提供且
+不一致时返回 422。
+
+离线核对已克隆的上游仓库：
+
+```bash
+python scripts/verify_skill_source.py /path/to/source-clone \
+  <完整40位commit> skills/example/SKILL.md /path/to/to-be-imported/SKILL.md
+```
+
+退出码 0 表示字节一致，1 表示不一致或输入错误；输出只含路径、提交和哈希，
+不读取网络、不执行 Skill，也不写入 FACAI 注册表。核对前仍要确认本地克隆的
+来源仓库身份和许可证；这个工具只证明该克隆里指定提交与待导入文件相同。

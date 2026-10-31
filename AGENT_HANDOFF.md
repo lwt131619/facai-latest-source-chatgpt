@@ -14,6 +14,12 @@ vendor authority manifests 缺失 1。随后第二断点补导入前元数据校
 不再先写正文造成孤儿源记录；定向回归 172 passed（含新增失败路径）。
 最后这处修复尚未重跑全量；`source_commit` 仅为提交者声明的 SHA 形状，未自动
 核对远端树中的文件，不得写成已验证来源内容。
+2026-10-31 后续溯源增量：导入请求可单独携带 `source_commit`，与
+SKILL.md 内声明冲突时拒绝；新增 `scripts/verify_skill_source.py` 离线比较
+已克隆仓库指定 commit/path 的 Git blob 与待导入原件字节，不访问网络或运行 Skill。
+具体命令与限制见 `docs/SKILL_INTAKE_TEMPLATE.md`。Skill 导入、生命周期、
+注册与离线核对定向回归 177 passed；
+本增量尚未重跑全量，也未为任何外部 Skill 实际出具来源匹配证明。
 
 URL 被动体检开源选型与接入边界：docs/PASSIVE_SITE_ASSESSMENT_UPSTREAM.md。
 

@@ -259,6 +259,20 @@ def test_skill_import_endpoint_registers_approved_enabled_able_skill(tmp_path, m
     skills = client.get("/api/v1/registries/skills").json()
     assert skills["demo-skill"]["review_status"] == "approved"
     assert skills["demo-skill"]["document_sha256"] == body["document_sha256"]
+
+    # Commit metadata travels outside the SKILL.md, avoiding a self-referential
+    # commit hash in a file that itself belongs to the commit.
+    pinned = client.post("/api/v1/skills/import", json={
+        "content": content, "source_url": "https://github.com/demo/skill",
+        "source_commit": "A" * 40})
+    assert pinned.status_code == 201, pinned.text
+    assert pinned.json()["source_commit"] == "a" * 40
+    assert client.get("/api/v1/registries/skills").json()["demo-skill"]["source_commit"] == "a" * 40
+    conflicting = content.replace("license: MIT", "license: MIT\nsource_commit: " + "B" * 40)
+    refused_commit = client.post("/api/v1/skills/import", json={
+        "content": conflicting, "source_url": "https://github.com/demo/skill",
+        "source_commit": "A" * 40})
+    assert refused_commit.status_code == 422
     assert "正文指令不应入库" not in json.dumps(skills)
 
     # The imported skill is immediately enabled-able and resolvable.
