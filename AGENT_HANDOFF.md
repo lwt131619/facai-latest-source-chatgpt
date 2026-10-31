@@ -5,7 +5,10 @@
 软删墓碑不复活；演习排除 disabled。`deploy/facai-skill-refresh.service`
 把报告写入可写 `data/skill-refresh/latest.json`。定向 108 passed / 5 skipped；
 `deploy/validate_config.sh` 通过，nginx 未安装故 `nginx -t` 跳过。VPS timer
-实机运行及告警送达未验证；本增量全量回归未跑。
+实机运行及告警送达未验证；本增量 Linux 工作树全量回归随后完成：
+`1563 passed / 11 skipped / 0 failed`（真实 Chromium，235.27 秒）。跳过项为
+deploy-now.py 缺失 5、真实模型 Key 未配置 1、Windows-only socketpair 4、
+vendor authority manifests 缺失 1。该结果不等于 VPS timer 实机验收。
 
 2026-10-31 能力情报增量：`docs/CAPABILITY_SOURCE_CATALOG_2026-10-31.md`
 固定 Agent Skills 格式、OSV-Scanner、Trivy 的上游 commit 与许可证；
