@@ -1,0 +1,18 @@
+{
+  "recorded_at": "2026-11-01T05:50:18.450829+00:00",
+  "source_commit_tested": "abf6152ec64c481f13d117878eb694e69cd49efe",
+  "scope": "full local regression after collection gap evidence links and goal-focus runtime compatibility fix",
+  "command": "FACAI_TEST_CHROMIUM=/usr/bin/chromium /workspace/facai-venv/bin/python -m pytest -q",
+  "result": {
+    "passed": 1569,
+    "skipped": 11,
+    "failed": 0,
+    "warnings": 1,
+    "duration_seconds": 243.31
+  },
+  "limitations": [
+    "Controlled runner is not a real model/provider acceptance test.",
+    "A linked Owner note does not independently verify a source.",
+    "No VPS deployment or production v1.0 acceptance was performed."
+  ]
+}
