@@ -1,5 +1,11 @@
 # FACAI / ICS — 当前接手入口
 
+2026-11-01 GitHub 首页整理：根 `README.md` 现在只保留启动、状态与当前权威
+文档入口；旧长版完整保存在 `docs/archive/README_pre_2026-11-01.md`；
+`docs/INDEX.md` 区分当前入口、历史快照与 `dist/` 旧产物。源码、启动脚本和
+已跟踪历史构建物均未移动或删除。README/INDEX 共 40 个本地链接目标存在；
+`scripts/validate_handoff.py` 28 方向通过，`git diff --check` 通过。
+
 2026-11-01 本地恢复增量：`facai/backup.py` 在离线恢复时核对暂存副本与来源
 快照的 SHA-256，并拒绝意外 SQLite WAL/SHM 旁路文件；恢复演练输出来源/恢复
 数据库哈希并纳入 `ok` 判断。相同行数但暂存内容改变的回归已补。

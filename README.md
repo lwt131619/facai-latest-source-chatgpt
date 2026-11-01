@@ -1,148 +1,49 @@
-# FACAI 最新源代码 · ICS 开发主仓库
+# FACAI / ICS
 
-A live Mission Control for isolated missions: the selected mission's real overall progress,
-current stage and pipeline are on the first screen, while mission creation and model
-registration live in collapsible secondary sections. This is a new repository; no prior
-Facai project was modified.
+FACAI 是以 Owner 控制为核心的任务平台：保留用户原话，先预览理解与确认任务，
+再由独立的授权与运行时执行，记录事件、证据、产物和 Trace。现有 Python/FastAPI、
+SQLite、Web/手机控制台及本地启动入口持续可用。**本仓库仍在开发中，尚未通过
+Production v1.0 全项验收。**
 
-当前用户指定开发与备份仓库：`https://github.com/lwt131619/facai-latest-source-chatgpt`。
-任何 Agent 的读取、推送和续接说明见 [GitHub 接手权限](docs/GITHUB_AGENT_ACCESS.md)。
+## 快速开始
 
-## 开发接手与方向冻结
+本地安装需 Python 3.10+。Windows 双击 `start.bat`；Linux/macOS 运行：
 
-任何 Agent 先读 [AGENTS.md](AGENTS.md) → [核心不可变量](docs/engineering/CORE_INVARIANTS.md) → [断点交接](AGENT_HANDOFF.md)。
-全部方向、当前状态、源码位置、下一步和验收详见 [27项任务对照](docs/engineering/REQUIREMENTS_TRACEABILITY.md)。
-开发ZIP整合现有启动/后端/控制台、测试与方向说明；完整Git历史另见 `FACAI-resume.bundle`。
-GitHub官方集成已恢复；上传仍以远端SHA核对一致为准，详见检查点状态文件。
-
-## 当前新增的可操作流程
-
-新本机安装打开 `/setup`，创建 Owner、保存单次恢复密钥，再登录配置模型和检测环境。
-`/workspace` 保留原话、修订理解并确认任务，确认不会自动授权或执行。
-`/evidence-center` 管理证据、Claim、人工审查、上下文冲突、Proof ZIP及独立Owner验收。
-`/knowledge` 显式收录并检索已验收快照，保留推断与来源，不自动升级为事实。
-
-详见 [设置向导](docs/SETUP_WIZARD.md)、[证据与证明](docs/TRUST_WORKFLOW.md)、
-[知识资产](docs/KNOWLEDGE_MEMORY.md)。仍为开发版：真实20+Agent、来源独立验证、native跨平台与VPS完整验收尚未完成。
-
-## 新增：理解预览与确认任务
-
-启动后打开 `/workspace`：输入原话 → 补充/修改理解 → 确认生成任务 → Owner单独授权 → 前往既有任务控制台绑定并执行。
-理解和修订持久化；确认本身不排队、不调用模型和工具。预览为规则提取/人工修订，未校准置信度保持未知。
-现有预算、权限和Runtime要求继续生效。
-
-## 本地一键启动（新增）
-
-Windows：双击 `start.bat`；macOS/Linux：`./start.sh`。首次需要 Python 3.10+ 和网络。
-默认打开 http://127.0.0.1:8080，保留既有数据库和调度器。
-登录凭据、Docker 用法和当前交付限制见 [本地交付说明](docs/LOCAL_APPLIANCE.md)。
-
-## Run
-
-```powershell
-python -m pip install -r requirements.txt
-python -m uvicorn facai.api:app --host 127.0.0.1 --port 8765
+```sh
+./start.sh
 ```
 
-Open http://127.0.0.1:8765. Runtime data is kept in `data/` (or `FACAI_DATA_DIR`). The server binds to localhost by default.
+打开 `http://127.0.0.1:8080`，首次使用按 `/setup` 初始化 Owner。
+容器和远程部署分别见 [本地交付](docs/LOCAL_APPLIANCE.md) 与
+[部署说明](docs/DEPLOYMENT.md)。启动脚本不会替你配置真实模型、外部渠道或 VPS。
 
-For a remote installation, set a strong `FACAI_ADMIN_PASSWORD` or configure up to five users with `FACAI_USERS_JSON` in the protected service environment file. Serve the app through HTTPS. Browsers log in at `/login` and receive an `HttpOnly`, `SameSite=Strict` session cookie with CSRF protection; scripts may use HTTP Basic with their own account. Never expose the app over plaintext HTTP. Use `deploy/` and `docs/DEPLOYMENT.md` for the reverse proxy, TLS and verification gate.
+## 从哪里读起
 
-## Implemented
+| 目的 | 当前入口 |
+| --- | --- |
+| 新 Agent 接手开发 | [AGENTS.md](AGENTS.md) → [当前断点](AGENT_HANDOFF.md) |
+| 产品方向与不可变量 | [接管协议](FACAI_CODEX_HANDOFF.md) · [核心不可变量](docs/engineering/CORE_INVARIANTS.md) |
+| 已实现/未完成/验收 | [任务对照](docs/engineering/REQUIREMENTS_TRACEABILITY.md) · [验收矩阵](docs/engineering/ACCEPTANCE_MATRIX.md) |
+| 寻找源码和文档 | [仓库地图](docs/engineering/REPOSITORY_MAP.md) · [文档导航](docs/INDEX.md) |
+| 最新提交与同步 | `git log -1 --oneline` · `git status --short` · [同步说明](docs/GITHUB_AGENT_ACCESS.md) |
 
-- Mission-specific workspace, event timeline, agent sessions, artifacts, and workflow steps, stored in SQLite.
-- Independent mission progress calculated from that mission's steps, with event polling and live Server-Sent Events.
-- Separate agent, model, skill, and runtime registries; each mission binds all four independently (binding one never clears another), and bindings are never shared between missions.
-- OpenCode adapter discovers the local binary, prepares a mission-specific workspace, and runs a task inside exactly that workspace. Stdout/stderr are captured as mission events and artifacts, and the run's real status (completed/failed/timeout) is recorded without fabricating success.
-- Each successful run makes a real Git commit in the mission workspace (checkpoint) and records tokens and upstream cost reported by the model, visible per mission.
-- A durable SQLite scheduler queues jobs with priority and leases, runs them with a bounded concurrency, and supports pause/resume/cancel/retry. Queued and running jobs survive process restart and expired leases are recovered.
-- Model gateway for configured OpenAI-compatible endpoints and Anthropic Claude Messages API. Outcomes are attributed to the upstream as completed, refused, timeout, rate-limited, authentication failure, transport failure, tool failure, resource unavailable, or a generic upstream failure, with the raw upstream body retained; a model refusal is never represented as a Facai refusal. Task events and the console show the same provider/model/runtime/skill, cost and token fields. Credentials are referenced by environment-variable name and stored per provider, never in the model registry.
-- Mission Control console: the selected mission's real overall progress, current stage and live stage pipeline are shown on the first screen (desktop and phone); mission creation, model registration and the other registry controls sit in collapsible secondary sections. Deep-link a mission with `?mission=<id>`; the selection is restored after login. Bind agent/model/skill/runtime independently, preserve the original input verbatim alongside a separately stored professional prompt whose every revision is logged with the original it came from, drive real step transitions, run OpenCode tasks synchronously or through the queue, and inspect per-stage events, artifacts (with content), checkpoints, the latest code diff, attribution and cost on PC or mobile.
-- Session authentication for public use: login form, `HttpOnly` `SameSite=Strict` session cookie, hashed tokens, CSRF protection, per-address login throttling and logout. Up to five configured users have isolated Missions, linked messages and mission costs; registries and channel integrations remain instance-wide. HTTP Basic remains available for scripts and health checks.
-- Production deployment plane under `deploy/`: nginx HTTPS reverse proxy with SSE support, hardened systemd unit, certificate-aware two-phase install (HTTP ACME bootstrap first, TLS only once the cert exists), scoped non-destructive code sync with pre-deploy backup and rollback, and a DNS/TLS/HTTP verification gate that checks the authoritative NameSilo servers, not just a cached resolver. Credentials are classified by service: app login/runtime config in `/etc/facai-cloud/facai.env` and each model credential in its own `/etc/facai-cloud/providers/<service>.env` (both `0640 root:facai`, loaded by the unit); `install`/`update` seed and migrate them atomically, with a config backup first. See `docs/DEPLOYMENT.md`.
-- Message channel adapters (`facai/channels/`): one shared `InboundMessage`/`OutboundReply` contract and a secret-free health/config view. **Implemented:** Telegram text webhooks and WhatsApp Cloud webhooks feed the same inbound pipeline — the original text is preserved verbatim, converted into a professional prompt, turned into a mission, then dispatched to the durable queue — and repeat deliveries are idempotent by platform message id (a duplicate WhatsApp or Telegram delivery reuses the same mission and job, and a delivery deferred because no valid binding existed can be retried after one is registered). Personal WeChat uses iLink QR authorization plus a background long-poll loop that enters that same pipeline once the account is authorized. Outbound send exists for WhatsApp Cloud, Telegram `sendMessage` and WeChat text. **Needs configuration:** real send/receive only works with the user's own platform credentials or authorization (Meta WhatsApp tokens, a Telegram bot token plus webhook secret, or an actual WeChat QR scan); until then each channel reports `UNCONFIGURED` and returns 503 rather than pretending a connection. **Not implemented:** Telegram edits/media/callback queries and WeChat media/files/voice/group chat. Messages are audited in SQLite and shown in Mission Control. See `docs/CHANNELS.md`.
-- n8n automation integration (`facai/n8n.py`): mission/stage events are forwarded to a configured n8n webhook as signed JSON (HMAC-SHA256 over `<timestamp>.<body>`, sent with `X-Facai-Timestamp`/`X-Facai-Signature`/`X-Facai-Request-Id`), and a signed callback endpoint applies n8n updates to mission events and steps with an idempotent `request_id`. Credentials come from the classified provider env file `N8N_WEBHOOK_URL`/`N8N_SIGNING_SECRET`; the webhook URL is treated as a secret and never returned or logged. Without both values the relay is a no-op and the integration reports `CONFIG_REQUIRED`. Retryable upstream failures are retried with real attribution, and the console shows the honest config state and recent delivery results. See `docs/N8N.md`.
-- Customer-owned persistent channel bindings (`/api/v1/my/channels*`, `facai/notify.py`): a signed-in tenant binds the Telegram bot **they created themselves** (their own BotFather token plus the chat that receives progress) and it persists server-side — 绑一次 = 云端 7×24. The token is stored only as secretbox ciphertext, is decrypted solely in memory at the moment the NOTIFY loop sends that owner's mission progress, and is never returned by any API or written to logs/audit rows. A bound owner's progress rides their own bot even when the station bot is unconfigured; a failed customer-bot send is honestly audited as FAILED without blocking the pipeline; unbinding falls back to the station channel, whose behavior is unchanged; bindings are tenant-isolated (each account sees and clears only its own). See `docs/CLIENT_DELIVERY.md`.
-- Private self-hosted n8n Community Edition deployment (official pinned Docker image, loopback-only port, persistent Docker volume and SSH-tunnel administration) is defined in [`deploy/n8n/`](deploy/n8n/). It avoids the n8n Cloud subscription for internal operator automations. n8n's Sustainable Use License restricts offering its workflow builder directly to customers; see [`deploy/n8n/README.md`](deploy/n8n/README.md) before any commercial exposure.
-- Non-destructive backup restore drill (`facai.backup drill`) that restores a snapshot into a throwaway directory and compares row counts.
-- Layout verified in real Chromium viewports: a 1440x900 desktop first screen shows the progress bar, current stage and pipeline without scrolling, and a 390x844 phone viewport has no horizontal overflow, a vertical pipeline, adequate tap targets and a sticky header. Deep-link and login-restore flows are covered too (`tests/test_console_layout.py`, `tests/test_mobile_ui.py`).
-- Open-source architecture review and a staged adoption plan for visual Agent workflows, safe parallel branches, auditable run traces and integration boundaries: [`docs/OPEN_SOURCE_RESEARCH.md`](docs/OPEN_SOURCE_RESEARCH.md).
-- Open Agent Skill source catalog, license notes, initial FACAI use cases and review requirements before any skill is imported or enabled: [`docs/OPEN_SOURCE_SKILLS.md`](docs/OPEN_SOURCE_SKILLS.md).
+`facai/` 是服务、运行时及静态控制台；`tests/` 是回归测试；`deploy/` 是部署配置；
+`packaging/` 是桌面打包源码；`docs/` 是规范、记录与验收；`vendor/` 是候选来源材料，
+不代表已安装或可用。`integrations/` 和 `bridge/` 是独立的外围集成。
 
-## Verify
+## 验证与交接
 
-```powershell
+```sh
+python -m pip install -r requirements.txt
+python scripts/validate_handoff.py
 python -m pytest -q
 ```
 
-The suite includes real-browser checks (`tests/test_console_layout.py` and
-`tests/test_mobile_ui.py`) driven by Playwright. On a 1440x900 desktop viewport the
-first screen shows the progress bar, current stage and pipeline before any scrolling;
-on a 390x844 phone viewport there is no horizontal overflow, the pipeline stacks
-vertically with adequate tap targets, and deep-link plus login-restore work. They
-skip automatically if Playwright is absent; to run them:
+测试总数不等于真实 Provider、跨平台安装包或 VPS 验收；逐项结论看验收矩阵。
+`dist/` 中跟踪的 ZIP、bundle、JSON 是**历史快照**，不可当作当前 HEAD 的构建物。
+如需当前开发包，先在干净检出的源码运行 `python scripts/package.py` 并核对其
+`MANIFEST.json` 的 `source_commit`；需要完整历史时直接克隆本仓库。
+数据库恢复见 [本地恢复](docs/LOCAL_RECOVERY.md)，只覆盖数据库，不包含密钥与工作区。
 
-```powershell
-python -m pip install playwright
-python -m playwright install chromium
-```
-
-## Backup and restore
-
-```powershell
-python -m facai.backup create  --data-dir data
-python -m facai.backup verify  --dest data\backups\facai-<timestamp>.sqlite3
-python -m facai.backup restore --data-dir data --dest data\backups\facai-<timestamp>.sqlite3
-python -m facai.backup drill   --data-dir data
-```
-
-`drill` takes a verified snapshot, restores it into a throwaway directory and
-compares row counts against the live database; the live database is never
-modified and only counts are reported.
-
-Backups snapshot the mission database (missions, steps, events, sessions, artifacts, checkpoints, costs, jobs, registries) and store credential references only. Stop the server before restoring; the previous database is preserved beside it. Workspace files are not part of the database backup and must be copied separately.
-
-## Production status
-
-**Last live deployment verified (2026-10-01).** The VPS `77.221.148.118` has the
-then-current code under `/opt/facai-cloud`, bound to `127.0.0.1:8765` behind nginx HTTPS
-with a Let's Encrypt certificate for `whstapp.lol` and `www.whstapp.lol`. The
-mission-first console refactor was deployed and re-verified over real HTTPS:
-`check_public_access.sh` exits 0 and a Chromium run against `https://whstapp.lol`
-passed 15/15 checks (1440x900 first-screen progress bar/current stage/pipeline,
-collapsed creation and registry sections, 390x844 no horizontal overflow, anonymous
-redirect to `/login`).
-`deploy/check_public_access.sh whstapp.lol 77.221.148.118` exits 0 (authoritative
-DNS, TCP 443, TLS, `health 200`, anonymous `401`, authenticated `200`), and the
-login flow, mission pipeline and SSE stream were exercised over HTTPS. Deploy with
-`sudo ./deploy/deploy.sh update` (then `cert` on first install); verify with
-`deploy/check_public_access.*` and never report availability from inspection alone.
-See `docs/DEPLOYMENT.md`.
-
-**Live OpenCode execution verified (2026-10-01).** The VPS had no Node/npm, so
-`deploy/install-opencode.sh` installs the self-contained, SHA-256-pinned
-`opencode` CLI (v1.18.32) to `/usr/local/bin/opencode`; `deploy/deploy.sh opencode`
-runs it, and `install` does so automatically when the binary is missing. The hardened
-systemd unit now sets `PATH` and a writable `HOME` for the service. A real coding task
-was executed online through the adapter in mission `80587244520747ddb11f639e2746bce5`:
-`OPENCODE_COMPLETED`, cost and tokens recorded, a stdout artifact captured and a real
-Git checkpoint committed, while a second mission stayed fully isolated. Real upstream
-`MODEL_AUTH_FAILED` (HTTP 401), `MODEL_TIMEOUT` and `MODEL_TRANSPORT_FAILED` outcomes
-were reproduced; no credential was printed. See `docs/ACCEPTANCE_OPENCODE.md`.
-
-Remaining product work is configuration and live verification rather than new
-routing: the Telegram, WhatsApp and personal WeChat inbound paths are implemented,
-but none has received a real platform message in production — no live Meta or
-Telegram credentials are set and no WeChat account has been scanned, so the
-channels stay `UNCONFIGURED` and only simulated upstreams have been exercised.
-Still to build are the optional GPU-worker adapter and the remaining WeChat
-media/file/voice/group-chat paths. The n8n adapter is implemented but
-unconfigured, so no event has been delivered to a real workflow. New local commits
-must be deployed and verified separately; don't treat this recorded server state
-as including later changes.
-The data plane moves to PostgreSQL/Redis when the SQLite design stops meeting
-concurrency needs.
-
-本地备份：Linux/macOS 运行 `./backup.sh`，Windows 运行 `backup.bat`。
-入口会创建数据库快照并进行隔离恢复演练；密钥、配置、工作区需另行私密保存。
-完整步骤与局限见 [本地恢复说明](docs/LOCAL_RECOVERY.md)。
+早期详细说明已保留在 [历史 README](docs/archive/README_pre_2026-11-01.md)，
+其中部署日期和测试数是当时记录，不代表当前线上状态。
