@@ -11,5 +11,6 @@
 资料站点可能通过 `robots.txt`、访问控制、登录、限流或网络故障阻止自动采集。不能把 URL、搜索摘要、一次失败请求或模型记忆当成已取得原文证据，也不能通过伪造身份、绕过登录或规避访问限制补齐空白。
 
 现有 `POST /api/v1/missions/{id}/trust/collection-gaps` 接受来源说明、阻塞原因、下一步和备注，在当前 Mission 的 SQLite 事务中留痕；`GET .../trust` 返回 `collection_gaps`，Proof 快照与 ZIP 的 `collection_gaps.json` 保留该缺口。它不是 `trust_evidence`，不能充当 Claim 的证据。记录缺口不会自动访问目标，也不证明目标内容的真实性。
+Owner 也可在 `/evidence-center` 的“取证受阻记录”表单提交并查看这些记录。
 
 可选下一步仅为 `OWNER_UPLOAD`（Owner提供原件）、`OFFICIAL_API`（有权限的正式接口）、`HUMAN_REVIEW`（人工核对）、`NONE`（暂无可用路径）。取得材料后再通过现有证据入口提交来源、内容和校验；只有实际导入的证据才能关联 Claim。当前实现仅记录缺口和下一步，**不自动执行**上传/API/人工工作流。

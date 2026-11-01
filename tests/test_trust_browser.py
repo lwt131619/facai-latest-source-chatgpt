@@ -109,6 +109,13 @@ def test_intent_to_evidence_review_and_download(protected_server, playwright_api
             for name, sha in manifest['files'].items():
                 assert hashlib.sha256(archive.read(name)).hexdigest() == sha
             assert json.loads(archive.read('claims.json'))[0]['status'] == 'INFERENCE'
+        page.fill('#gap-source', 'https://example.invalid/blocked')
+        page.select_option('#gap-reason', 'ROBOTS_DISALLOWED')
+        page.select_option('#gap-next', 'OWNER_UPLOAD')
+        page.fill('#gap-note', 'Automated collection unavailable')
+        page.click('#gap-form button')
+        wait_for("document.querySelector('#gaps').textContent.includes('https://example.invalid/blocked')")
+        assert page.locator('#links option').count() == 1  # A gap is not claim evidence.
         page.reload()
         page.wait_for_selector('#proofs a.download')
         assert 'ACTIVE / INFERENCE' in page.locator('#claims').inner_text()
