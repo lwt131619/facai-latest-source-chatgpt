@@ -116,6 +116,8 @@ def test_intent_to_evidence_review_and_download(protected_server, playwright_api
         page.click('#gap-form button')
         wait_for("document.querySelector('#gaps').textContent.includes('https://example.invalid/blocked')")
         assert page.locator('#links option').count() == 1  # A gap is not claim evidence.
+        page.locator('#gaps button').first.click()
+        wait_for("document.querySelector('#gaps').textContent.includes('来源未独立验证')")
         page.reload()
         page.wait_for_selector('#proofs a.download')
         assert 'ACTIVE / INFERENCE' in page.locator('#claims').inner_text()

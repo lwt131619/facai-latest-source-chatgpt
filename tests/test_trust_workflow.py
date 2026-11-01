@@ -56,10 +56,27 @@ def test_collection_gap_records_unavailable_source_without_claim_evidence(tmp_pa
     with pytest.raises(TrustError) as invalid:
         service.record_collection_gap('alice', id, 1, source='x', reason='BYPASS', next_step='NONE')
     assert invalid.value.status == 422
+    submitted = service.add_evidence('alice', id, 1, source='Owner supplied report',
+                                     content='Report text supplied by Owner')['evidence']
+    before_link = service.snapshot('alice', id, 2)
+    with pytest.raises(TrustError) as missing:
+        service.link_collection_gap('alice', id, 2, gap['id'], evidence_id='other-mission')
+    assert missing.value.status == 404
+    linked = service.link_collection_gap('alice', id, 2, gap['id'],
+                                         evidence_id=submitted['id'], note='Owner supplied a copy')['link']
+    assert linked['status'] == 'EVIDENCE_SUBMITTED_NOT_VERIFIED'
+    with pytest.raises(TrustError) as duplicate:
+        service.link_collection_gap('alice', id, 3, gap['id'], evidence_id=submitted['id'])
+    assert duplicate.value.status == 409
+    state = service.get('alice', id)
+    assert state['collection_gap_links'][0]['id'] == linked['id']
+    assert next(p for p in state['proofs'] if p['id'] == before_link['id'])['current'] is False
     proof = service.snapshot('alice', id, state['revision'])
     with zipfile.ZipFile(io.BytesIO(service.export('alice', id, proof['id']))) as archive:
         exported = json.loads(archive.read('collection_gaps.json'))
+        exported_links = json.loads(archive.read('collection_gap_links.json'))
     assert exported[0]['id'] == gap['id']
+    assert exported_links[0]['evidence_id'] == submitted['id']
 
 
 def complete_fixture(store, service, id):
@@ -331,6 +348,11 @@ def test_api_auth_csrf_cross_owner_and_machine_cannot_review(tmp_path, monkeypat
         'reason':'ACCESS_DENIED', 'next_step':'OWNER_UPLOAD', 'note':'Needs owner copy'})
     assert gap.status_code == 201, gap.text
     assert client.get(base).json()['collection_gaps'][0]['id'] == gap.json()['gap']['id']
+    linked = client.post(base+'/collection-gaps/'+gap.json()['gap']['id']+'/links', json={
+        'expected_revision':client.get(base).json()['revision'],
+        'evidence_id':e['id'], 'note':'Owner submitted material'})
+    assert linked.status_code == 201, linked.text
+    assert linked.json()['link']['status'] == 'EVIDENCE_SUBMITTED_NOT_VERIFIED'
     assert other.get(base).status_code == 404
 
 

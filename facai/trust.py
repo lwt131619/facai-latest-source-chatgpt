@@ -60,6 +60,12 @@ TRUST_SCHEMA_STATEMENTS = (
          id TEXT PRIMARY KEY, mission_id TEXT NOT NULL REFERENCES missions(id),
          document TEXT NOT NULL, sha256 TEXT NOT NULL, created_at TEXT NOT NULL)''',
     'CREATE INDEX IF NOT EXISTS trust_collection_gaps_mission ON trust_collection_gaps(mission_id)',
+    '''CREATE TABLE IF NOT EXISTS trust_collection_gap_links (
+         id TEXT PRIMARY KEY, mission_id TEXT NOT NULL REFERENCES missions(id),
+         gap_id TEXT NOT NULL REFERENCES trust_collection_gaps(id),
+         evidence_id TEXT NOT NULL REFERENCES trust_evidence(id),
+         document TEXT NOT NULL, sha256 TEXT NOT NULL, created_at TEXT NOT NULL)''',
+    'CREATE INDEX IF NOT EXISTS trust_collection_gap_links_mission ON trust_collection_gap_links(mission_id)',
     '''CREATE TABLE IF NOT EXISTS trust_source_verifications (
          id TEXT PRIMARY KEY, mission_id TEXT NOT NULL REFERENCES missions(id),
          evidence_id TEXT NOT NULL REFERENCES trust_evidence(id),
@@ -285,6 +291,37 @@ class TrustStore:
             self._event(db, mission_id, 'TRUST_COLLECTION_GAP_RECORDED', owner,
                         gap_id=record['id'], reason=reason, sha256=sha)
         return {'gap': {**record, 'sha256': sha}, 'revision': revision + 1}
+
+    def link_collection_gap(self, owner, mission_id, revision, gap_id, *, evidence_id, note=''):
+        """Link later submitted material; this does not verify its source or claims."""
+        text(note, 'note', required=False)
+        with self._change(owner, mission_id, revision) as db:
+            self._capacity(db, 'trust_collection_gap_links', mission_id, 1000)
+            gap = db.execute('SELECT document,sha256 FROM trust_collection_gaps WHERE id=? AND mission_id=?',
+                             (gap_id, mission_id)).fetchone()
+            evidence = db.execute('SELECT document,sha256 FROM trust_evidence WHERE id=? AND mission_id=?',
+                                  (evidence_id, mission_id)).fetchone()
+            if gap is None or evidence is None:
+                raise TrustError(404, 'Collection gap or evidence not found')
+            if digest(json.loads(gap['document'])) != gap['sha256']:
+                raise TrustError(409, 'Stored collection gap integrity check failed')
+            submitted = json.loads(evidence['document'])
+            if digest(submitted) != evidence['sha256']:
+                raise TrustError(409, 'Stored evidence integrity check failed')
+            if submitted['kind'] != 'OWNER_NOTE':
+                raise TrustError(422, 'A submitted Owner evidence record is required')
+            if db.execute('SELECT 1 FROM trust_collection_gap_links WHERE mission_id=? AND gap_id=? AND evidence_id=?',
+                          (mission_id, gap_id, evidence_id)).fetchone():
+                raise TrustError(409, 'This evidence is already linked to the gap')
+            record = {'id': uuid4().hex, 'mission_id': mission_id, 'gap_id': gap_id,
+                      'evidence_id': evidence_id, 'note': note, 'linked_by': owner,
+                      'linked_at': now(), 'status': 'EVIDENCE_SUBMITTED_NOT_VERIFIED'}
+            sha = digest(record)
+            db.execute('INSERT INTO trust_collection_gap_links VALUES (?,?,?,?,?,?,?)',
+                       (record['id'], mission_id, gap_id, evidence_id, canonical(record), sha, now()))
+            self._event(db, mission_id, 'TRUST_COLLECTION_GAP_LINKED', owner,
+                        gap_id=gap_id, evidence_id=evidence_id, link_id=record['id'], sha256=sha)
+        return {'link': {**record, 'sha256': sha}, 'revision': revision + 1}
 
     def verify_evidence(self, owner, mission_id, revision, evidence_id, *, method, result, note=''):
         """Record a human verification of an evidence source.
@@ -516,12 +553,19 @@ class TrustStore:
         mission = self._owned(db, owner, mission_id)
         evidence = []
         collection_gaps = []
+        collection_gap_links = []
         for row in db.execute('SELECT document,sha256 FROM trust_collection_gaps WHERE mission_id=? ORDER BY rowid',
                               (mission_id,)):
             document = json.loads(row['document'])
             if digest(document) != row['sha256']:
                 raise TrustError(409, 'Stored collection gap integrity check failed')
             collection_gaps.append({**document, 'sha256': row['sha256']})
+        for row in db.execute('SELECT document,sha256 FROM trust_collection_gap_links WHERE mission_id=? ORDER BY rowid',
+                              (mission_id,)):
+            document = json.loads(row['document'])
+            if digest(document) != row['sha256']:
+                raise TrustError(409, 'Stored collection gap link integrity check failed')
+            collection_gap_links.append({**document, 'sha256': row['sha256']})
         verified = {}
         for row in db.execute('SELECT document,sha256 FROM trust_source_verifications WHERE mission_id=? ORDER BY rowid',
                               (mission_id,)):
@@ -600,7 +644,7 @@ class TrustStore:
             raise TrustError(409, 'Mission specification integrity check failed')
         revision = self._revision(db, mission_id)
         token = digest({'revision': revision, 'execution': execution, 'evidence': evidence,
-                        'collection_gaps': collection_gaps,
+                        'collection_gaps': collection_gaps, 'collection_gap_links': collection_gap_links,
                         'claims': claims, 'reviews': reviews, 'specification': spec['sha256'] if spec else None})
         blockers = []
         if not spec:
@@ -626,7 +670,7 @@ class TrustStore:
             'WHERE owner_id=? ORDER BY source_key', (owner,))]
         return {'schema_version': 1, 'mission_id': mission_id, 'trace_id': mission_id,
                 'revision': revision, 'snapshot_token': token, 'evidence': evidence,
-                'collection_gaps': collection_gaps,
+                'collection_gaps': collection_gaps, 'collection_gap_links': collection_gap_links,
                 'claims': claims, 'reviews': reviews, 'conflicts': conflicts,
                 'adjudications': adjudications,
                 'source_trust': {'schema_version': 1, 'tiers': tiers, 'registry': registry,
@@ -767,6 +811,7 @@ class TrustStore:
         files = {'report.md': report.encode(),
                  **{name + '.json': (canonical(value)+'\n').encode() for name, value in {
                      'evidence': proof['evidence'], 'collection_gaps': proof.get('collection_gaps', []),
+                     'collection_gap_links': proof.get('collection_gap_links', []),
                      'claims': proof['claims'], 'verification': proof['verification'],
                      'trace': proof['trace'], 'specification': proof['specification'],
                      'metadata': {'schema_version': 1, 'mission_id': mission_id, 'trace_id': mission_id,

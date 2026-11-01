@@ -93,6 +93,8 @@ evidence is intentionally exported, so do not submit secrets as evidence.
 取证来源无法自动访问时，使用 `POST .../trust/collection-gaps` 记录
 `source`、`reason`、`next_step`、`note`。缺口独立保存、随 Proof 导出，
 但不进入 Claim 可引用的证据列表；不会自动抓取或绕过来源限制。
+后续 Owner 提交的证据可通过 `POST .../trust/collection-gaps/{gap_id}/links`
+显式关联缺口；关联记录进入 Proof，但不代表来源独立验证。
 执行聚焦规则与替代路径口径见 [目标聚焦与取证缺口](GOAL_FOCUS_AND_EVIDENCE_GAPS.md)。
 
 All new resources inherit existing authentication and CSRF middleware:

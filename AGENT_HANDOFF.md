@@ -1,5 +1,11 @@
 # FACAI / ICS — 当前接手入口
 
+2026-11-01 取证缺口闭环增量：Owner 后续提交 `OWNER_NOTE` 证据后，可在 API
+或 Evidence Center 显式关联原缺口。追加式关联记录与来源/证据完整性校验、
+Proof ZIP `collection_gap_links.json`、旧快照失效均已接通；不把提交材料冒充
+已独立验证来源。Trust/Knowledge/真实 Chromium 桌面手机定向 36 passed；
+本增量全量回归尚未执行。
+
 2026-11-01 目标聚焦规则进一步接入新 Mission 的不可变规格与专业提示，
 并在共享 `execute_mission_task` 执行边界补入，避免手工提示/直接入队遗漏；
 `OPENCODE_STARTED` 记录有效运行提示 SHA-256 与应用标记。旧无规格 Mission

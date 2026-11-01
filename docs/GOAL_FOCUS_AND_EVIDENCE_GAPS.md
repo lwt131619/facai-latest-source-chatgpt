@@ -21,3 +21,10 @@
 Owner 也可在 `/evidence-center` 的“取证受阻记录”表单提交并查看这些记录。
 
 可选下一步仅为 `OWNER_UPLOAD`（Owner提供原件）、`OFFICIAL_API`（有权限的正式接口）、`HUMAN_REVIEW`（人工核对）、`NONE`（暂无可用路径）。取得材料后再通过现有证据入口提交来源、内容和校验；只有实际导入的证据才能关联 Claim。当前实现仅记录缺口和下一步，**不自动执行**上传/API/人工工作流。
+
+Owner 提交材料为现有 `OWNER_NOTE` 证据后，可通过
+`POST .../trust/collection-gaps/{gap_id}/links` 或 Evidence Center 的“关联后续证据”
+按钮显式连接缺口和证据。链接自身追加记录、进入 Proof ZIP 的
+`collection_gap_links.json`，并使旧 Proof 成为历史快照；原缺口不删除。
+链接状态是 `EVIDENCE_SUBMITTED_NOT_VERIFIED`，不等于外部来源已验证，
+也不会自动改变 Claim 的 UNKNOWN/FACT 分类。
