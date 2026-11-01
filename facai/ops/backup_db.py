@@ -10,17 +10,20 @@ import argparse
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from uuid import uuid4
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 KEEP = 7
 
 
 def backup(data_dir, keep=KEEP):
+    if not isinstance(keep, int) or isinstance(keep, bool) or keep < 1:
+        raise ValueError('keep must be a positive integer')
     root = Path(data_dir)
     out_dir = root / "backups"
     out_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    dst = out_dir / f"db-daily-{stamp}.sqlite3"
+    dst = out_dir / f"db-daily-{stamp}-{uuid4().hex}.sqlite3"
 
     from ..store import Store
 
@@ -28,9 +31,26 @@ def backup(data_dir, keep=KEEP):
     con = store.connect()
     try:
         con.execute("VACUUM INTO ?", (str(dst),))
-    finally:
+    except BaseException:
         con.close()
-    stale = sorted(out_dir.glob("db-daily-*.sqlite3"))[:-keep]
+        dst.unlink(missing_ok=True)
+        raise
+    else:
+        con.close()
+    # Retention runs only after the newly written snapshot is proven readable.
+    # If validation fails, keep every previous backup for recovery.
+    from ..backup import verify_backup
+    try:
+        if not verify_backup(dst)['ok']:
+            raise ValueError('New daily backup failed integrity verification')
+    except BaseException:
+        dst.unlink(missing_ok=True)
+        raise
+    # UUIDs make same-second names unique but cannot be sorted by age. Always
+    # retain the verified new snapshot, then keep the newest older files.
+    previous = sorted((path for path in out_dir.glob('db-daily-*.sqlite3') if path != dst),
+                      key=lambda path: (path.stat().st_mtime_ns, path.name))
+    stale = previous[:max(0, len(previous) - (keep - 1))]
     for old in stale:
         old.unlink(missing_ok=True)
     return dst, len(stale)
