@@ -10,7 +10,7 @@
 | 找到实现 | [仓库地图](engineering/REPOSITORY_MAP.md)、[核心契约](engineering/CORE_CONTRACTS.md) | [模块清单](../MODULE_INVENTORY.md) |
 | 本地运行/恢复 | [本地交付](LOCAL_APPLIANCE.md)、[设置向导](SETUP_WIZARD.md)、[本地恢复](LOCAL_RECOVERY.md) | [7×24 工作站现状](VPS_24X7_WORKSTATION.md) |
 | 服务部署 | [部署说明](DEPLOYMENT.md)、[部署记录](DEPLOYMENT_RECORD.md) | [GitHub Agent 连接](GITHUB_AGENT_ACCESS.md) |
-| 能力与信任 | [模型池](MODEL_KEY_POOL.md)、[信任工作流](TRUST_WORKFLOW.md)、[知识资产](KNOWLEDGE_MEMORY.md) | [Skill 收录模板](SKILL_INTAKE_TEMPLATE.md) |
+| 能力与信任 | [模型池](MODEL_KEY_POOL.md)、[信任工作流](TRUST_WORKFLOW.md)、[目标聚焦与取证缺口](GOAL_FOCUS_AND_EVIDENCE_GAPS.md)、[知识资产](KNOWLEDGE_MEMORY.md) | [Skill 收录模板](SKILL_INTAKE_TEMPLATE.md) |
 | 测试证据 | [本地验证记录](validation/)、[开发日志](ACTIVE_DEVELOPMENT.md) | [历史交接](handoff-20261016/) |
 
 ## 历史材料和构建物

@@ -40,6 +40,28 @@ def reviewed(service, id):
     return c['claim']['id']
 
 
+def test_collection_gap_records_unavailable_source_without_claim_evidence(tmp_path):
+    _, service, id = mission(tmp_path)
+    gap = service.record_collection_gap('alice', id, 0, source='https://example.com/report',
+                                        reason='ROBOTS_DISALLOWED', next_step='OWNER_UPLOAD',
+                                        note='Source disallows automated collection')['gap']
+    state = service.get('alice', id)
+    assert state['collection_gaps'][0]['id'] == gap['id']
+    assert state['collection_gaps'][0]['evidence_status'] == 'NOT_COLLECTED'
+    assert state['evidence'] == []
+    assert 'CLAIMS_REQUIRE_REVIEW' in state['verification']['acceptance_blockers']
+    with pytest.raises(TrustError) as denied:
+        service.get('bob', id)
+    assert denied.value.status == 404
+    with pytest.raises(TrustError) as invalid:
+        service.record_collection_gap('alice', id, 1, source='x', reason='BYPASS', next_step='NONE')
+    assert invalid.value.status == 422
+    proof = service.snapshot('alice', id, state['revision'])
+    with zipfile.ZipFile(io.BytesIO(service.export('alice', id, proof['id']))) as archive:
+        exported = json.loads(archive.read('collection_gaps.json'))
+    assert exported[0]['id'] == gap['id']
+
+
 def complete_fixture(store, service, id):
     """Synthetic completed execution for acceptance gate tests only."""
     for step in store.get(id)['steps']:
@@ -303,6 +325,13 @@ def test_api_auth_csrf_cross_owner_and_machine_cannot_review(tmp_path, monkeypat
     other.post('/api/v1/auth/login',json={'username':'admin','password':'trust-admin-password'})
     assert other.get(base).status_code == 404
     assert other.get('/api/v1/missions/'+id+'/specification').status_code == 404
+    revision = client.get(base).json()['revision']
+    gap = client.post(base+'/collection-gaps', json={
+        'expected_revision':revision, 'source':'https://example.invalid/report',
+        'reason':'ACCESS_DENIED', 'next_step':'OWNER_UPLOAD', 'note':'Needs owner copy'})
+    assert gap.status_code == 201, gap.text
+    assert client.get(base).json()['collection_gaps'][0]['id'] == gap.json()['gap']['id']
+    assert other.get(base).status_code == 404
 
 
 def _forbid_network(monkeypatch):

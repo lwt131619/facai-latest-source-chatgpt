@@ -19,6 +19,13 @@ class EvidenceBody(Revision):
     event_id: str | None = Field(default=None, max_length=100)
 
 
+class CollectionGapBody(Revision):
+    source: str = Field(min_length=1, max_length=2000)
+    reason: str = Field(min_length=1, max_length=50)
+    next_step: str = Field(min_length=1, max_length=50)
+    note: str = Field(default='', max_length=2000)
+
+
 class ClaimBody(Revision):
     statement: str = Field(min_length=1, max_length=2000)
     subject: str = Field(min_length=1, max_length=2000)
@@ -108,6 +115,11 @@ def router_for(store, owner, require_mission, human_writer):
     def evidence(mission_id: str, body: EvidenceBody):
         return call(service.add_evidence, owner(), mission_id, body.expected_revision,
                     content=body.content, source=body.source, event_id=body.event_id)
+
+    @router.post('/api/v1/missions/{mission_id}/trust/collection-gaps', status_code=201)
+    def collection_gap(mission_id: str, body: CollectionGapBody):
+        return call(service.record_collection_gap, owner(), mission_id, body.expected_revision,
+                    source=body.source, reason=body.reason, next_step=body.next_step, note=body.note)
 
     @router.post('/api/v1/missions/{mission_id}/trust/claims', status_code=201)
     def claim(mission_id: str, body: ClaimBody):

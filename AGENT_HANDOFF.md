@@ -1,5 +1,12 @@
 # FACAI / ICS — 当前接手入口
 
+2026-11-01 Owner 新要求已转为 [目标聚焦与取证缺口](docs/GOAL_FOCUS_AND_EVIDENCE_GAPS.md)：
+直接目标优先，只有真实阻塞才探索范围内替代路径；无法自动采集时留缺口、
+不伪称取得证据。TrustStore 增加独立 `trust_collection_gaps`、Owner 隔离、
+Revision CAS、状态/Proof/ZIP 记录和 API 入口，不把缺口当 Claim 证据；
+Trust/Knowledge 定向 34 passed、handoff 28 方向通过。当前尚无自动抓取或来源授权工作流，
+也尚未重跑全套测试。
+
 2026-11-01 恢复演练补充：SQLite 只读连接在 WAL 模式也会产生空 WAL/SHM，
 故演练只将**非空 WAL**列为文件哈希未覆盖的失败条件；同一行数、内容在 WAL
 中变化的真实 SQLite 回归已补。`tests/test_backup.py` 19 passed；本增量
