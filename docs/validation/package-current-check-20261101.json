@@ -1,0 +1,19 @@
+{
+  "recorded_at": "2026-11-01T10:17:50.347124+00:00",
+  "source_commit_tested": "ee5077b0b2daccbcfbc1662a76a752ec5788e6d2",
+  "command": [
+    "/workspace/facai-venv/bin/python scripts/package.py",
+    "/workspace/facai-venv/bin/python scripts/verify_package.py --require-current-head"
+  ],
+  "result": {
+    "exit_code": 0,
+    "package_files": 481,
+    "package_sha256": "01e30fdff6befe42d57cc312767da604f8ac4fb46ee9b36b3230e633d2a55fa4",
+    "matches_current_checkout": true,
+    "source_manifest_verified": true
+  },
+  "limitations": [
+    "Built and verified locally; generated tracked dist files were restored after verification to avoid committing a self-referential historical ZIP.",
+    "This local check does not establish the GitHub Actions result for later commits."
+  ]
+}

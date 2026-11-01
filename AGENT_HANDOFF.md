@@ -4,7 +4,7 @@
 `matches_current_checkout` 与 `--require-current-head`，区分“ZIP 内部哈希有效”
 和“来自当前干净 HEAD”。仓库跟踪的旧 `dist/FACAI-v1.0-development.zip`
 实测内部校验通过、但与当前 HEAD 不匹配，严格模式 exit 2；不误报最新包。
-`tests/test_package_metadata.py` 2 passed，handoff 28 方向通过。尚未重建开发包，
+`tests/test_package_metadata.py` 2 passed，handoff 28 方向通过。随后从干净 HEAD ee5077b 本地重建 481 文件开发包并以严格模式验证通过；记录见 docs/validation/package-current-check-20261101.json。生成的 dist 产物已恢复为仓库历史版本，
 本增量未跑全套测试。CI 已加严格校验步骤，成功构建的包作为对应提交的
 Actions artifact 上传；本地改动推送后的 CI 结果仍需按该提交实际运行核对。
 
