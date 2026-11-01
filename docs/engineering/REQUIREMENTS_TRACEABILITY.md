@@ -171,7 +171,7 @@ Users/Owner/Agents/Skills/Missions/Executions/Events/Evidence/Claims/Artifacts/K
 - 保留前面已验证的启动/Docker/持久化能力
 - 新说明/备份脚本进入包；Windows/macOS分开实测
 
-**下一步**：已实现一键Owner初始化/恢复、原生和容器内部重启验证、ZIP逐文件哈希与全包解压测试。2026-10-16接管代理在a871959重建交付包并独立QA通过(scripts/package.py + verify_package.py):408文件archive+manifest逐文件哈希一致,包内validate_handoff 27方向无环全文件在位,package_source_commit=a871959,source_manifest_verified=true(包重建即源码快照)。过程发现并修正:改task-registry.json后必须--render重生成REQUIREMENTS_TRACEABILITY,否则包内handoff校验如实失败。剩余:Windows/macOS分开实测(Windows已多次本地实跑:start链路+冒烟+包验证)、宿主跨设备/VPS交付验收(阻塞于SSH),不将开发包标Production。
+**下一步**：已实现一键Owner初始化/恢复、原生和容器内部重启验证、ZIP逐文件哈希与全包解压测试。2026-10-16接管代理在a871959重建交付包并独立QA通过(scripts/package.py + verify_package.py):408文件archive+manifest逐文件哈希一致,包内validate_handoff 27方向无环全文件在位,package_source_commit=a871959,source_manifest_verified=true(包重建即源码快照)。过程发现并修正:改task-registry.json后必须--render重生成REQUIREMENTS_TRACEABILITY,否则包内handoff校验如实失败。剩余:Windows/macOS分开实测(Windows已多次本地实跑:start链路+冒烟+包验证)、宿主跨设备/VPS交付验收(阻塞于SSH),不将开发包标Production。 2026-11-01 verify_package增加matches_current_checkout与严格模式；旧dist ZIP实测哈希有效但非当前HEAD，严格模式exit2。专项2 passed；CI已加严格校验与Actions artifact；需从干净HEAD重建新包再验并核对CI。
 
 ## MODEL-001 — 多Provider/多Key模型资源池
 

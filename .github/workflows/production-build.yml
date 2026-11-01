@@ -33,6 +33,7 @@ jobs:
           path: dist/pytest.xml
           if-no-files-found: warn
       - run: python scripts/package.py
+      - run: python scripts/verify_package.py --require-current-head
       - uses: actions/upload-artifact@v4
         with:
           name: FACAI-development-package

@@ -42,7 +42,11 @@ python -m pytest -q
 测试总数不等于真实 Provider、跨平台安装包或 VPS 验收；逐项结论看验收矩阵。
 `dist/` 中跟踪的 ZIP、bundle、JSON 是**历史快照**，不可当作当前 HEAD 的构建物。
 如需当前开发包，先在干净检出的源码运行 `python scripts/package.py` 并核对其
-`MANIFEST.json` 的 `source_commit`；需要完整历史时直接克隆本仓库。
+`MANIFEST.json` 的 `source_commit`，再运行
+`python scripts/verify_package.py --require-current-head`；旧包会明确报
+`matches_current_checkout: false` 并退出 2。需要完整历史时直接克隆本仓库。
+每次成功的 [GitHub Actions 构建](https://github.com/lwt131619/facai-latest-source-chatgpt/actions/workflows/production-build.yml)
+会上传与该次提交对应的 `FACAI-development-package`；下载时核对工作流提交 SHA。
 数据库恢复见 [本地恢复](docs/LOCAL_RECOVERY.md)，只覆盖数据库，不包含密钥与工作区。
 
 早期详细说明已保留在 [历史 README](docs/archive/README_pre_2026-11-01.md)，

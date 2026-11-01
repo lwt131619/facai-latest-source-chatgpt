@@ -14,10 +14,30 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def checkout_match(manifest, root=ROOT):
+    """Whether this archive was built from this clean Git checkout.
+
+    None means no Git checkout is available; a hash-valid historical archive
+    remains inspectable, but cannot be certified as today's source tree.
+    """
+    revision = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=root,
+                              capture_output=True, text=True)
+    if revision.returncode != 0:
+        return None
+    dirty = subprocess.run(['git', 'status', '--porcelain', '--', '.', ':(exclude)dist'],
+                           cwd=root, capture_output=True, text=True)
+    if dirty.returncode != 0:
+        return None
+    return (manifest.get('source_commit') == revision.stdout.strip()
+            and manifest.get('source_tree_dirty') is False and not dirty.stdout.strip())
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('archive', nargs='?', type=Path, default=ROOT/'dist/FACAI-v1.0-development.zip')
     parser.add_argument('--full-tests', action='store_true')
+    parser.add_argument('--require-current-head', action='store_true',
+                        help='Fail if the archive is not from this clean Git HEAD')
     parser.add_argument('--chromium', help='Optional installed Chromium executable for real browser tests')
     args = parser.parse_args()
     out = ROOT/'dist'; out.mkdir(exist_ok=True)
@@ -60,7 +80,13 @@ def main():
         report = {'package_source_commit': manifest.get('source_commit'),
                   'package_files': len(manifest['files']), 'package_sha256': sha,
                   'source_tree_dirty': manifest.get('source_tree_dirty'),
+                  'matches_current_checkout': checkout_match(manifest),
                   'source_manifest_verified': True, 'full_tests_attempted': args.full_tests}
+        if args.require_current_head and report['matches_current_checkout'] is not True:
+            report['full_tests_attempted'] = False
+            (out/'package-validation.json').write_text(json.dumps(report, indent=2)+'\n')
+            print(json.dumps(report))
+            return 2
         code = 0
         if args.full_tests:
             env = dict(os.environ)

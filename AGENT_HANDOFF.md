@@ -1,5 +1,13 @@
 # FACAI / ICS — 当前接手入口
 
+2026-11-01 开发包现状校验：`scripts/verify_package.py` 新增
+`matches_current_checkout` 与 `--require-current-head`，区分“ZIP 内部哈希有效”
+和“来自当前干净 HEAD”。仓库跟踪的旧 `dist/FACAI-v1.0-development.zip`
+实测内部校验通过、但与当前 HEAD 不匹配，严格模式 exit 2；不误报最新包。
+`tests/test_package_metadata.py` 2 passed，handoff 28 方向通过。尚未重建开发包，
+本增量未跑全套测试。CI 已加严格校验步骤，成功构建的包作为对应提交的
+Actions artifact 上传；本地改动推送后的 CI 结果仍需按该提交实际运行核对。
+
 2026-11-01 取证缺口闭环增量：Owner 后续提交 `OWNER_NOTE` 证据后，可在 API
 或 Evidence Center 显式关联原缺口。追加式关联记录与来源/证据完整性校验、
 Proof ZIP `collection_gap_links.json`、旧快照失效均已接通；不把提交材料冒充

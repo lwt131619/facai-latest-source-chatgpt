@@ -2,6 +2,7 @@
 import subprocess
 
 from scripts.package import source_tree_dirty
+from scripts.verify_package import checkout_match
 
 
 def _git(root, *args):
@@ -18,7 +19,18 @@ def test_source_dirty_excludes_tracked_dist_but_not_actual_source(tmp_path):
     _git(tmp_path, 'add', 'dist/package.zip', 'source.py')
     _git(tmp_path, 'commit', '-qm', 'initial')
     assert source_tree_dirty(tmp_path) is False
+    head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=tmp_path, text=True).strip()
+    manifest = {'source_commit': head, 'source_tree_dirty': False}
+    assert checkout_match(manifest, tmp_path) is True
     (tmp_path / 'dist' / 'package.zip').write_bytes(b'new')
     assert source_tree_dirty(tmp_path) is False
+    assert checkout_match(manifest, tmp_path) is True
+    assert checkout_match({**manifest, 'source_commit': '0'*40}, tmp_path) is False
+    assert checkout_match({**manifest, 'source_tree_dirty': True}, tmp_path) is False
     (tmp_path / 'source.py').write_text('ok = False\n')
     assert source_tree_dirty(tmp_path) is True
+    assert checkout_match(manifest, tmp_path) is False
+
+
+def test_checkout_match_is_unknown_without_git(tmp_path):
+    assert checkout_match({'source_commit':'0'*40, 'source_tree_dirty':False}, tmp_path) is None
