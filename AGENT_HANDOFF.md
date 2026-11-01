@@ -2,7 +2,7 @@
 
 2026-11-01 7×24 数据库备份增量：`facai/ops/backup_db.py` 同秒运行不再
 撞文件名；验证新快照完整性后才按文件实际时间执行保留策略，失败不删旧备份。
-本地每日备份与恢复专项 25 passed。VPS timer 实际运行、磁盘不足故障注入及
+本地每日备份与恢复专项 25 passed；随后 Linux 工作树全量 1576 passed / 11 skipped / 0 failed（真实 Chromium，245.82 秒），记录见 docs/validation/package-backup-20261101.json。VPS timer 实际运行、磁盘不足故障注入及
 密钥/工作区离机恢复仍未验收。
 
 2026-11-01 开发包现状校验：`scripts/verify_package.py` 新增

@@ -1,0 +1,17 @@
+{
+  "recorded_at": "2026-11-01T10:23:28.681624+00:00",
+  "source_commit_tested": "d7d792f5597b181b42768a214877721ffcfda91f",
+  "scope": "full local regression after package-current-check and daily-backup hardening",
+  "command": "FACAI_TEST_CHROMIUM=/usr/bin/chromium /workspace/facai-venv/bin/python -m pytest -q",
+  "result": {
+    "passed": 1576,
+    "skipped": 11,
+    "failed": 0,
+    "warnings": 1,
+    "duration_seconds": 245.82
+  },
+  "limitations": [
+    "Local suite does not validate VPS systemd timer execution or off-host restore of secrets/workspaces.",
+    "GitHub Actions result for this commit was not independently read in this environment."
+  ]
+}

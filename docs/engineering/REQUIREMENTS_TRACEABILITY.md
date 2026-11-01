@@ -171,7 +171,7 @@ Users/Owner/Agents/Skills/Missions/Executions/Events/Evidence/Claims/Artifacts/K
 - 保留前面已验证的启动/Docker/持久化能力
 - 新说明/备份脚本进入包；Windows/macOS分开实测
 
-**下一步**：已实现一键Owner初始化/恢复、原生和容器内部重启验证、ZIP逐文件哈希与全包解压测试。2026-10-16接管代理在a871959重建交付包并独立QA通过(scripts/package.py + verify_package.py):408文件archive+manifest逐文件哈希一致,包内validate_handoff 27方向无环全文件在位,package_source_commit=a871959,source_manifest_verified=true(包重建即源码快照)。过程发现并修正:改task-registry.json后必须--render重生成REQUIREMENTS_TRACEABILITY,否则包内handoff校验如实失败。剩余:Windows/macOS分开实测(Windows已多次本地实跑:start链路+冒烟+包验证)、宿主跨设备/VPS交付验收(阻塞于SSH),不将开发包标Production。 2026-11-01 verify_package增加matches_current_checkout与严格模式；旧dist ZIP实测哈希有效但非当前HEAD，严格模式exit2。专项2 passed；CI已加严格校验与Actions artifact；需从干净HEAD重建新包再验并核对CI。
+**下一步**：已实现一键Owner初始化/恢复、原生和容器内部重启验证、ZIP逐文件哈希与全包解压测试。2026-10-16接管代理在a871959重建交付包并独立QA通过(scripts/package.py + verify_package.py):408文件archive+manifest逐文件哈希一致,包内validate_handoff 27方向无环全文件在位,package_source_commit=a871959,source_manifest_verified=true(包重建即源码快照)。过程发现并修正:改task-registry.json后必须--render重生成REQUIREMENTS_TRACEABILITY,否则包内handoff校验如实失败。剩余:Windows/macOS分开实测(Windows已多次本地实跑:start链路+冒烟+包验证)、宿主跨设备/VPS交付验收(阻塞于SSH),不将开发包标Production。 2026-11-01 verify_package增加matches_current_checkout与严格模式；旧dist ZIP实测哈希有效但非当前HEAD，严格模式exit2。专项2 passed；CI已加严格校验与Actions artifact；需从干净HEAD重建新包再验并核对CI。 2026-11-01 本地全量1576 passed/11 skipped/0 failed（真实Chromium）；GitHub Actions结果需独立核对。
 
 ## MODEL-001 — 多Provider/多Key模型资源池
 
@@ -241,7 +241,7 @@ Dashboard/Missions/Agents/Skills/Models/Timeline/Evidence/Artifacts真实可操�
 - 0.01%来源于可测基数；不可测时不编造精确小数
 - 缺模型/CLI/权限显示真实等待或错误
 
-**下一步**：Mission/Agent计量与控制台显示已入库。下一步依 docs/VPS_24X7_WORKSTATION.md 做VPS健康、积压、模型/预算、备份告警实测；A10仍须跨端及真实并发事件一致性验收。 2026-11-01 每日数据库备份同秒唯一命名、完整性验证后才按mtime保留、失败保留旧快照；备份/恢复专项25 passed。VPS timer与全设备恢复未验。
+**下一步**：Mission/Agent计量与控制台显示已入库。下一步依 docs/VPS_24X7_WORKSTATION.md 做VPS健康、积压、模型/预算、备份告警实测；A10仍须跨端及真实并发事件一致性验收。 2026-11-01 每日数据库备份同秒唯一命名、完整性验证后才按mtime保留、失败保留旧快照；备份/恢复专项25 passed。VPS timer与全设备恢复未验。 2026-11-01 本地全量1576 passed/11 skipped/0 failed（真实Chromium）；GitHub Actions结果需独立核对。
 
 ## TRUST-001 — Evidence与Claim Intelligence
 
