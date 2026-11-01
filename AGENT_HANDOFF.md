@@ -5,7 +5,7 @@
 `OPENCODE_STARTED` 记录有效运行提示 SHA-256 与应用标记。旧无规格 Mission
 保持原有提示。受控 OpenCode runner 验证规则确实随每个阶段传入，
 Intent/Trust/闭环/执行定向 61 passed；尚未做真实 Provider 遵循效果评估，
-本增量尚未重跑全套。
+全量回归 1568 passed / 11 skipped / 0 failed（真实 Chromium，244.41 秒）；随后补旧已确认规格兼容判定，定向 32 passed。全量数字早于这处小修复，详见 docs/validation/goal-focus-runtime-20261101.json。
 
 2026-11-01 取证缺口控制台接线：`/evidence-center` 新增来源、阻塞原因、下一步、
 说明表单与历史列表，缺口不会出现在 Claim 证据多选项。真实 Chromium 桌面

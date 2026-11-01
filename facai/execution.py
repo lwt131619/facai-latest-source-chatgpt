@@ -24,7 +24,7 @@ from .billing import PRICING, priced_cost
 from .checkpoint import AUTHOR, _run as _git_run
 from .checkpoint import checkpoint, remove_worktree
 from .opencode import resolve_override_workspace, summarize_output
-from .mission_spec import MissionSpecifications, focus_prompt
+from .mission_spec import EXECUTION_FOCUS_POLICY, MissionSpecifications, focus_prompt
 from .outcomes import (
     EXECUTION_FAILED,
     TERMINAL_EVENT_STATES,
@@ -104,7 +104,7 @@ def mission_runtime_focus_prompt(store, mission, prompt):
     """
     specification = MissionSpecifications(store).get(
         mission.get('owner_id', 'admin'), mission['id'])
-    if specification is None:
+    if specification is None or specification['specification'].get('execution_policy') != EXECUTION_FOCUS_POLICY:
         return prompt, False
     guidance = focus_prompt()
     return (prompt if guidance in prompt else prompt + '\n\n' + guidance), True

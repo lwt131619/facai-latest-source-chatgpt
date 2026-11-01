@@ -5,7 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 from facai.api import create_app
 from facai.intent_workspace import IntentWorkspace, IntentError
-from facai.mission_spec import MissionSpecifications
+from facai.mission_spec import MissionSpecifications, canonical, digest
 from facai.execution import mission_runtime_focus_prompt
 from facai.store import Store
 
@@ -66,6 +66,19 @@ def test_legacy_mission_runtime_prompt_remains_compatible(tmp_path):
     store = Store(tmp_path)
     mission_id = store.create('旧任务', '原话', ['执行'], owner_id='alice')['id']
     assert mission_runtime_focus_prompt(store, store.get(mission_id), '原提示') == ('原提示', False)
+
+
+def test_existing_confirmed_spec_without_focus_policy_keeps_prior_prompt(tmp_path):
+    store = Store(tmp_path)
+    workspace = IntentWorkspace(store)
+    intent = workspace.compile('alice', '分析项目', {'action':'analyze','target':'/repo'})
+    mission_id = workspace.confirm('alice', intent['id'], 1)['mission_id']
+    old_spec = MissionSpecifications(store).get('alice', mission_id)['specification']
+    old_spec.pop('execution_policy')  # A valid pre-upgrade specification shape.
+    with store.connect() as db:
+        db.execute('UPDATE mission_specifications SET specification=?,sha256=? WHERE mission_id=?',
+                   (canonical(old_spec), digest(old_spec), mission_id))
+    assert mission_runtime_focus_prompt(store, store.get(mission_id), '旧提示') == ('旧提示', False)
 
 
 def test_not_ready_cancel_and_external_grant_guard(tmp_path):
