@@ -3,7 +3,9 @@
 Run `./backup.sh` on Linux/macOS or `backup.bat` on Windows. The launcher uses
 `.venv` when available, creates a private SQLite snapshot, restores it into an
 isolated temporary directory, compares all application table counts against that
-snapshot, checks SQLite integrity, then removes the temporary rehearsal.
+snapshot, checks SQLite integrity and compares the snapshot/restored database
+SHA-256, then removes the temporary rehearsal. Restore staging rejects unexpected
+SQLite WAL/SHM sidecars and byte changes before replacing the live database.
 It never replaces the live database. Windows/macOS native execution is not yet
 certified; Linux subprocess behavior has automated coverage.
 
@@ -12,8 +14,8 @@ Default data location follows `FACAI_DATA_DIR`, otherwise this package's `data/`
 Existing destinations are rejected; repeated same-second snapshots have distinct
 names. A failed backup or drill returns nonzero. Live writes after a snapshot
 appear under `live_drift`; they do not invalidate the restore of that snapshot.
-Counts and integrity do not establish byte-for-byte file restoration, successful
-external tools or real provider connectivity.
+This byte check applies to the database snapshot only; it does not establish
+restoration of external tools, workspace files or real provider connectivity.
 
 ## Preserve the whole appliance
 

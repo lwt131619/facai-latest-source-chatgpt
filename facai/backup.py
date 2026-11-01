@@ -9,6 +9,7 @@ recovery or availability of external providers.
 
 import argparse
 import gc
+import hashlib
 import json
 import os
 import shutil
@@ -101,6 +102,14 @@ def _discard_staged(staged):
         Path(str(staged) + suffix).unlink(missing_ok=True)
 
 
+def _file_sha256(path):
+    digest = hashlib.sha256()
+    with Path(path).open('rb') as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b''):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def restore_backup(data_dir, backup_path):
     root = Path(data_dir).resolve()
     live = root / "facai.sqlite3"
@@ -120,6 +129,10 @@ def restore_backup(data_dir, backup_path):
     staged = _unique_path(root, ".facai-restore.sqlite3")
     try:
         shutil.copy2(source, staged)
+        if any(Path(str(staged) + suffix).exists() for suffix in ('-wal', '-shm')):
+            raise ValueError('Staged backup has unexpected SQLite sidecars')
+        if _file_sha256(staged) != _file_sha256(source):
+            raise ValueError('Staged backup differs from source snapshot')
         staged_report = verify_backup(staged)
         if not staged_report["ok"]:
             raise ValueError(f"Staged backup failed verification: {staged_report}")
@@ -197,18 +210,22 @@ def drill_backup(data_dir, dest=None):
     if not report["ok"]:
         return {"ok": False, "stage": "verify", "backup": str(backup), **report}
     backup_counts = _counts(backup)
+    backup_sha256 = _file_sha256(backup)
     live_counts = _counts(live)
     rehearsal = Path(tempfile.mkdtemp(prefix="facai-drill-"))
     try:
         restored = restore_backup(rehearsal, backup)
         restored_counts = _counts(restored)
+        restored_sha256 = _file_sha256(restored)
         mismatches = {table: (backup_counts.get(table), restored_counts.get(table))
                       for table in sorted(backup_counts.keys() | restored_counts.keys())
                       if backup_counts.get(table) != restored_counts.get(table)}
         live_drift = {table: (backup_counts.get(table), live_counts.get(table))
                       for table in sorted(backup_counts.keys() | live_counts.keys())
                       if backup_counts.get(table) != live_counts.get(table)}
-        return {"ok": not mismatches, "stage": "restore", "backup": str(backup),
+        return {"ok": not mismatches and backup_sha256 == restored_sha256,
+                "stage": "restore", "backup": str(backup),
+                "backup_sha256": backup_sha256, "restored_sha256": restored_sha256,
                 "restored": str(restored), "live_counts": live_counts,
                 "restored_counts": restored_counts, "backup_counts": backup_counts,
                 "mismatches": mismatches, "live_drift": live_drift,

@@ -1,5 +1,11 @@
 # FACAI / ICS — 当前接手入口
 
+2026-11-01 本地恢复增量：`facai/backup.py` 在离线恢复时核对暂存副本与来源
+快照的 SHA-256，并拒绝意外 SQLite WAL/SHM 旁路文件；恢复演练输出来源/恢复
+数据库哈希并纳入 `ok` 判断。相同行数但暂存内容改变的回归已补。
+`tests/test_backup.py` 18 passed；完整套件及 Windows/macOS/VPS 实机恢复
+尚未因本增量重跑。仍只是 DATABASE_ONLY，不包含密钥/工作区。
+
 2026-10-31 候选引擎评审：`docs/ENGINE_LINK_ASSISTANT_REVIEW.md` 已核对
 `link-assistant/agent` 固定提交、Unlicense、Bun 实现及事件/模型路由/续接
 合同，登记为来源已核验的附属引擎候选。未安装或执行；上游现在有可选权限模式，

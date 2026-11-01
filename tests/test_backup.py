@@ -87,6 +87,27 @@ def test_restore_stage_failure_leaves_live_usable(tmp_path, monkeypatch):
     assert not list(tmp_path.glob('facai.pre-restore-*.sqlite3'))
 
 
+def test_restore_rejects_same_count_staging_mutation(tmp_path, monkeypatch):
+    store, _ = seed(tmp_path)
+    snapshot = create_backup(tmp_path)
+    store.create('后续任务', 'x', ['开发'])
+    real_copy = backup_module.shutil.copy2
+
+    def changed_copy(src, dst, *args, **kwargs):
+        result = real_copy(src, dst, *args, **kwargs)
+        if Path(dst).name.startswith('.facai-restore'):
+            with sqlite3.connect(dst) as connection:
+                connection.execute("UPDATE missions SET title = 'tampered' WHERE title = '关键任务'")
+        return result
+
+    monkeypatch.setattr(backup_module.shutil, 'copy2', changed_copy)
+    with pytest.raises(ValueError, match='sidecars|differs from source'):
+        restore_backup(tmp_path, snapshot)
+    assert len(Store(tmp_path).list()) == 2
+    assert not list(tmp_path.glob('.facai-restore*'))
+    assert not list(tmp_path.glob('facai.pre-restore-*.sqlite3'))
+
+
 def test_restore_success_replaces_live_and_keeps_rollback(tmp_path):
     store, mission_id = seed(tmp_path)
     backup = create_backup(tmp_path)
@@ -129,6 +150,7 @@ def test_restore_drill_rehearses_without_touching_live_data(tmp_path):
     assert report['live_counts']['missions'] == 1
     assert report['restored_counts']['missions'] == 1
     assert report['mismatches'] == {}
+    assert report['backup_sha256'] == report['restored_sha256']
     # The live database is untouched and the rehearsal directory is cleaned up.
     reopened = Store(tmp_path)
     assert [m['title'] for m in reopened.list()] == ['关键任务']
