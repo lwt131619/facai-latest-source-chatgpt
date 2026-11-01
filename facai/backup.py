@@ -217,15 +217,22 @@ def drill_backup(data_dir, dest=None):
         restored = restore_backup(rehearsal, backup)
         restored_counts = _counts(restored)
         restored_sha256 = _file_sha256(restored)
+        # Read-only SQLite connections can create empty WAL/SHM sidecars in
+        # WAL mode. Only a non-empty WAL carries changes absent from the main
+        # file hash; its presence invalidates the byte-for-byte drill.
+        wal = Path(str(restored) + '-wal')
+        restored_wal_bytes = wal.stat().st_size if wal.exists() else 0
         mismatches = {table: (backup_counts.get(table), restored_counts.get(table))
                       for table in sorted(backup_counts.keys() | restored_counts.keys())
                       if backup_counts.get(table) != restored_counts.get(table)}
         live_drift = {table: (backup_counts.get(table), live_counts.get(table))
                       for table in sorted(backup_counts.keys() | live_counts.keys())
                       if backup_counts.get(table) != live_counts.get(table)}
-        return {"ok": not mismatches and backup_sha256 == restored_sha256,
+        return {"ok": not mismatches and backup_sha256 == restored_sha256
+                and restored_wal_bytes == 0,
                 "stage": "restore", "backup": str(backup),
                 "backup_sha256": backup_sha256, "restored_sha256": restored_sha256,
+                "restored_wal_bytes": restored_wal_bytes,
                 "restored": str(restored), "live_counts": live_counts,
                 "restored_counts": restored_counts, "backup_counts": backup_counts,
                 "mismatches": mismatches, "live_drift": live_drift,

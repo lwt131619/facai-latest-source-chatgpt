@@ -1,5 +1,10 @@
 # FACAI / ICS — 当前接手入口
 
+2026-11-01 恢复演练补充：SQLite 只读连接在 WAL 模式也会产生空 WAL/SHM，
+故演练只将**非空 WAL**列为文件哈希未覆盖的失败条件；同一行数、内容在 WAL
+中变化的真实 SQLite 回归已补。`tests/test_backup.py` 19 passed；本增量
+未重跑全套及跨平台/VPS 实机恢复。
+
 2026-11-01 GitHub 首页整理：根 `README.md` 现在只保留启动、状态与当前权威
 文档入口；旧长版完整保存在 `docs/archive/README_pre_2026-11-01.md`；
 `docs/INDEX.md` 区分当前入口、历史快照与 `dist/` 旧产物。源码、启动脚本和

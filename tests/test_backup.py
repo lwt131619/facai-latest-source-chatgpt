@@ -157,6 +157,32 @@ def test_restore_drill_rehearses_without_touching_live_data(tmp_path):
     assert not list(tmp_path.glob('facai.pre-restore-*.sqlite3'))
 
 
+def test_restore_drill_rejects_same_count_wal_mutation(tmp_path, monkeypatch):
+    seed(tmp_path)
+    snapshot = create_backup(tmp_path)
+    real_restore = backup_module.restore_backup
+    connections = []
+
+    def changed_restore(root, source):
+        restored = real_restore(root, source)
+        connection = sqlite3.connect(restored)
+        connections.append(connection)
+        connection.execute('PRAGMA wal_autocheckpoint=0')
+        connection.execute("UPDATE missions SET title = 'tampered' WHERE title = '关键任务'")
+        connection.commit()
+        return restored
+
+    monkeypatch.setattr(backup_module, 'restore_backup', changed_restore)
+    try:
+        report = drill_backup(tmp_path, snapshot)
+        assert report['ok'] is False
+        assert report['backup_counts'] == report['restored_counts']
+        assert report['restored_wal_bytes'] > 0
+    finally:
+        for connection in connections:
+            connection.close()
+
+
 def test_restore_drill_reports_count_drift(tmp_path):
     store, _ = seed(tmp_path)
     backup = create_backup(tmp_path)

@@ -6,6 +6,9 @@ isolated temporary directory, compares all application table counts against that
 snapshot, checks SQLite integrity and compares the snapshot/restored database
 SHA-256, then removes the temporary rehearsal. Restore staging rejects unexpected
 SQLite WAL/SHM sidecars and byte changes before replacing the live database.
+The drill also fails if the restored database has a non-empty WAL, because those
+pages are not represented in the main database file hash. Empty WAL/SHM files
+created by a read-only SQLite connection do not fail the drill.
 It never replaces the live database. Windows/macOS native execution is not yet
 certified; Linux subprocess behavior has automated coverage.
 
