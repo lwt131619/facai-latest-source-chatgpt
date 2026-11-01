@@ -241,7 +241,7 @@ Dashboard/Missions/Agents/Skills/Models/Timeline/Evidence/Artifacts真实可操�
 - 0.01%来源于可测基数；不可测时不编造精确小数
 - 缺模型/CLI/权限显示真实等待或错误
 
-**下一步**：Mission/Agent计量与控制台显示已入库。下一步依 docs/VPS_24X7_WORKSTATION.md 做VPS健康、积压、模型/预算、备份告警实测；A10仍须跨端及真实并发事件一致性验收。 2026-11-01 每日数据库备份同秒唯一命名、完整性验证后才按mtime保留、失败保留旧快照；备份/恢复专项25 passed。VPS timer与全设备恢复未验。 2026-11-01 本地全量1576 passed/11 skipped/0 failed（真实Chromium）；GitHub Actions结果需独立核对。
+**下一步**：Mission/Agent计量与控制台显示已入库。下一步依 docs/VPS_24X7_WORKSTATION.md 做VPS健康、积压、模型/预算、备份告警实测；A10仍须跨端及真实并发事件一致性验收。 2026-11-01 每日数据库备份同秒唯一命名、完整性验证后才按mtime保留、失败保留旧快照；备份/恢复专项25 passed。VPS timer与全设备恢复未验。 2026-11-01 本地全量1576 passed/11 skipped/0 failed（真实Chromium）；GitHub Actions结果需独立核对。 2026-11-01 /metrics新增Operator鉴权全站Job状态聚合，旧Owner指标不变，无租户/任务标签；onboarding定向12 passed，VPS告警未验。
 
 ## TRUST-001 — Evidence与Claim Intelligence
 
@@ -297,7 +297,7 @@ Evidence Collector→Claim Normalizer→Source Trust→Conflict→Confidence
 - 保留已有有效行为，相关回归及失败路径测试通过
 - 验证命令/结果/提交与外部局限写入交接记录
 
-**下一步**：新增router/helpers，health不等于模型/Runtime就绪，status/metrics不泄密
+**下一步**：新增router/helpers，health不等于模型/Runtime就绪，status/metrics不泄密 2026-11-01 /metrics新增Operator鉴权全站Job状态聚合，旧Owner指标不变，无租户/任务标签；onboarding定向12 passed，VPS告警未验。
 
 ## KNOWLEDGE-001 — 长期知识资产与记忆
 

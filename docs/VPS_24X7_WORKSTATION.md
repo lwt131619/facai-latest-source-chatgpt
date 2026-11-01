@@ -87,6 +87,10 @@ systemd timer → 数据备份、摘要、Skill 刷新（逐项启用和验证�
 - **监控告警**：至少监视 API/DB/磁盘、队列积压、失败/重试、租约过期、
   模型 429/401、日预算、备份失败和证书到期。通知渠道必须实测到达；
   `/health` 不替代受鉴权的 `/status`/`/metrics`。
+  2026-11-01 `/metrics` 为 Operator 新增全站 Job 状态计数
+  `facai_station_jobs{status="QUEUED|RUNNING|PAUSED|BLOCKED|FAILED|COMPLETED|CANCELLED"}`；
+  旧的 `facai_missions`/`facai_events` Owner 指标不变。新指标仅聚合数量，
+  不输出租户、任务内容或模型密钥。告警阈值与送达仍需 VPS 实测。
 - **容量**：先测 1、4、8 路，再测 20+；调度并发、CLI 进程并发、模型侧并发
   分开记录。单 VPS 资源不足时扩资源或拆 Worker，不能只调高数字。
 

@@ -147,7 +147,16 @@ def router_for(store, auth, owner, require_admin, registries, probe_model, model
         with store.connect() as db:
             missions = db.execute('SELECT count(*) FROM missions WHERE owner_id=?', (owner(),)).fetchone()[0]
             events = db.execute('SELECT count(*) FROM events e JOIN missions m ON m.id=e.mission_id WHERE m.owner_id=?', (owner(),)).fetchone()[0]
-        return PlainTextResponse('# TYPE facai_missions gauge\nfacai_missions '+str(missions)+
-                                 '\n# TYPE facai_events gauge\nfacai_events '+str(events)+'\n')
+            job_counts = {row['status']: row['count'] for row in db.execute(
+                'SELECT status,count(*) AS count FROM jobs GROUP BY status')}
+        # These are station totals, exposed only to the authenticated operator.
+        # Labels come from fixed code, never user-controlled job content.
+        statuses = ('QUEUED', 'RUNNING', 'PAUSED', 'BLOCKED', 'FAILED', 'COMPLETED', 'CANCELLED')
+        lines = ['# TYPE facai_missions gauge', 'facai_missions '+str(missions),
+                 '# TYPE facai_events gauge', 'facai_events '+str(events),
+                 '# TYPE facai_station_jobs gauge']
+        lines.extend('facai_station_jobs{status="'+status+'"} '+str(job_counts.get(status, 0))
+                     for status in statuses)
+        return PlainTextResponse('\n'.join(lines)+'\n')
 
     return router

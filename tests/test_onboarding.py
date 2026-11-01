@@ -137,6 +137,25 @@ def test_diagnostics_are_protected_truthful_and_progress_persistent(appliance, m
     assert anonymous.get('/health').status_code==200
 
 
+def test_operator_metrics_show_station_job_backlog_without_tenant_labels(appliance):
+    client, config, _ = appliance
+    initialize(client, config); login(client)
+    store = client.app.state.store
+    own = store.create('Owner task', 'request', ['work'], owner_id='owner')
+    other = store.create('Tenant task', 'request', ['work'], owner_id='tenant')
+    store.enqueue_job(own['id'], 'queued work')
+    paused = store.enqueue_job(other['id'], 'paused work')
+    store.pause_job(paused['id'])
+    response = client.get('/metrics')
+    assert response.status_code == 200
+    assert 'facai_missions 1\n' in response.text  # Existing owner metric unchanged.
+    assert 'facai_station_jobs{status="QUEUED"} 1\n' in response.text
+    assert 'facai_station_jobs{status="PAUSED"} 1\n' in response.text
+    assert 'facai_station_jobs{status="RUNNING"} 0\n' in response.text
+    assert 'tenant' not in response.text and 'paused work' not in response.text
+    assert TestClient(client.app).get('/metrics').status_code == 401
+
+
 def test_model_probe_is_explicit_persistent_and_invalidated_by_config(appliance, monkeypatch):
     client, config, root = appliance
     initialize(client,config); login(client)
