@@ -1,0 +1,17 @@
+{
+  "recorded_at": "2026-11-01T04:12:09.925189+00:00",
+  "source_commit_tested": "3245b03b8e61942c4fa71645c064f8764ef2d8ca",
+  "scope": "full local pytest suite after evidence collection gap API, persistence, proof export and console changes",
+  "command": "FACAI_TEST_CHROMIUM=/usr/bin/chromium /workspace/facai-venv/bin/python -m pytest -q",
+  "result": {
+    "passed": 1566,
+    "skipped": 11,
+    "failed": 0,
+    "warnings": 1,
+    "duration_seconds": 238.25
+  },
+  "limitations": [
+    "Local regression does not establish live provider behavior, VPS deployment, or complete Production v1.0 acceptance.",
+    "Collection gap records do not perform crawling, Owner upload, official API collection, or semantic source verification."
+  ]
+}

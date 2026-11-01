@@ -2,7 +2,7 @@
 
 2026-11-01 取证缺口控制台接线：`/evidence-center` 新增来源、阻塞原因、下一步、
 说明表单与历史列表，缺口不会出现在 Claim 证据多选项。真实 Chromium 桌面
-1440×1000/手机 390×844 连同 Trust/Knowledge 定向 36 passed；全套仍待本轮复验。
+1440×1000/手机 390×844 连同 Trust/Knowledge 定向 36 passed；随后 Linux 工作树全量 1566 passed / 11 skipped / 0 failed（真实 Chromium，238.25 秒）；这不等于 VPS/真实 Provider 验收。
 
 2026-11-01 Owner 新要求已转为 [目标聚焦与取证缺口](docs/GOAL_FOCUS_AND_EVIDENCE_GAPS.md)：
 直接目标优先，只有真实阻塞才探索范围内替代路径；无法自动采集时留缺口、
