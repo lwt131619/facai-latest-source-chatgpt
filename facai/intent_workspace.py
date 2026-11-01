@@ -6,7 +6,7 @@ from uuid import uuid4
 
 from .prompting import deterministic_plan
 from .store import now
-from .mission_spec import MissionSpecifications
+from .mission_spec import MissionSpecifications, focus_prompt
 
 FIELDS = {'action', 'target', 'purpose', 'scope', 'constraints'}
 ACTIONS = [('analyze', r'分析|analy[sz]e'), ('inspect', r'检查|inspect|check'),
@@ -170,7 +170,8 @@ class IntentWorkspace:
                     step['depends_on'] = json.loads(step['depends_on'])
                 self.specifications.create(db, created, view, steps)
                 prompt = ('用户原话：'+row['raw_request']+'\n已确认理解：'+json.dumps({k: view[k] for k in FIELDS}, ensure_ascii=False)
-                          +'\n仅执行已确认目标；未明确的目标不自行添加。验证要求：以实际执行证据对照已确认目标和约束。')
+                          +'\n仅执行已确认目标；未明确的目标不自行添加。验证要求：以实际执行证据对照已确认目标和约束。'
+                          +'\n'+focus_prompt())
                 db.execute('UPDATE missions SET professional_prompt=? WHERE id=?', (prompt, created))
                 db.execute("UPDATE intent_requests SET state='CONFIRMED',mission_id=? WHERE id=?", (created, id))
                 self.store._event(db, created, None, None, None, 'INTENT_CONFIRMED',

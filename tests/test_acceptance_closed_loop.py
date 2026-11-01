@@ -23,7 +23,11 @@ from facai.opencode import OpenCodeAdapter
 class FakeRunner:
     """Deterministic OpenCode CLI stand-in: writes one artifact file, never calls a model."""
 
+    def __init__(self):
+        self.commands = []
+
     def __call__(self, command, cwd, timeout):
+        self.commands.append(command)
         (cwd / "run.txt").write_text("version = 1\n", encoding="utf-8")
         return subprocess.CompletedProcess(command, 0, '{"type":"text","text":"版本是 1"}\n', "")
 
@@ -31,8 +35,10 @@ class FakeRunner:
 def make_client(tmp_path, monkeypatch):
     monkeypatch.setenv("FACAI_ADMIN_PASSWORD", "loop-admin-pass")
     monkeypatch.delenv("FACAI_COOKIE_SECURE", raising=False)
+    runner = FakeRunner()
     client = TestClient(create_app(tmp_path, opencode_adapter=OpenCodeAdapter(
-        binary="opencode", runner=FakeRunner())))
+        binary="opencode", runner=runner)))
+    client.facai_runner = runner
     session = client.post("/api/v1/auth/login",
                           json={"username": "admin", "password": "loop-admin-pass"}).json()
     client.headers.update({"X-CSRF-Token": session["csrf_token"]})
@@ -90,6 +96,9 @@ def test_closed_loop_nl_to_knowledge_survives_restart_on_one_trace(tmp_path, mon
     assert mission["status"] == "COMPLETED"
     assert len(mission["artifacts"]) == len(mission["steps"])
     assert all(a["name"].endswith(".stdout.log") for a in mission["artifacts"])
+    assert len(client.facai_runner.commands) == len(mission["steps"])
+    assert all('只有遇到具体且已记录的阻塞' in command[-1]
+               for command in client.facai_runner.commands)
 
     # ④ 证据：执行事件已被自动采集为 RUNTIME_EVENT；Owner 再补一条独立观测
     trust = client.get(f"/api/v1/missions/{mission_id}/trust").json()

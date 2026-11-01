@@ -5,6 +5,8 @@ import pytest
 from fastapi.testclient import TestClient
 from facai.api import create_app
 from facai.intent_workspace import IntentWorkspace, IntentError
+from facai.mission_spec import MissionSpecifications
+from facai.execution import mission_runtime_focus_prompt
 from facai.store import Store
 
 
@@ -35,6 +37,35 @@ def test_concurrent_confirmation_is_one_mission_without_grant_or_jobs(tmp_path,m
     assert any(e['type']=='INTENT_CONFIRMED' for e in store.events(mission['id']))
     assert len(store.list(owner_id='alice'))==1
     with pytest.raises(IntentError):ws.revise('alice',a['id'],1,{'action':'deploy'})
+
+
+def test_confirmed_mission_focus_guidance_is_separate_from_owner_objective(tmp_path):
+    store = Store(tmp_path)
+    workspace = IntentWorkspace(store)
+    raw = '  分析这个项目，为了评估状态\n'
+    intent = workspace.compile('alice', raw, {'action':'analyze','target':'/owner/project',
+                                              'purpose':'评估状态','scope':'comprehensive'})
+    mission_id = workspace.confirm('alice', intent['id'], 1)['mission_id']
+    spec = MissionSpecifications(store).get('alice', mission_id)['specification']
+    mission = store.get(mission_id)
+    assert spec['raw_request'] == mission['original_input'] == raw
+    assert spec['objective'] == {'action':'analyze','target':'/owner/project',
+                                 'purpose':'评估状态','scope':'comprehensive','constraints':[]}
+    assert spec['execution_policy']['fallback_trigger'].startswith('Only after a concrete blocker')
+    assert '只有遇到具体且已记录的阻塞' in mission['professional_prompt']
+    assert '保持 UNKNOWN' in mission['professional_prompt']
+    assert store.jobs(mission_id) == []
+    # Direct queue/API prompts also receive the confirmed process rule at the
+    # shared execution boundary; applying it twice does not duplicate text.
+    focused, applied = mission_runtime_focus_prompt(store, mission, '只执行当前阶段')
+    assert applied is True and '只有遇到具体且已记录的阻塞' in focused
+    assert mission_runtime_focus_prompt(store, mission, focused) == (focused, True)
+
+
+def test_legacy_mission_runtime_prompt_remains_compatible(tmp_path):
+    store = Store(tmp_path)
+    mission_id = store.create('旧任务', '原话', ['执行'], owner_id='alice')['id']
+    assert mission_runtime_focus_prompt(store, store.get(mission_id), '原提示') == ('原提示', False)
 
 
 def test_not_ready_cancel_and_external_grant_guard(tmp_path):

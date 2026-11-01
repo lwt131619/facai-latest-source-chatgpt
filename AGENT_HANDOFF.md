@@ -1,5 +1,12 @@
 # FACAI / ICS — 当前接手入口
 
+2026-11-01 目标聚焦规则进一步接入新 Mission 的不可变规格与专业提示，
+并在共享 `execute_mission_task` 执行边界补入，避免手工提示/直接入队遗漏；
+`OPENCODE_STARTED` 记录有效运行提示 SHA-256 与应用标记。旧无规格 Mission
+保持原有提示。受控 OpenCode runner 验证规则确实随每个阶段传入，
+Intent/Trust/闭环/执行定向 61 passed；尚未做真实 Provider 遵循效果评估，
+本增量尚未重跑全套。
+
 2026-11-01 取证缺口控制台接线：`/evidence-center` 新增来源、阻塞原因、下一步、
 说明表单与历史列表，缺口不会出现在 Claim 证据多选项。真实 Chromium 桌面
 1440×1000/手机 390×844 连同 Trust/Knowledge 定向 36 passed；随后 Linux 工作树全量 1566 passed / 11 skipped / 0 failed（真实 Chromium，238.25 秒）；这不等于 VPS/真实 Provider 验收。

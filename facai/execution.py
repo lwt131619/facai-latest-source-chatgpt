@@ -24,6 +24,7 @@ from .billing import PRICING, priced_cost
 from .checkpoint import AUTHOR, _run as _git_run
 from .checkpoint import checkpoint, remove_worktree
 from .opencode import resolve_override_workspace, summarize_output
+from .mission_spec import MissionSpecifications, focus_prompt
 from .outcomes import (
     EXECUTION_FAILED,
     TERMINAL_EVENT_STATES,
@@ -92,6 +93,21 @@ def skill_runtime_prompt(store, mission, skill, prompt):
             f" version={skill.get('version') or 'unspecified'} sha256={digest}]\n"
             "Apply this capability without changing the user's original objective.\n"
             f"{body}\n[/BOUND FACAI SKILL]"), digest
+
+
+def mission_runtime_focus_prompt(store, mission, prompt):
+    """Apply process guidance to confirmed missions on every dispatch path.
+
+    A later manual prompt edit or direct enqueue must not silently discard the
+    confirmed mission's focus rule. Legacy missions have no specification and
+    keep their existing prompt behavior.
+    """
+    specification = MissionSpecifications(store).get(
+        mission.get('owner_id', 'admin'), mission['id'])
+    if specification is None:
+        return prompt, False
+    guidance = focus_prompt()
+    return (prompt if guidance in prompt else prompt + '\n\n' + guidance), True
 
 
 def user_model_runtime(store, mission, model, workspace, root=None):
@@ -340,14 +356,16 @@ def execute_mission_task(store, adapter, mission, model, root, prompt, step_id=N
                           verdict["reason"], backend=GATE_BACKEND).state},
                      step_id, None, agent_id)
         raise MissionDenied(verdict["reason"], verdict["mode"])
-    runtime_prompt, skill_body_sha256 = skill_runtime_prompt(store, mission, skill, prompt)
+    focused_prompt, focus_applied = mission_runtime_focus_prompt(store, mission, prompt)
+    runtime_prompt, skill_body_sha256 = skill_runtime_prompt(store, mission, skill, focused_prompt)
     session_id = store.start_session(mission_id, "opencode", step_model_id or mission["model_id"])
     if worktree is not None:
         store.append(mission_id, "WORKTREE_CREATED",
                      {"path": worktree.get("path"), "branch": worktree.get("branch")},
                      step_id, session_id, agent_id)
     store.append(mission_id, "OPENCODE_STARTED",
-                 {**attribution, "prompt": prompt},
+                 {**attribution, "prompt": prompt, "runtime_prompt_sha256": hashlib.sha256(runtime_prompt.encode()).hexdigest(),
+                  "execution_focus_applied": focus_applied},
                  step_id, session_id, agent_id)
     if step and step["status"] in {"WAITING", "FAILED"}:
         store.step_status(mission_id, step_id, "RUNNING")
