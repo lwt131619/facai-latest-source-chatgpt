@@ -655,3 +655,13 @@ Linux 真 Chromium 手机专项 `tests/test_mobile_surface.py tests/test_mobile_
 17 passed，0 failed；其中关键浏览器用例显式关闭 4 秒轮询，验证真实 SSE 推进。
 未验证真实手机 HTTPS、VPS 跨设备接入或本地数据库复制。下一 Agent 应先
 核验远端此提交/CI，再做真机与 VPS 接入，不要重复开发现有 SSE 接线。
+
+## 2026-11-04 性能与存储基线第一步
+
+新增只读 `scripts/artifact_inventory.py`，以 SQLite 已登记产物为范围，按
+Owner 统计字节精确重复、缺失和扫描耗时；不修改数据库或文件。开发环境
+`data/` 为零产物，不能声称生产提速或节省空间。产物盘点与相关 Store 回归
+20 passed；其余测试、真实工作负载性能、VPS 数据均未在本步骤验证。
+当前无内容寻址产物库/安全 GC；实施顺序与边界见
+`docs/PERFORMANCE_STORAGE_BASELINE.md`。下一 Agent 先取真实部署基线，
+再按 Owner 隔离、原子写、Proof 兼容分阶段引入对象存储，严禁直接清理证据。

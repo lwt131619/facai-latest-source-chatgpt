@@ -7,6 +7,7 @@
 | DIR-001 | 统一方向与接手入口 | VERIFIED_LOCAL | P0 |  |
 | AUD-001 | 真实源码审计与测试基线 | VERIFIED_LOCAL | P0 | DIR-001 |
 | SYNC-001 | GitHub检查点与断点备份 | VERIFIED_LOCAL | P0 | DIR-001 |
+| PERF-001 | 执行性能、缓存与产物生命周期 | PARTIAL | P2 | SYNC-001 |
 | AUTH-001 | Owner Control与授权分离 | PARTIAL | P1 | AUD-001 |
 | SETUP-001 | 首次配置向导与Owner初始化 | PARTIAL | P1 | AUTH-001 |
 | INTENT-001 | Natural Language Compiler完整合约 | PARTIAL | P1 | AUD-001 |
@@ -74,6 +75,20 @@
 - 错误不包含凭据，不强推/删库/重建远端
 
 **下一步**：官方集成原生Git推送已恢复；origin指向facai-latest-source-chatgpt，多个小步骤已普通push并核对main。checkpoint优先继承Git凭据，继续核对main与工作分支。
+
+## PERF-001 — 执行性能、缓存与产物生命周期
+
+建立真实性能基线、Owner隔离的安全复用与内容寻址产物存储、可恢复垃圾回收
+
+**现有定位**：`facai/artifact_inventory.py`、`scripts/artifact_inventory.py`、`docs/PERFORMANCE_STORAGE_BASELINE.md`、`tests/test_artifact_inventory.py`
+
+**验收**：
+
+- 同工作负载记录前后P50/P95/P99、吞吐量与Token成本
+- 精确重复内容只共享物理对象但保留独立任务、证据、Proof引用
+- GC默认预览，隔离和恢复经故障测试，无受保护产物误删
+
+**下一步**：2026-11-04 首步为只读SQLite登记产物盘点，按Owner统计精确重复和缺失；开发data目录为0产物，20项定向测试通过。尚未实现内容寻址、缓存分级或安全GC；先收真实工作负载基线，再做兼容迁移、故障恢复与前后基准。
 
 ## AUTH-001 — Owner Control与授权分离
 
