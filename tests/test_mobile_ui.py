@@ -184,12 +184,18 @@ def _expected_errors(*needles):
 
 def test_mobile_register_order_and_monitor_follow_the_real_backend(
         protected_server, playwright_api):
-    """注册即登录 → 一句话真下单 → 监控渲染后端真实进度（不是本地假数）。"""
+    """注册、下单后，后端 SSE 事件驱动手机刷新真实进度。"""
     base = protected_server
     errors = []
     with playwright_api.sync_playwright() as p:
         browser = _launch(p)
         page = _phone(browser)
+        # 本例关闭四秒兜底轮询：跨端更新必须由持久 SSE 事件触发。
+        page.add_init_script("""(() => {
+          const original = window.setInterval;
+          window.setInterval = (callback, ms, ...args) =>
+            ms === 4000 ? 0 : original(callback, ms, ...args);
+        })();""")
         page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
 
         _goto_mobile(page, base)
@@ -226,7 +232,7 @@ def test_mobile_register_order_and_monitor_follow_the_real_backend(
         assert mission_id, "下单后监控视图应持有真实 mission id"
         assert mission_id[:8] in page.inner_text("#monitor-id"), "监控页必须显示任务短编号"
 
-        # 进度跟随后端：推进一步，点「刷新进度」立即拉取，渲染 == 服务端数值
+        # 进度跟随后端：推进一步，不手动刷新也不用轮询，由 SSE 事件触发。
         csrf = page.evaluate("window.facaiCsrf()")
         assert csrf, "登录响应的 csrf_token 应已落内存"
         first_step = page.request.get(
@@ -236,9 +242,9 @@ def test_mobile_register_order_and_monitor_follow_the_real_backend(
             data=json.dumps({"status": "RUNNING"}),
             headers={"Content-Type": "application/json", "X-CSRF-Token": csrf})
         assert advanced.ok, advanced.text
-        page.click("#monitor-refresh")
         page.wait_for_function(
-            "document.querySelector('#monitor-ring').getAttribute('aria-valuenow') !== '0'")
+            "document.querySelector('#monitor-ring').getAttribute('aria-valuenow') !== '0'",
+            timeout=10000)
         backend = page.request.get(f"{base}/api/v1/missions/{mission_id}").json()
         assert page.get_attribute("#monitor-ring", "aria-valuenow") == str(backend["progress"])
         assert "发财正在" in page.inner_text("#monitor-doing-text")

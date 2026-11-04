@@ -684,7 +684,9 @@ state   = WAITING_PERMISSION</pre>
     registerMode: false,
     missionId: null,     // 监控中的任务
     pollTimer: null,     // 4 秒轮询
-    eventSource: null    // SSE 加速通道
+    eventSource: null,   // SSE 加速通道
+    eventCursor: 0,      // 当前任务的持久事件序号，重开监控时续接
+    streamRefreshTimer: null
   };
 
   var STATUS_LABELS = { WAITING: '待执行', RUNNING: '执行中',
@@ -1000,6 +1002,7 @@ state   = WAITING_PERMISSION</pre>
   }
 
   function openMonitor(mission, dispatch) {
+    if (state.missionId !== mission.id) { state.eventCursor = 0; }
     state.missionId = mission.id;
     renderMonitor(mission);
     setMonitorNote(dispatch);
@@ -1110,23 +1113,35 @@ state   = WAITING_PERMISSION</pre>
   function stopMonitor() {
     if (state.pollTimer) { clearInterval(state.pollTimer); state.pollTimer = null; }
     if (state.eventSource) { state.eventSource.close(); state.eventSource = null; }
+    if (state.streamRefreshTimer) { clearTimeout(state.streamRefreshTimer); state.streamRefreshTimer = null; }
   }
 
-  /* SSE 加速：同源 EventSource 自动带会话 cookie；失败即关闭退回轮询 */
+  /* SSE 发的是事件而不是 Mission 快照；收到实际事件后拉最新任务。
+     原生 EventSource 自动携带 Last-Event-ID 重连，4 秒轮询仍作断网兜底。 */
   function tryOpenStream() {
     if (!window.EventSource || !state.missionId || state.eventSource) { return; }
     try {
-      var source = new EventSource('/api/v1/missions/' + state.missionId + '/stream');
+      var missionId = state.missionId;
+      var source = new EventSource('/api/v1/missions/' + encodeURIComponent(missionId) +
+                                   '/stream?after=' + state.eventCursor);
       state.eventSource = source;
       source.addEventListener('mission', function (ev) {
+        if (state.eventSource !== source || state.missionId !== missionId) { return; }
         try {
-          var mission = JSON.parse(ev.data);
-          if (mission && mission.id === state.missionId) { renderMonitor(mission); }
+          var event = JSON.parse(ev.data);
+          if (!event || event.mission_id !== missionId || !Number.isSafeInteger(event.sequence)) { return; }
+          state.eventCursor = Math.max(state.eventCursor, event.sequence);
+          if (state.streamRefreshTimer) { return; }
+          state.streamRefreshTimer = setTimeout(function () {
+            state.streamRefreshTimer = null;
+            if (state.eventSource === source && state.missionId === missionId) { pollMonitor(); }
+          }, 150);
         } catch (_) { /* 单条坏事件忽略，轮询兜底 */ }
       });
       source.onerror = function () {
-        source.close();
-        if (state.eventSource === source) { state.eventSource = null; }
+        if (source.readyState === EventSource.CLOSED && state.eventSource === source) {
+          state.eventSource = null;
+        }
       };
     } catch (_) { /* 无 SSE 条件时保持 4 秒轮询 */ }
   }

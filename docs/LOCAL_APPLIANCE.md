@@ -24,6 +24,8 @@ Docker：复制 .env.example 为 .env，设置强 FACAI_ADMIN_PASSWORD，然后
 不要加 `-v`（会删除数据库卷）。健康检查只证明 API 可响应。
 
 手机跨设备访问需要单独部署 HTTPS 反向代理，参照 DEPLOYMENT.md；默认仅本机访问。
+同一远程服务的桌面/手机共享持久任务并通过事件流刷新；本地 Electron SQLite
+与 VPS SQLite 目前没有自动双向同步，状态与验收边界见 CROSS_DEVICE_SYNC_STATUS.md。
 Electron 源码本地模式：进入 `packaging/app`，先 `npm install`，运行
 `npm run start:local`。窗口会启动当前源码树的 Python/FACAI 服务，确认本机
 127.0.0.1:8080 就绪后打开 Owner 首次向导；已有 Owner 则打开控制台。

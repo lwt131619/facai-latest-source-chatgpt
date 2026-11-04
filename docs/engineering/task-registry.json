@@ -516,7 +516,7 @@
         "保留已有有效行为，相关回归及失败路径测试通过",
         "验证命令/结果/提交与外部局限写入交接记录"
       ],
-      "next_action": "已接真实Owner产物列表、受鉴权文本预览/文本副本下载、Agent绑定/执行Job分配、账户额度摘要；独立Mobile manifest及逐资源SW离线缓存已实现。真实Chromium手机专项15通过，全量1355通过/6跳过/0失败；保持PARTIAL，继续真机HTTPS、通知真实上游及完整任务闭环验收，不将Job数当Agent并发数。"
+      "next_action": "已接真实Owner产物列表、受鉴权文本预览/文本副本下载、Agent绑定/执行Job分配、账户额度摘要；独立Mobile manifest及逐资源SW离线缓存已实现。2026-11-04 修复手机SSE误把事件当Mission的接线，接事件后拉真实快照；关闭4秒轮询的Chromium测试验证自动刷新。保持PARTIAL：继续真机HTTPS、通知真实上游及完整任务闭环验收；本地Electron与VPS SQLite未双向同步，见docs/CROSS_DEVICE_SYNC_STATUS.md。不将Job数当Agent并发数。"
     },
     {
       "id": "DESKTOP-001",

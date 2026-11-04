@@ -642,3 +642,16 @@ Owner 要求把"所有最新源码"收敛到 GitHub。全盘扫描（本地桌�
 增加确定性导出钉；定向全绿。本机 Windows 单进程全量如上；Linux CI 以远端
 Actions 结果为准，不得把本机数字写成 CI 通过。浏览器 ETIMEDOUT 类抖动在
 本机仍可能偶发（环境源未消除），单跑/重跑即过，看门狗保证最坏有界终止。
+
+## 2026-11-04 手机实时事件与跨设备同步状态
+
+手机监控过去把 `/api/v1/missions/{id}/stream` 的事件记录误当成完整 Mission，
+实际只靠 4 秒轮询刷新。本轮按 `mission_id` 与 `sequence` 消费持久事件，
+收到事件后合并刷新真实任务快照；断流时仍保留轮询兜底。同一服务的桌面/手机
+共享任务与事件；本地 Electron SQLite 和 VPS SQLite 尚无双向同步，不能
+宣称已激活。完整边界见 `docs/CROSS_DEVICE_SYNC_STATUS.md`。
+
+Linux 真 Chromium 手机专项 `tests/test_mobile_surface.py tests/test_mobile_ui.py`
+17 passed，0 failed；其中关键浏览器用例显式关闭 4 秒轮询，验证真实 SSE 推进。
+未验证真实手机 HTTPS、VPS 跨设备接入或本地数据库复制。下一 Agent 应先
+核验远端此提交/CI，再做真机与 VPS 接入，不要重复开发现有 SSE 接线。

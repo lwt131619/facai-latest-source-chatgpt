@@ -46,7 +46,8 @@ def test_mobile_wires_the_real_request_path_literals(html):
         assert literal in html, f"mobile 页缺少真实请求路径字面量：{literal}"
     # 详情 / 事件 / SSE 按 mission id 动态组装，但方法与路径段必须可见
     for fragment in ("'GET', '/api/v1/missions/'", "'/events'",
-                     "'/stream'", "EventSource"):
+                     "'/stream?after='", "EventSource", "event.mission_id",
+                     "event.sequence"):
         assert fragment in html, f"mobile 页缺少请求组装片段：{fragment}"
 
 
