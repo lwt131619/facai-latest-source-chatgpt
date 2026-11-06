@@ -665,3 +665,15 @@ Owner 统计字节精确重复、缺失和扫描耗时；不修改数据库或�
 当前无内容寻址产物库/安全 GC；实施顺序与边界见
 `docs/PERFORMANCE_STORAGE_BASELINE.md`。下一 Agent 先取真实部署基线，
 再按 Owner 隔离、原子写、Proof 兼容分阶段引入对象存储，严禁直接清理证据。
+
+## 2026-11-06 操作台入口实测
+
+本仓库当前 `start.sh` / `start.bat` 已有本机启动入口，登录后访问
+`/command-center`，手机端访问 `/static/mobile.html`。本轮在 Linux 开发环境
+用 `.venv` 启动真实 API：`/api/v1/health` 返回 200 且鉴权启用；未登录
+`/command-center` 返回 401；`/setup` 与手机页返回 200。启动、Owner
+向导和总控台相关真实 Chromium 定向回归 7 passed。开发容器的
+`127.0.0.1:8080` 不对用户电脑或互联网开放；公网域名从本环境经代理
+CONNECT 被拒，未能核验 VPS 线上入口。Windows 原生安装包也未实测。
+README 快速开始已明确桌面和手机路径。下一 Agent 须在用户机器/VPS
+核验实际登录、模型配置和真实任务执行，不可把本地健康检查写成线上可用。

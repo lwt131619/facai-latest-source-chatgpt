@@ -14,6 +14,10 @@ Production v1.0 全项验收。**
 ```
 
 打开 `http://127.0.0.1:8080`，首次使用按 `/setup` 初始化 Owner。
+登录后直接进入 [FACAI 操作台](http://127.0.0.1:8080/command-center)；
+同一服务的手机入口是 `http://127.0.0.1:8080/static/mobile.html`。
+本地 `127.0.0.1` 只在运行 FACAI 的那台电脑上有效；其他设备需要按部署说明
+配置可访问的 HTTPS 域名，不能把开发容器的地址当成公网入口。
 容器和远程部署分别见 [本地交付](docs/LOCAL_APPLIANCE.md) 与
 [部署说明](docs/DEPLOYMENT.md)。启动脚本不会替你配置真实模型、外部渠道或 VPS。
 
